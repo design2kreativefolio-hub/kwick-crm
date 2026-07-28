@@ -1,0 +1,11 @@
+# LOCAL DEV ONLY — auto-loaded by `docker compose up` alongside docker-compose.yml.
+# Publishes backend/frontend ports directly to localhost so you can preview the
+# app without setting up domains or nginx routing. Delete this file for a
+# production-shaped run (nginx becomes the only entrypoint, as designed).
+services:
+  backend:
+    ports:
+      - "8000:8000"
+  frontend:
+    ports:
+      - "3000:3000"
