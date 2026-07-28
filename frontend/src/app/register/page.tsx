@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Logo } from "@/components/Logo";
+import { Select } from "@/components/Select";
 import { api } from "@/lib/api";
 
-// Both roles self-register via invite code (spec §4). Manager codes activate
-// immediately; employee codes leave the account awaiting manager approval —
-// approval fires an email (with a set-password link if needed).
+// Employees self-register with no invite code — they land in awaiting_approval
+// until a manager approves them. Managers still need an invite code and
+// activate immediately (spec §4).
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -22,6 +23,8 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const isManager = form.role === "manager";
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -57,8 +60,9 @@ export default function RegisterPage() {
         </div>
         <h2 style={{ margin: "0 0 4px" }}>Create your account</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Requires an invite code from a manager. Managers are active immediately; employees
-          need manager approval before they can log in.
+          {isManager
+            ? "Managers need an invite code and are active immediately."
+            : "No invite code needed — a manager will approve your account before you can log in."}
         </p>
         <label className="field-label">Full name</label>
         <input className="input" value={form.full_name} onChange={set("full_name")} required />
@@ -74,12 +78,21 @@ export default function RegisterPage() {
           minLength={8}
         />
         <label className="field-label">Role</label>
-        <select className="input" value={form.role} onChange={set("role")}>
-          <option value="employee">Employee</option>
-          <option value="manager">Manager</option>
-        </select>
-        <label className="field-label">Invite code</label>
-        <input className="input" value={form.invite_code} onChange={set("invite_code")} required />
+        <Select
+          value={form.role}
+          onChange={(role) => setForm((f) => ({ ...f, role }))}
+          options={[
+            { value: "employee", label: "Employee" },
+            { value: "manager", label: "Manager" },
+          ]}
+          ariaLabel="Role"
+        />
+        {isManager && (
+          <>
+            <label className="field-label">Manager invite code</label>
+            <input className="input" value={form.invite_code} onChange={set("invite_code")} required />
+          </>
+        )}
         {error && <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>}
         {msg && <p style={{ color: "var(--gold)", fontSize: 13 }}>{msg}</p>}
         <button className="btn" style={{ width: "100%", marginTop: 16 }} disabled={busy}>
@@ -98,6 +111,6 @@ const wrap: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "var(--bg)",
+  background: "var(--sidebar-bg)", // same navy gradient as the sidebar/hero card
   padding: 20,
 };

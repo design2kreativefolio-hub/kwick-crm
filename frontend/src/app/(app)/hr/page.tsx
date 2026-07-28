@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
+import { useToast } from "@/lib/toast";
 
 type Staff = {
   id: number;
@@ -22,6 +24,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function HrPage() {
+  const { showToast } = useToast();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -29,7 +32,6 @@ export default function HrPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const [inviteRole, setInviteRole] = useState<"employee" | "manager">("employee");
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -54,6 +56,7 @@ export default function HrPage() {
       await api("/api/hr/staff", { method: "POST", body: JSON.stringify(form) });
       setForm({ full_name: "", email: "", job_title: "", department: "" });
       setShowForm(false);
+      showToast("Staff record created.");
       load();
     } catch (err: any) {
       setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
@@ -64,6 +67,7 @@ export default function HrPage() {
     setBusyId(id);
     try {
       await api(`/api/auth/approve/${id}`, { method: "POST" });
+      showToast("Staff approved.");
       load();
     } finally {
       setBusyId(null);
@@ -77,9 +81,10 @@ export default function HrPage() {
     try {
       const res = await api<{ code: string }>("/api/auth/invite-codes", {
         method: "POST",
-        body: JSON.stringify({ role_for: inviteRole, expires_in_days: 7 }),
+        body: JSON.stringify({ expires_in_days: 7 }),
       });
       setInviteCode(res.code);
+      showToast("Invite code generated.");
     } catch (err: any) {
       setInviteError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
     } finally {
@@ -93,12 +98,12 @@ export default function HrPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>HR — Staff</h1>
           <p className="muted" style={{ marginTop: 4 }}>
-            Add employees directly (no invite code needed) or wait for them to self-register with
-            an employee invite code — either way they land here awaiting your approval.
+            Employees can self-register at /register with no invite code, or you can add them
+            directly here — either way they land below awaiting your approval.
           </p>
         </div>
         <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
-          <i className="bi bi-person-plus" /> Add Staff
+          <i className="bi bi-person-plus-fill" /> Add Staff
         </button>
       </div>
 
@@ -118,28 +123,15 @@ export default function HrPage() {
       )}
 
       <div className="card" style={{ maxWidth: 480 }}>
-        <span className="card-title">Invite Codes</span>
+        <span className="card-title">Manager Invite Codes</span>
         <p className="muted" style={{ fontSize: 13, marginTop: -8, marginBottom: 14 }}>
-          Generate a single-use code so someone can self-register at{" "}
-          <code style={{ color: "var(--gold)" }}>/register</code>. Employee registrations still
-          need your approval; manager registrations activate immediately.
+          Generate a single-use code so another manager (e.g. a co-owner) can register at{" "}
+          <code style={{ color: "var(--gold)" }}>/register</code> and activate immediately.
+          Employees don&apos;t need a code — they self-register and just wait for your approval.
         </p>
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-          <div style={{ flex: 1 }}>
-            <label className="field-label" style={{ marginTop: 0 }}>Role</label>
-            <select
-              className="input"
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as "employee" | "manager")}
-            >
-              <option value="employee">Employee</option>
-              <option value="manager">Manager</option>
-            </select>
-          </div>
-          <button className="btn" onClick={generateInvite} disabled={inviteBusy}>
-            {inviteBusy ? "Generating…" : "Generate code"}
-          </button>
-        </div>
+        <button className="btn" onClick={generateInvite} disabled={inviteBusy}>
+          {inviteBusy ? "Generating…" : "Generate code"}
+        </button>
         {inviteError && <p style={{ color: "var(--danger)", fontSize: 13 }}>{inviteError}</p>}
         {inviteCode && (
           <p style={{ marginTop: 12, marginBottom: 0 }}>
@@ -163,7 +155,7 @@ export default function HrPage() {
 
       <div className="card">
         <span className="card-title">
-          <i className="bi bi-people" style={{ color: "var(--gold)" }} />
+          <i className="bi bi-people-fill" style={{ color: "var(--gold)" }} />
           All Staff
         </span>
         {loading && <p className="muted">Loading…</p>}
@@ -184,7 +176,11 @@ export default function HrPage() {
               <tbody>
                 {staff.map((s) => (
                   <tr key={s.id}>
-                    <td>{s.full_name || "—"}</td>
+                    <td>
+                      <Link href={`/hr/staff/${s.id}`} style={{ color: "var(--navy)", fontWeight: 600 }}>
+                        {s.full_name || "—"}
+                      </Link>
+                    </td>
                     <td>{s.email}</td>
                     <td>{s.job_title || "—"}</td>
                     <td>{s.department || "—"}</td>
@@ -193,7 +189,7 @@ export default function HrPage() {
                         {s.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td>
+                    <td style={{ display: "flex", gap: 8 }}>
                       {s.status === "awaiting_approval" && (
                         <button
                           className="btn btn-sm"
@@ -203,6 +199,9 @@ export default function HrPage() {
                           {busyId === s.id ? "Approving…" : "Approve"}
                         </button>
                       )}
+                      <Link href={`/hr/staff/${s.id}`} className="btn btn-ghost btn-sm">
+                        View <i className="bi bi-arrow-right" />
+                      </Link>
                     </td>
                   </tr>
                 ))}

@@ -4,7 +4,16 @@
   once the real logo artwork is ready; every call site only ever imports
   <Logo />, so the replacement is a one-file change.
 */
-export function Logo({ icon = false, height = 32 }: { icon?: boolean; height?: number }) {
+export function Logo({
+  icon = false,
+  height = 32,
+  light = false,
+}: {
+  icon?: boolean;
+  height?: number;
+  /** White wordmark text — for dark backgrounds like the sidebar. */
+  light?: boolean;
+}) {
   const badgeSize = height;
 
   const badge = (
@@ -40,7 +49,7 @@ export function Logo({ icon = false, height = 32 }: { icon?: boolean; height?: n
           fontFamily: "var(--font-sans)",
           fontWeight: 700,
           fontSize: height * 0.62,
-          color: "#0000CD",
+          color: light ? "#ffffff" : "#0000CD",
           letterSpacing: -0.2,
         }}
       >

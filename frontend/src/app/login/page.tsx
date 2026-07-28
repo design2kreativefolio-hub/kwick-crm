@@ -57,8 +57,8 @@ export default function LoginPage() {
           {busy ? "Signing in…" : "Sign in"}
         </button>
         <p className="muted" style={{ textAlign: "center", marginTop: 16, fontSize: 13 }}>
-          Have an invite code?{" "}
-          <Link href="/register" style={{ color: "var(--gold)" }}>Register</Link>
+          New here?{" "}
+          <Link href="/register" style={{ color: "var(--gold)" }}>Create an account</Link>
         </p>
       </form>
     </div>
@@ -70,6 +70,6 @@ const wrap: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "var(--bg)",
+  background: "var(--sidebar-bg)", // same navy gradient as the sidebar/hero card
   padding: 20,
 };

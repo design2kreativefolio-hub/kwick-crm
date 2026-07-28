@@ -86,7 +86,7 @@ class LeaveSerializer(serializers.ModelSerializer):
             "reason",
             "created_at",
         ]
-        read_only_fields = ["status", "created_at"]
+        read_only_fields = ["staff", "status", "created_at"]
 
 
 class LeaveBalanceSerializer(serializers.ModelSerializer):

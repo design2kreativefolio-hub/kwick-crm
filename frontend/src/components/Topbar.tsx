@@ -33,73 +33,92 @@ export function Topbar({
   }, []);
 
   return (
-    <header style={bar}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button onClick={onToggleCollapsed} style={circleBtn} aria-label="Toggle sidebar">
-          <i className={`bi ${collapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset"}`} />
-        </button>
-        <div style={searchWrap}>
-          <input placeholder="Search…" style={searchInput} />
-          <i className="bi bi-search" style={{ color: "var(--text-muted)" }} />
-        </div>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Link href="/notifications" style={circleBtn} aria-label="Notifications">
-          <i className="bi bi-bell-fill" style={{ fontSize: 17 }} />
-          {unread > 0 && <span style={dot}>{unread > 9 ? "9+" : unread}</span>}
-        </Link>
-        <Link href="/messages" style={circleBtn} aria-label="Messages">
-          <i className="bi bi-chat-dots-fill" style={{ fontSize: 17 }} />
-        </Link>
-
-        <div ref={menuRef} style={{ position: "relative", marginLeft: 6 }}>
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            style={profileBtn}
-            aria-label="Account menu"
-          >
-            <span style={avatar}>{(user?.full_name || user?.email || "?")[0].toUpperCase()}</span>
-            <span style={{ textAlign: "left", lineHeight: 1.2 }}>
-              <span style={{ display: "block", fontWeight: 600, fontSize: 13 }}>
-                {user?.full_name || user?.email}
-              </span>
-              <span className="muted" style={{ fontSize: 11.5, textTransform: "capitalize" }}>
-                {user?.role}
-              </span>
-            </span>
-            <i className="bi bi-chevron-down" style={{ fontSize: 11, color: "var(--text-muted)" }} />
+    // Sticky wrapper spans the FULL strip (including what used to be a bare
+    // margin gap above the bar) so nothing can scroll through uncovered —
+    // that gap was letting scrolled content bleed above the floating bar.
+    // The wrapper itself carries the glass blur, so content sliding underneath
+    // reads as frosted rather than a hard cut or a visible seam.
+    <div style={stickyWrap}>
+      <header style={bar}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button onClick={onToggleCollapsed} className="icon-btn-anim" style={circleBtn} aria-label="Toggle sidebar">
+            <i className={`bi ${collapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset"}`} />
           </button>
-          {menuOpen && (
-            <div style={dropdown}>
-              <Link href="/profile" style={dropdownItem} onClick={() => setMenuOpen(false)}>
-                <i className="bi bi-person" /> Profile
-              </Link>
-              <button
-                style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}
-                onClick={logout}
-              >
-                <i className="bi bi-box-arrow-right" /> Logout
-              </button>
-            </div>
-          )}
+          <div style={searchWrap}>
+            <i className="bi bi-search" style={{ color: "var(--text-muted)" }} />
+            <input placeholder="Search anything…" style={searchInput} />
+            <span style={kbdHint}>⌘K</span>
+          </div>
         </div>
-      </div>
-    </header>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link href="/reminders" className="icon-btn-anim" style={circleBtn} aria-label="Reminders">
+            <i className="bi bi-bell-fill" style={{ fontSize: 17 }} />
+            {unread > 0 && <span style={dot}>{unread > 9 ? "9+" : unread}</span>}
+          </Link>
+          <Link href="/messages" className="icon-btn-anim" style={circleBtn} aria-label="Messages">
+            <i className="bi bi-chat-dots-fill" style={{ fontSize: 17 }} />
+          </Link>
+
+          <div ref={menuRef} style={{ position: "relative", marginLeft: 6 }}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className="icon-btn-anim"
+              style={profileBtn}
+              aria-label="Account menu"
+            >
+              <span style={avatar}>{(user?.full_name || user?.email || "?")[0].toUpperCase()}</span>
+              <span style={{ textAlign: "left", lineHeight: 1.2 }}>
+                <span style={{ display: "block", fontWeight: 600, fontSize: 13 }}>
+                  {user?.full_name || user?.email}
+                </span>
+                <span className="muted" style={{ fontSize: 11.5, textTransform: "capitalize" }}>
+                  {user?.role}
+                </span>
+              </span>
+              <i className="bi bi-chevron-down" style={{ fontSize: 11, color: "var(--text-muted)" }} />
+            </button>
+            {menuOpen && (
+              <div style={dropdown}>
+                <Link href="/profile" style={dropdownItem} onClick={() => setMenuOpen(false)}>
+                  <i className="bi bi-person-fill" /> Profile
+                </Link>
+                <button
+                  style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}
+                  onClick={logout}
+                >
+                  <i className="bi bi-door-open-fill" /> Logout
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+    </div>
   );
 }
 
-const bar: React.CSSProperties = {
-  height: "var(--topbar-height)",
-  background: "var(--surface)",
-  borderBottom: "1px solid var(--border)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "0 24px",
+const stickyWrap: React.CSSProperties = {
   position: "sticky",
   top: 0,
   zIndex: 10,
+  padding: "16px 16px 0 16px",
+  background: "rgba(244, 245, 251, 0.55)",
+  backdropFilter: "blur(16px)",
+  WebkitBackdropFilter: "blur(16px)",
+};
+const bar: React.CSSProperties = {
+  height: "var(--topbar-height)",
+  background: "rgba(255, 255, 255, 0.78)",
+  backdropFilter: "blur(16px)",
+  WebkitBackdropFilter: "blur(16px)",
+  borderRadius: "var(--radius)",
+  boxShadow: "var(--shadow)",
+  border: "1px solid rgba(255, 255, 255, 0.6)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "0 22px",
 };
 const searchWrap: React.CSSProperties = {
   display: "flex",
@@ -119,6 +138,15 @@ const searchInput: React.CSSProperties = {
   flex: 1,
   fontSize: 13.5,
   color: "var(--text)",
+};
+const kbdHint: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 700,
+  color: "var(--text-muted)",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: 5,
+  padding: "2px 6px",
 };
 const circleBtn: React.CSSProperties = {
   position: "relative",

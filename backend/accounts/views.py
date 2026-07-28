@@ -1,17 +1,21 @@
 from rest_framework import status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from common.permissions import IsManager
+from common.permissions import IsActive, IsManager
 
 from .models import User, UserStatus
 from .serializers import (
+    AvatarUploadSerializer,
+    ChangePasswordSerializer,
     InviteCodeCreateSerializer,
     KwickTokenObtainPairSerializer,
     RegisterSerializer,
     SetPasswordSerializer,
+    UpdateProfileSerializer,
     UserSerializer,
     VerifyInviteSerializer,
 )
@@ -58,6 +62,33 @@ class LoginView(TokenObtainPairView):
 class MeView(APIView):
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = UpdateProfileSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(UserSerializer(request.user).data)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsActive]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Password changed."})
+
+
+class AvatarUploadView(APIView):
+    permission_classes = [IsActive]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        serializer = AvatarUploadSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        avatar_url = serializer.save()
+        return Response({"avatar_url": avatar_url})
 
 
 class InviteCodeCreateView(APIView):

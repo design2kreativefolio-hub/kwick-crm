@@ -42,11 +42,14 @@ export async function api<T = any>(
   options: RequestInit & { auth?: boolean } = {}
 ): Promise<T> {
   const { auth = true, headers, ...rest } = options;
+  // FormData needs the browser to set its own multipart boundary — forcing
+  // application/json here would silently break file uploads.
+  const isFormData = typeof FormData !== "undefined" && rest.body instanceof FormData;
   const doFetch = async (token: string | null) => {
     return fetch(`${API_BASE}${path}`, {
       ...rest,
       headers: {
-        "Content-Type": "application/json",
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
         ...(headers ?? {}),
       },
@@ -74,6 +77,13 @@ export async function api<T = any>(
   }
   if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+// DRF paginates every ModelViewSet .list() by default (see common/pagination.py),
+// so list endpoints return {count, next, previous, results} rather than a bare
+// array. Endpoints backed by plain APIViews (manual Response(...)) stay arrays.
+export function unwrapList<T>(data: T[] | { results: T[] }): T[] {
+  return Array.isArray(data) ? data : data.results;
 }
 
 export class ApiError extends Error {

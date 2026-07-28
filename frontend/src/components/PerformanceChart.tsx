@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { Select } from "@/components/Select";
 import { api } from "@/lib/api";
 
 type Granularity = "daily" | "weekly" | "monthly";
@@ -79,15 +80,16 @@ export function PerformanceChart({
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {canScopeCompany && (
-            <select
-              className="input"
-              style={{ width: "auto", padding: "5px 10px" }}
+            <Select
+              compact
               value={scope}
-              onChange={(e) => setScope(e.target.value as any)}
-            >
-              <option value="self">Me</option>
-              <option value="company">Company</option>
-            </select>
+              onChange={(v) => setScope(v as "self" | "company")}
+              options={[
+                { value: "self", label: "Me" },
+                { value: "company", label: "Company" },
+              ]}
+              ariaLabel="Scope"
+            />
           )}
           {(["daily", "weekly", "monthly"] as Granularity[]).map((g) => (
             <button
@@ -109,6 +111,7 @@ export function PerformanceChart({
             <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
             <Tooltip
+              cursor={{ fill: "var(--blue-100)", radius: 4 }}
               contentStyle={{ borderRadius: 8, border: "1px solid var(--border)", fontSize: 12.5 }}
             />
             <Legend content={renderLegend} verticalAlign="top" height={28} />

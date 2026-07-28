@@ -8,7 +8,7 @@ export function AssetGrid({ title, items }: { title: string; items: AssetItem[] 
   return (
     <div className="card" style={{ height: "100%" }}>
       <span className="card-title">
-        <i className="bi bi-grid" style={{ color: "var(--gold)" }} />
+        <i className="bi bi-grid-fill" style={{ color: "var(--gold)" }} />
         {title}
       </span>
       <div className="asset-grid">

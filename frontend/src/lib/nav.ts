@@ -15,15 +15,15 @@ export type NavGroup = { heading: string; items: NavItem[] };
 export const NAV: NavGroup[] = [
   {
     heading: "Overview",
-    items: [{ label: "Dashboard", href: "/dashboard", icon: "bi-speedometer2" }],
+    items: [{ label: "Dashboard", href: "/dashboard", icon: "bi-grid-1x2-fill" }],
   },
   {
     heading: "Work",
     items: [
-      { label: "Projects", href: "/projects", icon: "bi-kanban-fill" },
-      { label: "Tasks", href: "/tasks", icon: "bi-check2-square" },
-      { label: "To-Do", href: "/todo", icon: "bi-journal-check" },
-      { label: "Kanban", href: "/kanban", icon: "bi-columns-gap", managerOnly: true },
+      { label: "Projects", href: "/projects", icon: "bi-folder-fill" },
+      { label: "Tasks", href: "/tasks", icon: "bi-check-square-fill" },
+      { label: "To-Do", href: "/todo", icon: "bi-ui-checks-grid" },
+      { label: "Kanban", href: "/kanban", icon: "bi-kanban-fill", managerOnly: true },
       { label: "Calendar", href: "/calendar", icon: "bi-calendar3-fill" },
     ],
   },
@@ -32,7 +32,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Sales", href: "/sales", icon: "bi-briefcase-fill", managerOnly: true },
       { label: "HR", href: "/hr", icon: "bi-people-fill", managerOnly: true },
-      { label: "Renewals", href: "/renewals", icon: "bi-arrow-repeat", managerOnly: true },
+      { label: "Renewals", href: "/renewals", icon: "bi-calendar-check-fill", managerOnly: true },
       { label: "Reports", href: "/reports", icon: "bi-bar-chart-line-fill", managerOnly: true },
     ],
   },
@@ -40,7 +40,7 @@ export const NAV: NavGroup[] = [
     heading: "Communication",
     items: [
       { label: "Messages", href: "/messages", icon: "bi-chat-dots-fill" },
-      { label: "Notifications", href: "/notifications", icon: "bi-bell-fill" },
+      { label: "Reminders", href: "/reminders", icon: "bi-bell-fill" },
     ],
   },
   {

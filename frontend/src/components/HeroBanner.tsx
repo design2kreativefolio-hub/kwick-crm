@@ -1,7 +1,8 @@
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good Morning";
-  if (h < 18) return "Good Afternoon";
+  if (h < 15) return "Good Afternoon";
+  if (h < 24) return "Good Evening";
   return "Good Evening";
 }
 
@@ -10,14 +11,17 @@ export function HeroBanner({
   subtitle,
   ctaLabel,
   ctaHref,
+  compact = false,
 }: {
   name: string;
   subtitle: string;
   ctaLabel: string;
   ctaHref: string;
+  /** Smaller padding/type/icon — for sitting alongside KPI cards in a tight row. */
+  compact?: boolean;
 }) {
   return (
-    <div className="hero">
+    <div className={`hero ${compact ? "hero-compact" : ""}`}>
       <div>
         <div className="hero-title">
           {greeting()}, {name} 👋
@@ -27,9 +31,11 @@ export function HeroBanner({
           {ctaLabel} <i className="bi bi-arrow-right" />
         </a>
       </div>
-      <div className="hero-icon">
-        <i className="bi bi-graph-up-arrow" />
-      </div>
+      {!compact && (
+        <div className="hero-icon">
+          <i className="bi bi-bar-chart-fill" />
+        </div>
+      )}
     </div>
   );
 }

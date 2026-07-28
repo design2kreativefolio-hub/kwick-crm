@@ -30,6 +30,9 @@ py-vapid==1.9.0
 # ---- PDF generation (Employee Collaterals / invoices) ----
 weasyprint==62.1
 
+# ---- Image handling (avatar upload validation) ----
+Pillow==10.4.0
+
 # ---- Config / server ----
 python-dotenv==1.0.1
 gunicorn==22.0.0

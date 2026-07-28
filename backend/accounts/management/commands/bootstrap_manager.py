@@ -1,13 +1,12 @@
 import getpass
 
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
-from accounts.models import InviteCode, Role, StaffProfile, User, UserStatus
+from accounts.models import Role, StaffProfile, User, UserStatus
 
 
 class Command(BaseCommand):
-    help = "Create the first active manager (company owner) and print a starter employee invite code."
+    help = "Create the first active manager (company owner)."
 
     def add_arguments(self, parser):
         parser.add_argument("--email", help="Manager email")
@@ -32,14 +31,8 @@ class Command(BaseCommand):
         user.save(update_fields=["is_staff"])
         StaffProfile.objects.get_or_create(user=user)
 
-        _, raw = InviteCode.issue(
-            issued_by=user,
-            role_for=Role.EMPLOYEE,
-            expires_at=timezone.now() + timezone.timedelta(days=7),
-        )
         self.stdout.write(self.style.SUCCESS(f"Manager created: {email}"))
-        self.stdout.write(self.style.WARNING(f"Starter EMPLOYEE invite code (7 days): {raw}"))
         self.stdout.write(
-            "Employees can self-register with this code and await your approval, "
-            "or you can add them directly via HR (Add Staff) instead — both work."
+            "Employees can self-register at /register with no invite code — "
+            "they'll land in HR awaiting your approval."
         )

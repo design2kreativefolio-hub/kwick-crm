@@ -50,7 +50,8 @@ export function SegmentedBar({
         {segments.map((s) => (
           <div key={s.label} className="seg-legend-item">
             <span className="seg-dot" style={{ background: s.color }} />
-            {s.label} <strong style={{ color: "var(--text)" }}>{s.value}</strong>
+            {s.label} <strong style={{ color: "var(--text)" }}>{s.value}</strong>{" "}
+            <span className="muted">{Math.round((s.value / total) * 100)}%</span>
           </div>
         ))}
       </div>

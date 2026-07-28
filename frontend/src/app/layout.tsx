@@ -9,7 +9,7 @@ import { Providers } from "./providers";
 const onest = Onest({ subsets: ["latin"], variable: "--font-onest" });
 
 export const metadata: Metadata = {
-  title: "Kwick — Kreativefolio",
+  title: "Kwick Kreativefolio",
   description: "Internal operations platform",
   icons: { icon: "/favicon.svg" },
 };

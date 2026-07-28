@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     "renewals",
     "dashboard",
     "reports",
+    "todos",
 ]
 
 MIDDLEWARE = [

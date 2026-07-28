@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { DonutCard, DonutSlice } from "@/components/DonutCard";
@@ -7,11 +8,31 @@ import { HeroBanner } from "@/components/HeroBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PerformanceChart } from "@/components/PerformanceChart";
 import { Reveal } from "@/components/Reveal";
-import { Segment, SegmentedBar } from "@/components/SegmentedBar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { DEFAULT_SOURCE_META, NotificationEvent, SOURCE_META, timeAgo } from "@/lib/notifications";
 
 type StatusCount = { status: string; label: string; count: number };
+
+type Task = {
+  id: number;
+  title: string;
+  assignee_name: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
+};
+
+const TASK_STATUS_BADGE: Record<string, string> = {
+  todo: "badge-muted",
+  in_progress: "badge-warning",
+  completed: "badge-success",
+};
+const TASK_PRIORITY_BADGE: Record<string, string> = {
+  low: "badge-muted",
+  medium: "badge-warning",
+  high: "badge-danger",
+};
 
 type Summary = {
   pending_tasks: number;
@@ -31,20 +52,6 @@ type Summary = {
   project_status_breakdown?: StatusCount[];
 };
 
-type Reminder = {
-  source: string;
-  title: string;
-  date: string;
-  meta?: { priority?: "low" | "medium" | "high"; status?: string };
-};
-
-const SOURCE_ICON: Record<string, string> = {
-  task: "bi-check2-square",
-  daily_tracker: "bi-journal-check",
-  renewal: "bi-arrow-repeat", 
-  manual: "bi-bell-fill",
-};
-
 const STATUS_COLOR: Record<string, string> = {
   todo: "var(--chart-4)",
   in_progress: "var(--chart-2)",
@@ -52,8 +59,6 @@ const STATUS_COLOR: Record<string, string> = {
   ongoing: "var(--chart-2)",
   on_hold: "var(--chart-4)",
 };
-
-const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 function toSlices(breakdown: StatusCount[] | undefined) {
   return (breakdown ?? [])
@@ -66,33 +71,55 @@ function trendPct(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 100);
 }
 
-// Highest task priority first, then soonest due date — surfaces what actually
-// needs attention rather than a flat chronological list.
-function sortByPriority(items: Reminder[]) {
+// Unread first, then most recent — surfaces what actually needs attention.
+function sortNotifications(items: NotificationEvent[]) {
   return [...items].sort((a, b) => {
-    const pa = a.meta?.priority ? PRIORITY_RANK[a.meta.priority] : 1.5;
-    const pb = b.meta?.priority ? PRIORITY_RANK[b.meta.priority] : 1.5;
-    if (pa !== pb) return pa - pb;
-    return a.date.localeCompare(b.date);
+    const ua = a.read_at ? 1 : 0;
+    const ub = b.read_at ? 1 : 0;
+    if (ua !== ub) return ua - ub;
+    return b.created_at.localeCompare(a.created_at);
   });
 }
 
+function relativeDate(iso: string) {
+  const target = new Date(iso);
+  const today = new Date();
+  const days = Math.round((target.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0)) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  if (days <= 7) return `In ${days}d`;
+  return target.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default function DashboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const isManager = user?.role === "manager";
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
+  const [sparkline, setSparkline] = useState<number[]>([]);
+  const [recentTasks, setRecentTasks] = useState<Task[]>([]);
 
   const load = useCallback(() => {
     api<Summary>("/api/dashboard/summary").then(setSummary).catch(() => {});
-    api<{ items: Reminder[] }>("/api/dashboard/reminders")
-      .then((d) => setReminders(sortByPriority(d.items)))
+    api<NotificationEvent[]>("/api/notifications")
+      .then((items) => setNotifications(sortNotifications(items)))
       .catch(() => {});
-  }, []);
+    api<{ series: { completed: number }[] }>(
+      `/api/dashboard/performance?granularity=daily&scope=${isManager ? "company" : "self"}`
+    )
+      .then((d) => setSparkline(d.series.slice(-14).map((p) => p.completed)))
+      .catch(() => {});
+    api<{ results: Task[] } | Task[]>("/api/tasks?page_size=5")
+      .then((d) => setRecentTasks(Array.isArray(d) ? d : d.results))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManager]);
 
   useEffect(load, [load]);
 
-  const taskBreakdown = isManager ? summary?.company_task_status_breakdown : summary?.task_status_breakdown;
   const donutSlices: DonutSlice[] =
     isManager && summary?.project_status_breakdown
       ? toSlices(summary.project_status_breakdown)
@@ -107,40 +134,58 @@ export default function DashboardPage() {
       ? trendPct(summary.invoices_this_month ?? 0, summary.invoices_last_month ?? 0)
       : null;
 
-  const keyInsightSegments: Segment[] = (taskBreakdown ?? [])
-    .filter((b) => b.count > 0)
-    .map((b) => ({ label: b.label, value: b.count, color: STATUS_COLOR[b.status] ?? "var(--chart-3)" }));
+  const pendingNotifications = notifications.filter((n) => !n.read_at);
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 22, alignItems: "start" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-        <Reveal index={1}>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 22, alignItems: "stretch" }}>
+        <Reveal index={0}>
+          <div style={heroRow}>
             <HeroBanner
+              compact
               name={user?.full_name?.split(" ")[0] || "there"}
               subtitle={
                 isManager
-                  ? "Stay updated with the company's performance today. Get a quick snapshot of key statistics."
-                  : "Stay updated with your workload today. Get a quick snapshot of your tasks."
+                  ? "Stay updated with the company's performance today."
+                  : "Stay updated with your workload today."
               }
               ctaLabel="View Full Report"
               ctaHref="/reports"
             />
-            <SegmentedBar
-              title="Key Insights"
-              subtitle="Completed this month"
-              headline={String(completed ?? 0)}
-              trend={completedTrend}
-              segments={
-                keyInsightSegments.length
-                  ? keyInsightSegments
-                  : [{ label: "No tasks yet", value: 1, color: "var(--border)" }]
-              }
+            <KpiCard
+              label="Pending Tasks"
+              value={summary?.pending_tasks ?? "—"}
+              icon="bi-card-checklist"
+              tone="amber"
             />
+            <KpiCard
+              label="Completed This Month"
+              value={completed ?? "—"}
+              icon="bi-check-circle-fill"
+              trend={completedTrend}
+              tone="mint"
+              sparkline={sparkline}
+            />
+            {isManager ? (
+              <KpiCard
+                label="Invoices This Month"
+                value={summary?.invoices_this_month ?? "—"}
+                icon="bi-receipt-cutoff"
+                trend={invoicesTrend}
+                tone="blue"
+              />
+            ) : (
+              <KpiCard
+                label="Ongoing Projects"
+                value={summary?.ongoing_projects ?? "—"}
+                icon="bi-kanban-fill"
+                tone="purple"
+              />
+            )}
           </div>
         </Reveal>
 
-        <Reveal index={2}>
+        <Reveal index={1}>
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 22 }}>
             <PerformanceChart
               canScopeCompany={isManager}
@@ -154,74 +199,122 @@ export default function DashboardPage() {
           </div>
         </Reveal>
 
-        <Reveal index={3}>
-          <div style={grid}>
-            <KpiCard label="Pending Tasks" value={summary?.pending_tasks ?? "—"} icon="bi-card-checklist" tone={0} />
-            <KpiCard
-              label="Completed This Month"
-              value={completed ?? "—"}
-              icon="bi-check-circle-fill"
-              trend={completedTrend}
-              tone={1}
-            />
-            {isManager ? (
-              <KpiCard
-                label="Invoices This Month"
-                value={summary?.invoices_this_month ?? "—"}
-                icon="bi-receipt-cutoff"
-                trend={invoicesTrend}
-                tone={0}
-              />
-            ) : (
-              <KpiCard label="Ongoing Projects" value={summary?.ongoing_projects ?? "—"} icon="bi-kanban-fill" tone={0} />
+        <Reveal index={4}>
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="card-title" style={{ margin: 0 }}>Recent Tasks</span>
+              <a href="/tasks" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
+                View All <i className="bi bi-arrow-right" />
+              </a>
+            </div>
+            {recentTasks.length === 0 && <p className="muted" style={{ marginTop: 16 }}>No tasks yet.</p>}
+            {recentTasks.length > 0 && (
+              <div className="table-wrap" style={{ marginTop: 12 }}>
+                <table className="kwick-table">
+                  <thead>
+                    <tr>
+                      <th>Task</th>
+                      {isManager && <th>Assignee</th>}
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th>Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTasks.map((t) => (
+                      <tr key={t.id}>
+                        <td>{t.title}</td>
+                        {isManager && <td>{t.assignee_name || "—"}</td>}
+                        <td>
+                          <span className={`badge ${TASK_PRIORITY_BADGE[t.priority] ?? "badge-muted"}`}>
+                            {t.priority}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`badge ${TASK_STATUS_BADGE[t.status] ?? "badge-muted"}`}>
+                            {t.status.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="muted">{t.due_date ? relativeDate(t.due_date) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </Reveal>
       </div>
 
-      {/* Reminders — always on the right, sticky, priority-sorted */}
+      {/* Reminders — always on the right, sticky. Ticking one off marks it read
+          and drops it out of the docket; the badge tracks what's still pending. */}
       <Reveal index={0} style={{ position: "sticky", top: 24 }}>
         <div className="card">
-          <span className="card-title">Reminders</span>
-          {reminders.length === 0 && <p className="muted">Nothing upcoming.</p>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <span className="card-title" style={{ margin: 0, color: "var(--danger)" }}>
+              <i className="bi bi-bell-fill" style={{ color: "var(--danger)" }} />
+              Reminders
+            </span>
+            {pendingNotifications.length > 0 && (
+              <span className="badge badge-danger">{pendingNotifications.length}</span>
+            )}
+          </div>
+          {pendingNotifications.length === 0 && <p className="muted">Nothing needs attention right now.</p>}
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {reminders.slice(0, 10).map((r, i) => (
-              <li key={i} style={reminderRow}>
-                <span style={reminderIcon}>
-                  <i className={`bi ${SOURCE_ICON[r.source] ?? "bi-dot"}`} />
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 500 }}>{r.title}</div>
-                  <div className="muted" style={{ fontSize: 11.5 }}>
-                    {new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  </div>
-                </span>
-                {r.meta?.priority && (
-                  <span
-                    className={`badge ${
-                      r.meta.priority === "high"
-                        ? "badge-danger"
-                        : r.meta.priority === "medium"
-                          ? "badge-warning"
-                          : "badge-muted"
-                    }`}
-                  >
-                    {r.meta.priority}
+            {pendingNotifications.slice(0, 8).map((n) => {
+              const meta = SOURCE_META[n.source] ?? DEFAULT_SOURCE_META;
+              return (
+                <li
+                  key={n.id}
+                  style={{ ...reminderRow, cursor: meta.href ? "pointer" : "default" }}
+                  onClick={() => {
+                    if (meta.href) router.push(meta.href);
+                  }}
+                >
+                  <span style={{ ...reminderIcon, background: meta.bg, color: meta.color }}>
+                    <i className={`bi ${meta.icon}`} />
                   </span>
-                )}
-              </li>
-            ))}
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{n.title}</div>
+                    <div className="muted" style={{ fontSize: 11.5 }}>
+                      {meta.label} · {timeAgo(n.created_at)}
+                    </div>
+                  </span>
+                  <button
+                    className="icon-btn-anim"
+                    style={tickBtn}
+                    title="Mark as read"
+                    aria-label="Mark as read"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      api(`/api/notifications/${n.id}/read`, { method: "POST" }).catch(() => {});
+                      setNotifications((prev) =>
+                        prev.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x))
+                      );
+                    }}
+                  >
+                    <i className="bi bi-check-lg" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
+          {pendingNotifications.length > 8 && (
+            <a href="/reminders" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
+              View all reminders <i className="bi bi-arrow-right" />
+            </a>
+          )}
         </div>
       </Reveal>
     </div>
   );
 }
 
-const grid: React.CSSProperties = {
+const heroRow: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+  gridTemplateColumns: "1.3fr 1fr 1fr 1fr",
   gap: 16,
+  alignItems: "stretch",
 };
 const reminderRow: React.CSSProperties = {
   display: "flex",
@@ -235,9 +328,19 @@ const reminderIcon: React.CSSProperties = {
   height: 34,
   minWidth: 34,
   borderRadius: "50%",
-  background: "var(--bg)",
   display: "grid",
   placeItems: "center",
-  color: "var(--navy)",
   fontSize: 15,
+};
+const tickBtn: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  minWidth: 28,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "var(--success-soft)",
+  color: "var(--success)",
+  border: "none",
+  fontSize: 13,
 };

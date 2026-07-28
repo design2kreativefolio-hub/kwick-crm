@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from common.permissions import IsActive
+from notifications.services import notify_user
+from todos.models import TodoItem
 
 from .models import ManualReminder
 from .serializers import ManualReminderSerializer
@@ -38,4 +40,15 @@ class ManualReminderViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        reminder = serializer.save(owner=self.request.user)
+        # A calendar reminder is also personal follow-up work — mirror it into
+        # the owner's To-Do list and the Reminders/Notifications feed so it
+        # isn't only visible by opening the calendar itself.
+        TodoItem.objects.create(owner=self.request.user, text=reminder.title)
+        notify_user(
+            user=self.request.user,
+            source="calendar",
+            title=reminder.title,
+            body=f"Reminder for {reminder.remind_at.strftime('%b %d, %Y')}",
+            object_ref=f"reminder:{reminder.id}",
+        )

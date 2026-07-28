@@ -5,12 +5,21 @@ import { useRouter } from "next/navigation";
 
 import { api, tokens } from "./api";
 
+export type StaffProfile = {
+  job_title: string;
+  department: string;
+  date_joined: string | null;
+  phone: string;
+  avatar_url: string;
+};
+
 export type User = {
   id: number;
   email: string;
   full_name: string;
   role: "manager" | "employee";
   status: string;
+  profile?: StaffProfile;
 };
 
 const AuthContext = createContext<{
@@ -18,12 +27,23 @@ const AuthContext = createContext<{
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-}>({ user: null, loading: true, login: async () => {}, logout: () => {} });
+  refreshUser: () => Promise<void>;
+}>({ user: null, loading: true, login: async () => {}, logout: () => {}, refreshUser: async () => {} });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  const refreshUser = async () => {
+    if (!tokens.access) return;
+    try {
+      const me = await api<User>("/api/auth/me");
+      setUser(me);
+    } catch {
+      // ignore — caller's own error handling covers the failing request that triggered this
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -60,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

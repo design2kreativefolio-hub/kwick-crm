@@ -43,12 +43,12 @@
   --text-muted: #7c7f9e;
   --border: #ecedf6;
 
-  /* sidebar is LIGHT, not dark — matches the reference */
-  --sidebar-bg: #ffffff;
-  --sidebar-text: #4d4f72;
-  --sidebar-active-bg: var(--navy);
+  /* sidebar is a dark floating navy panel — same gradient as .hero */
+  --sidebar-bg: linear-gradient(160deg, var(--navy) 0%, var(--navy-soft) 100%);
+  --sidebar-text: rgba(255, 255, 255, 0.65);
+  --sidebar-active-bg: rgba(255, 255, 255, 0.12);
   --sidebar-active-text: #ffffff;
-  --sidebar-chip-bg: #f1f2f9;
+  --sidebar-chip-bg: rgba(255, 255, 255, 0.06);
 
   --success: #2ecc71;
   --success-soft: rgba(46, 204, 113, 0.14);
@@ -120,6 +120,11 @@ h1, h2, h3, h4 {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 22px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 22px rgba(0, 0, 205, 0.1), 0 2px 8px rgba(0, 0, 205, 0.06);
 }
 .card-title {
   font-size: 19px;
@@ -157,6 +162,53 @@ h1, h2, h3, h4 {
   font-size: 16px;
 }
 
+/* ---------------- Global interaction animations ---------------- */
+.icon-btn-anim {
+  transition: background 0.16s ease, color 0.16s ease, transform 0.12s ease;
+}
+.icon-btn-anim:hover {
+  background: var(--gold-soft) !important;
+  color: var(--gold) !important;
+}
+.icon-btn-anim:active {
+  transform: scale(0.9);
+}
+.sidebar-link {
+  transition: background 0.16s ease, color 0.16s ease, transform 0.1s ease;
+}
+.sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.09) !important;
+  color: #fff !important;
+}
+.sidebar-link:active {
+  transform: scale(0.98);
+}
+.sidebar-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+.sidebar-nav-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.sidebar-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+.sidebar-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.spin-once {
+  animation: spin-once 0.6s ease;
+}
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ---------------- Hero banner (greeting + CTA) ---------------- */
 .hero {
   background: linear-gradient(135deg, var(--navy) 0%, var(--navy-soft) 100%);
@@ -192,6 +244,23 @@ h1, h2, h3, h4 {
   place-items: center;
   font-size: 46px;
   color: var(--blue-300);
+}
+
+/* Compact variant — sits alongside KPI cards in a tight row */
+.hero-compact {
+  padding: 22px 24px;
+}
+.hero-compact .hero-title {
+  font-size: 19px;
+  margin-bottom: 5px;
+}
+.hero-compact .hero-text {
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.hero-compact .btn {
+  padding: 8px 14px;
+  font-size: 12.5px;
 }
 
 /* ---------------- Announcement banner ---------------- */
@@ -243,6 +312,10 @@ h1, h2, h3, h4 {
   flex-direction: column;
   justify-content: space-between;
   min-height: 92px;
+  transition: transform 0.16s ease;
+}
+.asset-tile:hover {
+  transform: translateY(-2px);
 }
 .asset-tile-icon {
   align-self: flex-end;
@@ -299,11 +372,24 @@ h1, h2, h3, h4 {
 
 /* ---------------- KPI cards (bottom row): icon-circle + big value + trend ---------------- */
 .kpi-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
   padding: 20px 22px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 22px rgba(0, 0, 205, 0.12);
+}
+.kpi-card-icon-circle {
+  transition: transform 0.18s ease;
+}
+.kpi-card:hover .kpi-card-icon-circle {
+  transform: scale(1.08) rotate(-4deg);
 }
 .kpi-card-top {
   display: flex;
@@ -379,13 +465,19 @@ h1, h2, h3, h4 {
   font-size: 13.5px;
   background: var(--navy);
   color: #fff;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .btn:hover {
   opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 205, 0.18);
+}
+.btn:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
 }
 .btn-accent {
   background: var(--gold);
@@ -419,6 +511,67 @@ h1, h2, h3, h4 {
   outline: 2px solid var(--gold);
   outline-offset: 0;
   background: #fff;
+}
+
+/* ---------------- Custom dropdown (replaces native <select>) ---------------- */
+.select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfbfd;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.select-trigger:hover {
+  border-color: var(--blue-300);
+}
+.select-trigger[aria-expanded="true"] {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-soft);
+  background: #fff;
+}
+.select-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 205, 0.14);
+  padding: 6px;
+  margin: 0;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.select-option:hover {
+  background: var(--blue-100);
+}
+.select-option[data-active="true"] {
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-weight: 600;
 }
 .field-label {
   display: block;
@@ -468,12 +621,13 @@ table.kwick-table {
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  transition: background 0.15s ease;
 }
 .kwick-table tr:last-child td {
   border-bottom: none;
 }
 .kwick-table tr:hover td {
-  background: #fafbff;
+  background: var(--blue-100);
 }
 
 .muted {

@@ -112,7 +112,7 @@ class LeaveViewSet(viewsets.ModelViewSet):
         return qs.filter(staff=self.request.user)
 
     def perform_create(self, serializer):
-        # Employees submit for themselves; managers may submit on behalf via ?staff=.
+        # Leave requests are always submitted for the requesting user (spec §5.3: POST is employee-only).
         staff = self.request.user
         leave = serializer.save(staff=staff)
         self._recalc_balance(staff)
