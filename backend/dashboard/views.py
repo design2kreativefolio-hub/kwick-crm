@@ -1,15 +1,22 @@
 from datetime import date, timedelta
 
-from django.db.models import Count
+from django.contrib.auth import get_user_model
+from django.db.models import Count, Q
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import Role
 from calendar_app.services import build_agenda
+from common.models import ActivityLog
 from common.permissions import IsActive, IsManager, is_manager
 from projects.models import Project
-from sales.models import Invoice
+from renewals.models import Renewal
+from sales.models import Client, Invoice, Proposal
 from tasks.models import Task
+from todos.models import TodoItem
+
+User = get_user_model()
 
 
 def _month_bounds(today=None):
@@ -208,4 +215,195 @@ class ProjectsTrendView(APIView):
                     if row["bucket"] is not None
                 ],
             }
+        )
+
+
+class GlobalSearchView(APIView):
+    """GET /api/dashboard/search?q= — powers the Topbar search box. Each
+    result category respects the same visibility rules as its own module's
+    list endpoint (employees only see their own tasks/projects; staff and
+    client results are manager-only, matching HR/Sales access)."""
+
+    permission_classes = [IsActive]
+
+    def get(self, request):
+        q = request.query_params.get("q", "").strip()
+        if len(q) < 2:
+            return Response({"results": []})
+
+        mgr = is_manager(request.user)
+        results = []
+
+        tasks = Task.objects.all() if mgr else Task.objects.filter(assignee=request.user)
+        for t in tasks.filter(Q(title__icontains=q) | Q(description__icontains=q))[:5]:
+            results.append(
+                {
+                    "type": "task",
+                    "id": t.id,
+                    "label": t.title,
+                    "sublabel": "Task",
+                    "href": "/tasks",
+                    "icon": "bi-check-square-fill",
+                }
+            )
+
+        projects = Project.objects.all() if mgr else Project.objects.filter(members=request.user)
+        for p in projects.filter(name__icontains=q).distinct()[:5]:
+            results.append(
+                {
+                    "type": "project",
+                    "id": p.id,
+                    "label": p.name,
+                    "sublabel": "Project",
+                    "href": "/projects",
+                    "icon": "bi-folder-fill",
+                }
+            )
+
+        if mgr:
+            staff = User.objects.filter(role=Role.EMPLOYEE).filter(
+                Q(full_name__icontains=q) | Q(email__icontains=q)
+            )
+            for s in staff[:5]:
+                results.append(
+                    {
+                        "type": "staff",
+                        "id": s.id,
+                        "label": s.full_name or s.email,
+                        "sublabel": "Staff",
+                        "href": f"/hr/staff/{s.id}",
+                        "icon": "bi-people-fill",
+                    }
+                )
+
+            clients = Client.objects.filter(Q(name__icontains=q) | Q(company__icontains=q))
+            for c in clients[:5]:
+                results.append(
+                    {
+                        "type": "client",
+                        "id": c.id,
+                        "label": c.name,
+                        "sublabel": c.company or "Client",
+                        "href": "/sales",
+                        "icon": "bi-briefcase-fill",
+                    }
+                )
+
+            renewals = Renewal.objects.select_related("client", "staff").filter(
+                Q(renewal_type__icontains=q)
+                | Q(notes__icontains=q)
+                | Q(client__name__icontains=q)
+                | Q(staff__full_name__icontains=q)
+            )
+            for r in renewals[:5]:
+                subject = r.client.name if r.subject_type == "client" and r.client else (
+                    r.staff.full_name or r.staff.email if r.staff else "—"
+                )
+                results.append(
+                    {
+                        "type": "renewal",
+                        "id": r.id,
+                        "label": f"{r.get_renewal_type_display()} — {subject}",
+                        "sublabel": "Renewal",
+                        "href": "/renewals",
+                        "icon": "bi-calendar-check-fill",
+                    }
+                )
+
+            proposals = Proposal.objects.select_related("client").filter(
+                Q(title__icontains=q) | Q(client__name__icontains=q)
+            )
+            for p in proposals[:5]:
+                results.append(
+                    {
+                        "type": "proposal",
+                        "id": p.id,
+                        "label": p.title,
+                        "sublabel": "Proposal",
+                        "href": "/sales",
+                        "icon": "bi-file-earmark-text-fill",
+                    }
+                )
+
+            invoices = Invoice.objects.select_related("client").filter(
+                Q(invoice_number__icontains=q) | Q(client__name__icontains=q)
+            )
+            for inv in invoices[:5]:
+                results.append(
+                    {
+                        "type": "invoice",
+                        "id": inv.id,
+                        "label": inv.invoice_number,
+                        "sublabel": "Invoice",
+                        "href": "/sales",
+                        "icon": "bi-receipt",
+                    }
+                )
+
+        todos = TodoItem.objects.filter(owner=request.user, text__icontains=q)
+        for item in todos[:5]:
+            results.append(
+                {
+                    "type": "todo",
+                    "id": item.id,
+                    "label": item.text,
+                    "sublabel": "To-Do",
+                    "href": "/todo",
+                    "icon": "bi-ui-checks-grid",
+                }
+            )
+
+        return Response({"results": results[:20]})
+
+
+class ActivityLogListView(APIView):
+    """GET /api/dashboard/logs — manager-only audit trail (spec follow-up:
+    who added/edited a task, client, or project, and when)."""
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        logs = ActivityLog.objects.select_related("actor")[:200]
+        return Response(
+            [
+                {
+                    "id": log.id,
+                    "actor_name": (log.actor.full_name or log.actor.email) if log.actor else "Deleted user",
+                    "action": log.action,
+                    "created_at": log.created_at.isoformat(),
+                }
+                for log in logs
+            ]
+        )
+
+
+class TodayTasksView(APIView):
+    """GET /api/dashboard/today-tasks — manager-only. Replaces the plain
+    "recent tasks" list on the manager Dashboard: every employee's tasks
+    that are relevant to today (due today, or added today), so a manager
+    can see who's doing what today without opening each employee's board."""
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        today = date.today()
+        qs = (
+            Task.objects.select_related("project", "assignee")
+            .filter(Q(due_date=today) | Q(created_at__date=today))
+            .order_by("due_date", "-created_at")[:20]
+        )
+        return Response(
+            [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "project_name": t.project.name if t.project else "",
+                    "assignee_name": t.assignee.full_name or t.assignee.email,
+                    "status": t.status,
+                    "priority": t.priority,
+                    "due_date": t.due_date.isoformat() if t.due_date else None,
+                    "created_at": t.created_at.isoformat(),
+                }
+                for t in qs
+            ]
         )

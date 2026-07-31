@@ -35,6 +35,23 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_send(
             self.group, {"type": "chat.message", "payload": message}
         )
+        # Mirror to every other participant's personal notify channel so a
+        # globally-connected client (not just whoever has this conversation
+        # open) can pop a toast and bump their chat unread badge.
+        other_ids = await self._other_participant_ids(self.scope["user"].id, self.conversation_id)
+        for uid in other_ids:
+            await self.channel_layer.group_send(
+                f"notify_{uid}",
+                {
+                    "type": "notify_event",
+                    "payload": {
+                        "kind": "chat_message",
+                        "conversation_id": int(self.conversation_id),
+                        "sender_name": message.get("sender_name") or "Someone",
+                        "preview": message.get("body") or "Sent an attachment",
+                    },
+                },
+            )
 
     async def chat_message(self, event):
         await self.send_json(event["payload"])
@@ -48,6 +65,16 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         ).exists()
 
     @database_sync_to_async
+    def _other_participant_ids(self, user_id, conversation_id):
+        from .models import Conversation
+
+        return list(
+            Conversation.objects.get(pk=conversation_id)
+            .participants.exclude(pk=user_id)
+            .values_list("id", flat=True)
+        )
+
+    @database_sync_to_async
     def _save_message(self, user_id, conversation_id, body):
         from .models import Message
 
@@ -58,6 +85,10 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             "id": msg.id,
             "conversation": conversation_id,
             "sender": user_id,
+            "sender_name": msg.sender.full_name,
             "body": msg.body,
+            "attachment_url": "",
+            "attachment_type": "",
+            "attachment_name": "",
             "created_at": msg.created_at.isoformat(),
         }

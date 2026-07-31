@@ -21,6 +21,12 @@ app.conf.beat_schedule = {
         "task": "notifications.tasks.refire_recurring_reminders",
         "schedule": crontab(hour=8, minute=0),
     },
+    # Nag the manager daily about overdue staff visa/insurance/ILOE renewals,
+    # resetting to unread each run so "seen today" isn't "resolved forever".
+    "check-staff-renewals-daily": {
+        "task": "hr.tasks.check_staff_renewals",
+        "schedule": crontab(hour=8, minute=5),
+    },
 }
 
 

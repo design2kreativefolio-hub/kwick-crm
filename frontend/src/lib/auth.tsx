@@ -11,6 +11,9 @@ export type StaffProfile = {
   date_joined: string | null;
   phone: string;
   avatar_url: string;
+  visa_renewal_date: string | null;
+  insurance_renewal_date: string | null;
+  iloe_renewal_date: string | null;
 };
 
 export type User = {

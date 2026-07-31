@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from common.permissions import IsActive, is_manager
+from common.services import log_activity
 
 from .models import Task
 from .serializers import TaskSerializer
@@ -26,11 +27,15 @@ class TaskViewSet(viewsets.ModelViewSet):
         return qs.filter(assignee=self.request.user)
 
     def perform_create(self, serializer):
-        # Employees can only create tasks assigned to themselves.
+        # Employees can only create tasks assigned to themselves. Managers
+        # may pick anyone, or leave it unset — falls back to self rather
+        # than erroring, since assignee is a required (non-nullable) field
+        # on the model.
         if is_manager(self.request.user):
-            serializer.save()
+            task = serializer.save(assignee=serializer.validated_data.get("assignee") or self.request.user)
         else:
-            serializer.save(assignee=self.request.user)
+            task = serializer.save(assignee=self.request.user)
+        log_activity(actor=self.request.user, action=f"added task \"{task.title}\"")
 
     @action(detail=False, methods=["get"])
     def my(self, request):

@@ -11,6 +11,7 @@ from .models import User, UserStatus
 from .serializers import (
     AvatarUploadSerializer,
     ChangePasswordSerializer,
+    ForgotPasswordSerializer,
     InviteCodeCreateSerializer,
     KwickTokenObtainPairSerializer,
     RegisterSerializer,
@@ -116,6 +117,38 @@ class ApproveUserView(APIView):
         # added via HR (no password yet) get a set-password link instead.
         send_approval_email.delay(user.id)
         return Response({"id": user.id, "status": user.status})
+
+
+class RejectUserView(APIView):
+    """Manager declines a self-registered signup still awaiting approval.
+    There's nothing worth keeping for a request that was never active, so
+    this removes the account outright rather than adding a new status value."""
+
+    permission_classes = [IsManager]
+
+    def post(self, request, user_id):
+        try:
+            user = User.objects.get(pk=user_id, status=UserStatus.AWAITING_APPROVAL)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "User not found or not awaiting approval."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        user.delete()
+        return Response({"detail": "Registration rejected."})
+
+
+class ForgotPasswordView(APIView):
+    """Public: 'forgot my password' request from the login page."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        # Same response whether or not the email matched an account.
+        return Response({"detail": "If an account exists for that email, a reset link has been sent."})
 
 
 class SetPasswordView(APIView):

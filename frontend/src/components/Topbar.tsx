@@ -1,10 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useLiveUpdates } from "@/lib/liveUpdates";
+import { NavItem, visibleNav } from "@/lib/nav";
+
+type SearchResult = {
+  type: string;
+  id: number | string;
+  label: string;
+  sublabel: string;
+  href: string;
+  icon: string;
+};
+
+// "to do" should match the "To-Do" nav item, "kanban" should match "Kanban" —
+// strip anything that isn't a letter/digit before comparing so spacing and
+// punctuation differences don't matter.
+function normalize(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
 export function Topbar({
   collapsed,
@@ -13,24 +32,68 @@ export function Topbar({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
+  const router = useRouter();
   const { user, logout } = useAuth();
+  const { notifUnread: unread, chatUnread } = useLiveUpdates();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    api<{ read_at: string | null }[]>("/api/notifications")
-      .then((items) => setUnread(items.filter((n) => !n.read_at).length))
-      .catch(() => {});
-  }, []);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(() => {
+      api<{ results: SearchResult[] }>(`/api/dashboard/search?q=${encodeURIComponent(q)}`)
+        .then((d) => setResults(d.results))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // Jump straight to a whole module/page — e.g. typing "visa" is a data
+  // search (handled server-side, matches Renewals), but typing "to do" or
+  // "kanban" should surface the page itself even with zero matching records.
+  const pageMatches = useMemo<SearchResult[]>(() => {
+    const q = normalize(query.trim());
+    if (q.length < 2 || !user) return [];
+    // Flatten recursively — parent items (e.g. "Projects") have no href of
+    // their own and aren't navigable, only their children are.
+    const flatten = (items: NavItem[]): NavItem[] =>
+      items.flatMap((i) => (i.children ? flatten(i.children) : [i]));
+    const items = flatten(visibleNav(user.role).flatMap((g) => g.items));
+    return items
+      .filter((i) => i.href && normalize(i.label).includes(q))
+      .map((i) => ({ type: "page", id: i.href as string, label: i.label, sublabel: "Page", href: i.href as string, icon: i.icon }));
+  }, [query, user]);
+
+  const combined = [...pageMatches, ...results];
+
+  const goToResult = (r: SearchResult) => {
+    router.push(r.href);
+    setQuery("");
+    setResults([]);
+    setSearchOpen(false);
+  };
 
   return (
     // Sticky wrapper spans the FULL strip (including what used to be a bare
@@ -39,25 +102,105 @@ export function Topbar({
     // The wrapper itself carries the glass blur, so content sliding underneath
     // reads as frosted rather than a hard cut or a visible seam.
     <div style={stickyWrap}>
-      <header style={bar}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <header className="topbar-bar" style={bar}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
           <button onClick={onToggleCollapsed} className="icon-btn-anim" style={circleBtn} aria-label="Toggle sidebar">
             <i className={`bi ${collapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset"}`} />
           </button>
-          <div style={searchWrap}>
-            <i className="bi bi-search" style={{ color: "var(--text-muted)" }} />
-            <input placeholder="Search anything…" style={searchInput} />
-            <span style={kbdHint}>⌘K</span>
+          <div ref={searchRef} className="topbar-search" style={{ position: "relative", width: 300, maxWidth: "36vw" }}>
+            <div style={searchWrap}>
+              <i className="bi bi-search" style={{ color: "var(--text-muted)" }} />
+              <input
+                placeholder="Search anything…"
+                style={searchInput}
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearchOpen(false);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                  if (e.key === "Enter" && combined.length > 0) goToResult(combined[0]);
+                }}
+              />
+              {query && (
+                <button
+                  type="button"
+                  className="icon-btn-anim"
+                  style={clearBtn}
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setQuery("");
+                    setResults([]);
+                  }}
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+              )}
+            </div>
+
+            {searchOpen && query.trim().length >= 2 && (
+              <div style={searchPanel}>
+                {pageMatches.length > 0 && (
+                  <>
+                    <div style={searchSectionLabel}>Pages</div>
+                    {pageMatches.map((r) => (
+                      <button key={`page-${r.href}`} style={searchResultRow} onClick={() => goToResult(r)}>
+                        <span style={searchResultIcon}>
+                          <i className={`bi ${r.icon}`} />
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{r.label}</div>
+                        </span>
+                        <i className="bi bi-arrow-right" style={{ fontSize: 12, color: "var(--text-muted)" }} />
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {pageMatches.length > 0 && (results.length > 0 || searching) && (
+                  <div style={searchSectionLabel}>Results</div>
+                )}
+
+                {searching && <p className="muted" style={{ fontSize: 12.5, padding: "10px 12px", margin: 0 }}>Searching…</p>}
+                {!searching && results.length === 0 && pageMatches.length === 0 && (
+                  <p className="muted" style={{ fontSize: 12.5, padding: "10px 12px", margin: 0 }}>No results.</p>
+                )}
+                {!searching &&
+                  results.map((r) => (
+                    <button key={`${r.type}-${r.id}`} style={searchResultRow} onClick={() => goToResult(r)}>
+                      <span style={searchResultIcon}>
+                        <i className={`bi ${r.icon}`} />
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.label}
+                        </div>
+                        <div className="muted" style={{ fontSize: 11 }}>
+                          {r.sublabel}
+                        </div>
+                      </span>
+                      <i className="bi bi-arrow-right" style={{ fontSize: 12, color: "var(--text-muted)" }} />
+                    </button>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="topbar-powered-by" style={poweredBy}>Powered by Kreativefolio</span>
           <Link href="/reminders" className="icon-btn-anim" style={circleBtn} aria-label="Reminders">
             <i className="bi bi-bell-fill" style={{ fontSize: 17 }} />
             {unread > 0 && <span style={dot}>{unread > 9 ? "9+" : unread}</span>}
           </Link>
-          <Link href="/messages" className="icon-btn-anim" style={circleBtn} aria-label="Messages">
+          <Link href="/chat" className="icon-btn-anim" style={circleBtn} aria-label="Chat">
             <i className="bi bi-chat-dots-fill" style={{ fontSize: 17 }} />
+            {chatUnread > 0 && <span style={dot}>{chatUnread > 9 ? "9+" : chatUnread}</span>}
           </Link>
 
           <div ref={menuRef} style={{ position: "relative", marginLeft: 6 }}>
@@ -83,6 +226,11 @@ export function Topbar({
                 <Link href="/profile" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                   <i className="bi bi-person-fill" /> Profile
                 </Link>
+                {user?.role === "manager" && (
+                  <Link href="/logs" style={dropdownItem} onClick={() => setMenuOpen(false)}>
+                    <i className="bi bi-clock-history" /> Logs
+                  </Link>
+                )}
                 <button
                   style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}
                   onClick={logout}
@@ -128,8 +276,63 @@ const searchWrap: React.CSSProperties = {
   background: "var(--bg)",
   borderRadius: 999,
   padding: "9px 16px",
-  width: 300,
-  maxWidth: "36vw",
+  width: "100%",
+};
+const clearBtn: React.CSSProperties = {
+  width: 20,
+  height: 20,
+  minWidth: 20,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "transparent",
+  color: "var(--text-muted)",
+  border: "none",
+  fontSize: 10,
+};
+const searchPanel: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 8px)",
+  left: 0,
+  right: 0,
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: 12,
+  boxShadow: "var(--shadow)",
+  padding: 6,
+  zIndex: 20,
+  maxHeight: 360,
+  overflowY: "auto",
+};
+const searchResultRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+};
+const searchResultIcon: React.CSSProperties = {
+  width: 30,
+  height: 30,
+  minWidth: 30,
+  borderRadius: 8,
+  display: "grid",
+  placeItems: "center",
+  background: "var(--gold-soft)",
+  color: "var(--gold)",
+  fontSize: 13,
+};
+const searchSectionLabel: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: 0.6,
+  color: "var(--text-muted)",
+  padding: "8px 10px 4px",
 };
 const searchInput: React.CSSProperties = {
   border: "none",
@@ -139,14 +342,12 @@ const searchInput: React.CSSProperties = {
   fontSize: 13.5,
   color: "var(--text)",
 };
-const kbdHint: React.CSSProperties = {
-  fontSize: 10.5,
-  fontWeight: 700,
+const poweredBy: React.CSSProperties = {
+  fontSize: 11.5,
+  fontWeight: 600,
   color: "var(--text-muted)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  padding: "2px 6px",
+  marginRight: 4,
+  whiteSpace: "nowrap",
 };
 const circleBtn: React.CSSProperties = {
   position: "relative",

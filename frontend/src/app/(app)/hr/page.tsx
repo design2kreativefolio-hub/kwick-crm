@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { api, ApiError } from "@/lib/api";
+import { DatePicker } from "@/components/DatePicker";
+import { api, ApiError, unwrapList } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 
 type Staff = {
@@ -14,6 +15,7 @@ type Staff = {
   status: string;
   job_title: string;
   department: string;
+  avatar_url?: string;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -23,43 +25,83 @@ const STATUS_BADGE: Record<string, string> = {
   disabled: "badge-danger",
 };
 
+const emptyForm = {
+  full_name: "",
+  email: "",
+  phone: "",
+  password: "",
+  job_title: "",
+  department: "",
+  date_joined: "",
+  visa_renewal_date: "",
+  insurance_renewal_date: "",
+  iloe_renewal_date: "",
+};
+
+function generatePassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+  let out = "";
+  const values = typeof crypto !== "undefined" ? crypto.getRandomValues(new Uint32Array(12)) : null;
+  for (let i = 0; i < 12; i++) {
+    const idx = values ? values[i] % chars.length : Math.floor(Math.random() * chars.length);
+    out += chars[idx];
+  }
+  return out;
+}
+
 export default function HrPage() {
   const { showToast } = useToast();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ full_name: "", email: "", job_title: "", department: "" });
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
-
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
     setLoading(true);
-    api<Staff[]>("/api/hr/staff")
-      .then(setStaff)
+    api<Staff[] | { results: Staff[] }>("/api/hr/staff")
+      .then((d) => setStaff(unwrapList(d)))
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
   useEffect(load, []);
 
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const pickAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setAvatarFile(file);
+    setAvatarPreview(file ? URL.createObjectURL(file) : null);
+  };
 
   const addStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setCreating(true);
     try {
-      await api("/api/hr/staff", { method: "POST", body: JSON.stringify(form) });
-      setForm({ full_name: "", email: "", job_title: "", department: "" });
+      const created = await api<Staff>("/api/hr/staff", { method: "POST", body: JSON.stringify(form) });
+      if (avatarFile) {
+        const fd = new FormData();
+        fd.append("file", avatarFile);
+        await api(`/api/hr/staff/${created.id}/avatar`, { method: "POST", body: fd }).catch(() => {});
+      }
+      setForm(emptyForm);
+      setAvatarFile(null);
+      setAvatarPreview(null);
       setShowForm(false);
-      showToast("Staff record created.");
+      showToast("Staff account created — a welcome email was sent.");
       load();
     } catch (err: any) {
       setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -74,21 +116,14 @@ export default function HrPage() {
     }
   };
 
-  const generateInvite = async () => {
-    setInviteBusy(true);
-    setInviteError(null);
-    setInviteCode(null);
+  const reject = async (id: number) => {
+    setBusyId(id);
     try {
-      const res = await api<{ code: string }>("/api/auth/invite-codes", {
-        method: "POST",
-        body: JSON.stringify({ expires_in_days: 7 }),
-      });
-      setInviteCode(res.code);
-      showToast("Invite code generated.");
-    } catch (err: any) {
-      setInviteError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+      await api(`/api/auth/reject/${id}`, { method: "POST" });
+      showToast("Registration rejected.");
+      load();
     } finally {
-      setInviteBusy(false);
+      setBusyId(null);
     }
   };
 
@@ -98,8 +133,8 @@ export default function HrPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>HR — Staff</h1>
           <p className="muted" style={{ marginTop: 4 }}>
-            Employees can self-register at /register with no invite code, or you can add them
-            directly here — either way they land below awaiting your approval.
+            Employees can self-register at /register and wait for your approval, or you can add
+            them directly here — staff you add yourself are active immediately.
           </p>
         </div>
         <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
@@ -108,50 +143,127 @@ export default function HrPage() {
       </div>
 
       {showForm && (
-        <form className="card" onSubmit={addStaff} style={{ maxWidth: 480 }}>
-          <label className="field-label">Full name</label>
-          <input className="input" value={form.full_name} onChange={set("full_name")} required />
-          <label className="field-label">Email</label>
-          <input className="input" type="email" value={form.email} onChange={set("email")} required />
-          <label className="field-label">Job title</label>
-          <input className="input" value={form.job_title} onChange={set("job_title")} />
-          <label className="field-label">Department</label>
-          <input className="input" value={form.department} onChange={set("department")} />
-          {error && <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>}
-          <button className="btn" style={{ marginTop: 14 }}>Create staff record</button>
+        <form className="card" onSubmit={addStaff}>
+          <span className="card-title">New Staff Account</span>
+          <div style={{ display: "flex", gap: 28, alignItems: "flex-start", marginTop: 14, flexWrap: "wrap" }}>
+            <div style={avatarCol}>
+              <div style={avatarPreviewBox} onClick={() => avatarInputRef.current?.click()}>
+                {avatarPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarPreview} alt="" style={avatarImg} />
+                ) : (
+                  <i className="bi bi-person-fill" style={{ fontSize: 40, color: "var(--text-muted)" }} />
+                )}
+                <span style={avatarCameraBadge}>
+                  <i className="bi bi-camera-fill" />
+                </span>
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={pickAvatar}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ marginTop: 10 }}
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                {avatarPreview ? "Change photo" : "Upload photo"}
+              </button>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 320, display: "grid", gap: 14 }}>
+              <div style={fieldGrid}>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Full name</label>
+                  <input className="input" value={form.full_name} onChange={set("full_name")} required />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Email</label>
+                  <input className="input" type="email" value={form.email} onChange={set("email")} required />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Phone number</label>
+                  <input className="input" value={form.phone} onChange={set("phone")} />
+                </div>
+              </div>
+              <div style={fieldGrid}>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Password</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      className="input"
+                      value={form.password}
+                      onChange={set("password")}
+                      minLength={8}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setForm((f) => ({ ...f, password: generatePassword() }))}
+                    >
+                      Generate
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Job title</label>
+                  <input className="input" value={form.job_title} onChange={set("job_title")} />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Department</label>
+                  <input className="input" value={form.department} onChange={set("department")} />
+                </div>
+              </div>
+              <div style={fieldGrid}>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Joining date</label>
+                  <DatePicker
+                    value={form.date_joined}
+                    onChange={(v) => setForm((f) => ({ ...f, date_joined: v }))}
+                    ariaLabel="Joining date"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Visa renewal date</label>
+                  <DatePicker
+                    value={form.visa_renewal_date}
+                    onChange={(v) => setForm((f) => ({ ...f, visa_renewal_date: v }))}
+                    ariaLabel="Visa renewal date"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Insurance renewal date</label>
+                  <DatePicker
+                    value={form.insurance_renewal_date}
+                    onChange={(v) => setForm((f) => ({ ...f, insurance_renewal_date: v }))}
+                    ariaLabel="Insurance renewal date"
+                  />
+                </div>
+              </div>
+              <div style={fieldGrid}>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>ILOE renewal date</label>
+                  <DatePicker
+                    value={form.iloe_renewal_date}
+                    onChange={(v) => setForm((f) => ({ ...f, iloe_renewal_date: v }))}
+                    ariaLabel="ILOE renewal date"
+                  />
+                </div>
+              </div>
+
+              {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
+              <button className="btn" style={{ width: "fit-content" }} disabled={creating}>
+                {creating ? "Creating…" : "Create staff account"}
+              </button>
+            </div>
+          </div>
         </form>
       )}
-
-      <div className="card" style={{ maxWidth: 480 }}>
-        <span className="card-title">Manager Invite Codes</span>
-        <p className="muted" style={{ fontSize: 13, marginTop: -8, marginBottom: 14 }}>
-          Generate a single-use code so another manager (e.g. a co-owner) can register at{" "}
-          <code style={{ color: "var(--gold)" }}>/register</code> and activate immediately.
-          Employees don&apos;t need a code — they self-register and just wait for your approval.
-        </p>
-        <button className="btn" onClick={generateInvite} disabled={inviteBusy}>
-          {inviteBusy ? "Generating…" : "Generate code"}
-        </button>
-        {inviteError && <p style={{ color: "var(--danger)", fontSize: 13 }}>{inviteError}</p>}
-        {inviteCode && (
-          <p style={{ marginTop: 12, marginBottom: 0 }}>
-            <code
-              style={{
-                background: "var(--bg)",
-                padding: "6px 10px",
-                borderRadius: 6,
-                color: "var(--gold)",
-                fontWeight: 600,
-              }}
-            >
-              {inviteCode}
-            </code>
-            <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
-              Valid 7 days, shown once — copy it now.
-            </span>
-          </p>
-        )}
-      </div>
 
       <div className="card">
         <span className="card-title">
@@ -177,7 +289,18 @@ export default function HrPage() {
                 {staff.map((s) => (
                   <tr key={s.id}>
                     <td>
-                      <Link href={`/hr/staff/${s.id}`} style={{ color: "var(--navy)", fontWeight: 600 }}>
+                      <Link
+                        href={`/hr/staff/${s.id}`}
+                        style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--navy)", fontWeight: 600 }}
+                      >
+                        <span style={rowAvatar}>
+                          {s.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={s.avatar_url} alt="" style={avatarImg} />
+                          ) : (
+                            <i className="bi bi-person-fill" style={{ fontSize: 14, color: "var(--text-muted)" }} />
+                          )}
+                        </span>
                         {s.full_name || "—"}
                       </Link>
                     </td>
@@ -191,16 +314,29 @@ export default function HrPage() {
                     </td>
                     <td style={{ display: "flex", gap: 8 }}>
                       {s.status === "awaiting_approval" && (
-                        <button
-                          className="btn btn-sm"
-                          disabled={busyId === s.id}
-                          onClick={() => approve(s.id)}
-                        >
-                          {busyId === s.id ? "Approving…" : "Approve"}
-                        </button>
+                        <>
+                          <button
+                            className="btn btn-sm"
+                            disabled={busyId === s.id}
+                            onClick={() => approve(s.id)}
+                          >
+                            {busyId === s.id ? "…" : "Approve"}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: "var(--danger)" }}
+                            disabled={busyId === s.id}
+                            onClick={() => reject(s.id)}
+                          >
+                            Reject
+                          </button>
+                        </>
                       )}
                       <Link href={`/hr/staff/${s.id}`} className="btn btn-ghost btn-sm">
                         View <i className="bi bi-arrow-right" />
+                      </Link>
+                      <Link href={`/hr/staff/${s.id}/edit`} className="btn btn-ghost btn-sm">
+                        <i className="bi bi-pencil-fill" /> Edit
                       </Link>
                     </td>
                   </tr>
@@ -213,3 +349,65 @@ export default function HrPage() {
     </div>
   );
 }
+
+const fieldGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 14,
+};
+
+const avatarCol: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  width: 140,
+  flexShrink: 0,
+};
+
+const avatarPreviewBox: React.CSSProperties = {
+  position: "relative",
+  width: 104,
+  height: 104,
+  borderRadius: "50%",
+  background: "#eef0f6",
+  border: "2px dashed var(--border)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  overflow: "hidden",
+};
+
+const avatarImg: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+};
+
+const rowAvatar: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: "50%",
+  background: "#eef0f6",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+  flexShrink: 0,
+};
+
+const avatarCameraBadge: React.CSSProperties = {
+  position: "absolute",
+  bottom: 0,
+  right: 0,
+  width: 30,
+  height: 30,
+  borderRadius: "50%",
+  background: "var(--gold)",
+  color: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 13,
+  border: "2px solid var(--surface)",
+};

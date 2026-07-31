@@ -26,3 +26,8 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["completed_at", "created_at"]
+        # Not required at the serializer level — perform_create always fills
+        # it in (self for employees, self-as-fallback for managers) so a
+        # request that simply omits it shouldn't fail validation before
+        # perform_create ever gets a chance to run.
+        extra_kwargs = {"assignee": {"required": False}}

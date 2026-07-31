@@ -115,7 +115,7 @@ export default function Page() {
                 style={{
                   ...row,
                   borderTop: i === 0 ? "none" : "1px solid var(--border)",
-                  background: unread ? "var(--gold-soft)" : "transparent",
+                  background: unread ? "transparent" : "var(--gold-soft)",
                   cursor: meta.href ? "pointer" : "default",
                 }}
               >

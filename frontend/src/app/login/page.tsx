@@ -44,7 +44,12 @@ export default function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <label className="field-label">Password</label>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <label className="field-label" style={{ marginBottom: 0 }}>Password</label>
+          <Link href="/forgot-password" className="muted" style={{ fontSize: 12, color: "var(--gold)" }}>
+            Forgot password?
+          </Link>
+        </div>
         <input
           className="input"
           type="password"

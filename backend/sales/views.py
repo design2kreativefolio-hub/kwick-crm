@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from common.permissions import IsManager
+from common.services import log_activity
 
 from .models import Client, Invoice, Proposal
 from .serializers import ClientSerializer, InvoiceSerializer, ProposalSerializer
@@ -15,6 +16,14 @@ class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
     permission_classes = [IsManager]
     search_fields = ["name", "company", "contact_email"]
+
+    def perform_create(self, serializer):
+        client = serializer.save()
+        log_activity(actor=self.request.user, action=f"added client \"{client.name}\"")
+
+    def perform_update(self, serializer):
+        client = serializer.save()
+        log_activity(actor=self.request.user, action=f"edited client \"{client.name}\"")
 
 
 class ProposalViewSet(viewsets.ModelViewSet):

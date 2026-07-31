@@ -13,6 +13,7 @@ class ClientSerializer(serializers.ModelSerializer):
             "contact_phone",
             "company",
             "notes",
+            "services",
             "created_at",
         ]
 

@@ -69,3 +69,38 @@ def stop_recurring_reminder(*, object_ref):
     NotificationEvent.objects.filter(object_ref=object_ref, active=True).update(
         active=False, read_at=timezone.now()
     )
+
+
+def refresh_daily_reminder(*, source, title, body="", object_ref=""):
+    """
+    Like start_recurring_reminder, but explicitly resets read_at to None (and
+    re-pushes) on every call, instead of only ever creating the row once.
+    For reminders that should reappear each day even after being dismissed
+    "for today" — e.g. staff visa/insurance/ILOE renewals still overdue —
+    where ticking it off is a "seen today", not a resolution.
+    """
+    from .models import NotificationEvent
+    from .tasks import deliver_notification
+
+    events = []
+    for manager in _managers():
+        event, created = NotificationEvent.objects.get_or_create(
+            user=manager,
+            object_ref=object_ref,
+            defaults={
+                "source": source,
+                "title": title,
+                "body": body,
+                "recurring": True,
+                "active": True,
+            },
+        )
+        if not created:
+            event.title = title
+            event.body = body
+            event.active = True
+        event.read_at = None
+        event.save()
+        deliver_notification.delay(event.id)
+        events.append(event)
+    return events

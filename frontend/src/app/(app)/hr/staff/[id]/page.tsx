@@ -27,9 +27,26 @@ type StaffDetail = {
     days: number;
     status: string;
     reason: string;
+    created_at: string;
   }[];
-  tickets: { id: number; date: string; description: string; urgency: string; status: string }[];
+  tickets: {
+    id: number;
+    date: string;
+    description: string;
+    urgency: string;
+    status: string;
+    created_at: string;
+  }[];
 };
+
+function submittedLabel(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 const STATUS_BADGE: Record<string, string> = {
   active: "badge-success",
@@ -47,13 +64,6 @@ const URGENCY_BADGE: Record<string, string> = {
   medium: "badge-warning",
   high: "badge-danger",
 };
-const DOC_TYPES: { key: string; label: string }[] = [
-  { key: "offer_letter", label: "Offer Letter" },
-  { key: "experience_letter", label: "Experience Letter" },
-  { key: "relieving_letter", label: "Relieving Letter" },
-  { key: "salary_certificate", label: "Salary Certificate" },
-];
-
 export default function StaffDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -95,24 +105,10 @@ export default function StaffDetailPage() {
     }
   };
 
-  const generateCollateral = async (docType: string) => {
-    setBusyKey(`doc-${docType}`);
-    try {
-      await api(`/api/hr/employee-collaterals/${docType}`, {
-        method: "POST",
-        body: JSON.stringify({ staff: id }),
-      });
-      showToast("Document generated.");
-      load();
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
   if (loading) return <p className="muted">Loading…</p>;
   if (!data) return <p className="muted">Staff not found.</p>;
 
-  const { staff, collaterals, leave_balance, leaves, tickets } = data;
+  const { staff, leave_balance, leaves, tickets } = data;
   const pendingLeaves = leaves.filter((l) => l.status === "pending");
   const openTickets = tickets.filter((t) => t.status === "open");
 
@@ -130,9 +126,12 @@ export default function StaffDetailPage() {
               {staff.email} {staff.job_title && `· ${staff.job_title}`} {staff.department && `· ${staff.department}`}
             </p>
           </div>
-          <span className={`badge ${STATUS_BADGE[staff.status] ?? ""}`} style={{ marginLeft: "auto" }}>
+          <span className={`badge ${STATUS_BADGE[staff.status] ?? ""}`} style={{ marginLeft: 12 }}>
             {staff.status.replace("_", " ")}
           </span>
+          <Link href={`/hr/staff/${id}/edit`} className="btn btn-sm" style={{ marginLeft: "auto" }}>
+            <i className="bi bi-pencil-fill" /> Edit
+          </Link>
         </div>
       </div>
 
@@ -158,6 +157,8 @@ export default function StaffDetailPage() {
                       {new Date(l.start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                       {" – "}
                       {new Date(l.end_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      {" · Submitted "}
+                      {submittedLabel(l.created_at)}
                     </div>
                   </span>
                   {l.status === "pending" ? (
@@ -200,6 +201,8 @@ export default function StaffDetailPage() {
                     <div style={{ fontSize: 13.5, fontWeight: 500 }}>{t.description}</div>
                     <div className="muted" style={{ fontSize: 11.5 }}>
                       {new Date(t.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      {" · Submitted "}
+                      {submittedLabel(t.created_at)}
                     </div>
                   </span>
                   <span className={`badge ${URGENCY_BADGE[t.urgency] ?? "badge-muted"}`}>{t.urgency}</span>
@@ -218,40 +221,6 @@ export default function StaffDetailPage() {
               ))}
             </ul>
           )}
-        </div>
-      </div>
-
-      <div className="card">
-        <span className="card-title">Employee Collaterals</span>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
-          {DOC_TYPES.map((d) => {
-            const issued = collaterals.filter((c) => c.doc_type === d.key);
-            return (
-              <div key={d.key} className="card" style={{ padding: 16 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>{d.label}</div>
-                {issued.map((c) => (
-                  <a
-                    key={c.id}
-                    href={c.file_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="muted"
-                    style={{ display: "block", fontSize: 12, color: "var(--gold)", marginBottom: 6 }}
-                  >
-                    <i className="bi bi-download" />{" "}
-                    {c.generated_at ? new Date(c.generated_at).toLocaleDateString() : "Download"}
-                  </a>
-                ))}
-                <button
-                  className="btn btn-ghost btn-sm"
-                  disabled={busyKey === `doc-${d.key}`}
-                  onClick={() => generateCollateral(d.key)}
-                >
-                  {busyKey === `doc-${d.key}` ? "Generating…" : "Generate new"}
-                </button>
-              </div>
-            );
-          })}
         </div>
       </div>
     </div>

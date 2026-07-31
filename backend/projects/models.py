@@ -7,15 +7,16 @@ from common.models import TimeStampedModel
 
 class Project(TimeStampedModel):
     class Status(models.TextChoices):
-        ONGOING = "ongoing", "Ongoing"
+        ASSIGNED = "assigned", "Assigned"
+        STARTED = "started", "Started"
+        WAITING_APPROVAL = "waiting_approval", "Waiting for approval"
         COMPLETED = "completed", "Completed"
-        ON_HOLD = "on_hold", "On hold"
 
     name = models.CharField(max_length=200)
     client = models.ForeignKey(
         "sales.Client", on_delete=models.SET_NULL, null=True, blank=True, related_name="projects"
     )
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ONGOING)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ASSIGNED)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     # Which staff are assigned (drives employee dashboard "ongoing projects", spec §15/§19).
@@ -37,7 +38,8 @@ class ProjectClient(TimeStampedModel):
 
 
 class CategoryCode(TimeStampedModel):
-    """e.g. 'K' — full list TBD (spec §19)."""
+    """Repurposed as the artwork ID's country code (e.g. 'UAE', 'IN') — field
+    name kept as-is to avoid a data migration, only the meaning/label changed."""
 
     code = models.CharField(max_length=10, unique=True)
     label = models.CharField(max_length=100, blank=True)
@@ -81,9 +83,13 @@ class Artwork(TimeStampedModel):
     project = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="artworks", null=True, blank=True
     )
-    client = models.CharField(max_length=100)
+    # Kept as data fields for record-keeping even though the current ID
+    # format (see services.build_artwork_id) no longer embeds them.
+    client = models.CharField(max_length=100, blank=True, default="")
+    artwork_type = models.CharField(max_length=100, blank=True, default="")
+    # brand: now "Product Name" in the UI. category_code: now "Country Code"
+    # in the UI. Field names kept to avoid a data migration.
     brand = models.CharField(max_length=100)
-    artwork_type = models.CharField(max_length=100)
     category_code = models.CharField(max_length=10)
     designer = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="artworks"

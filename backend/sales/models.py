@@ -8,11 +8,25 @@ MONEY = dict(max_digits=12, decimal_places=2, default=Decimal("0.00"))
 
 
 class Client(TimeStampedModel):
+    class Service(models.TextChoices):
+        BRANDING = "branding", "Branding"
+        GRAPHIC_DESIGN = "graphic_design", "Graphic Design"
+        WEB_DESIGN = "web_design", "Web Design & Development"
+        ADS_LEADS = "ads_leads", "Ads And Leads Management"
+        PHOTO_VIDEO = "photo_video", "Photography & Videography"
+        DIGITAL_MARKETING = "digital_marketing", "Digital Marketing"
+        PODCAST = "podcast", "Podcast Production"
+        OTHER = "other", "Other Services"
+
     name = models.CharField(max_length=200)
     contact_email = models.EmailField(blank=True)
     contact_phone = models.CharField(max_length=40, blank=True)
     company = models.CharField(max_length=200, blank=True)
     notes = models.TextField(blank=True)
+    # Which of the fixed service categories we provide this client — edited
+    # from the Projects > Clients directory (open to employees too, unlike
+    # the rest of this model which stays manager-only via Sales).
+    services = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["name"]

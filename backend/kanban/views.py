@@ -1,22 +1,28 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from common.permissions import IsManager
+from common.permissions import IsActive, is_manager
 from tasks.models import Task
 from tasks.serializers import TaskSerializer
 
 
 class BoardView(APIView):
-    """GET /api/kanban/board — tasks grouped by board_status (spec §11, manager only)."""
+    """
+    GET /api/kanban/board — tasks grouped by board_status. Managers see the
+    whole company board; employees only see tasks they own (their own
+    to-dos + whatever's been assigned to them), per spec §11's "kanban should
+    work for employees too" follow-up.
+    """
 
-    permission_classes = [IsManager]
+    permission_classes = [IsActive]
 
     def get(self, request):
         columns = {}
         for value, label in Task.BoardStatus.choices:
-            qs = Task.objects.filter(board_status=value).order_by("board_order").select_related(
-                "assignee", "project"
-            )
+            qs = Task.objects.filter(board_status=value)
+            if not is_manager(request.user):
+                qs = qs.filter(assignee=request.user)
+            qs = qs.order_by("board_order").select_related("assignee", "project")
             columns[value] = {"label": label, "tasks": TaskSerializer(qs, many=True).data}
         return Response(columns)
 
@@ -24,13 +30,16 @@ class BoardView(APIView):
 class MoveTaskView(APIView):
     """PATCH /api/kanban/tasks/{id}/move — change column + order (spec §11)."""
 
-    permission_classes = [IsManager]
+    permission_classes = [IsActive]
 
     def patch(self, request, task_id):
         try:
             task = Task.objects.get(pk=task_id)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
+        if not is_manager(request.user) and task.assignee_id != request.user.id:
+            return Response({"detail": "You can only move your own tasks."}, status=403)
+
         board_status = request.data.get("board_status")
         board_order = request.data.get("board_order")
         if board_status is not None:
@@ -38,4 +47,17 @@ class MoveTaskView(APIView):
         if board_order is not None:
             task.board_order = board_order
         task.save(update_fields=["board_status", "board_order", "updated_at"])
+
+        # Mirror back onto the originating to-do, if this task came from one —
+        # dragging a card to Complete checks it off there too, and dragging it
+        # back out un-checks it (spec follow-up: Kanban <-> To-Do stay in sync).
+        from todos.models import TodoItem
+
+        todo = TodoItem.objects.filter(linked_task=task).first()
+        if todo is not None:
+            should_be_done = task.board_status == Task.BoardStatus.DONE
+            if todo.done != should_be_done:
+                todo.done = should_be_done
+                todo.save()
+
         return Response(TaskSerializer(task).data)

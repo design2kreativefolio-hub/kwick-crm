@@ -93,6 +93,11 @@ class StaffProfile(TimeStampedModel):
     date_joined = models.DateField(null=True, blank=True)
     phone = models.CharField(max_length=40, blank=True)
     avatar_url = models.URLField(blank=True)
+    # Manager-set renewal reminders, visible read-only on the employee's own
+    # profile too.
+    visa_renewal_date = models.DateField(null=True, blank=True)
+    insurance_renewal_date = models.DateField(null=True, blank=True)
+    iloe_renewal_date = models.DateField(null=True, blank=True)
 
     def __str__(self):
         return f"Profile<{self.user.email}>"

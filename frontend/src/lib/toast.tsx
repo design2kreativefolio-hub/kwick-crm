@@ -4,10 +4,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 
 type ToastType = "success" | "error" | "info";
-type ToastItem = { id: number; message: string; type: ToastType };
+type ToastItem = { id: number; message: string; type: ToastType; onClick?: () => void };
 
 type ToastContextValue = {
-  showToast: (message: string, type?: ToastType) => void;
+  showToast: (message: string, type?: ToastType, onClick?: () => void) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -28,9 +28,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const idRef = useRef(0);
 
-  const showToast = useCallback((message: string, type: ToastType = "success") => {
+  const showToast = useCallback((message: string, type: ToastType = "success", onClick?: () => void) => {
     const id = ++idRef.current;
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type, onClick }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 5000);
@@ -51,7 +51,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.95 }}
                 transition={{ duration: 0.22, ease: "easeOut" }}
-                style={toastStyle}
+                onClick={() => {
+                  if (t.onClick) {
+                    t.onClick();
+                    setToasts((prev) => prev.filter((x) => x.id !== t.id));
+                  }
+                }}
+                style={{ ...toastStyle, cursor: t.onClick ? "pointer" : "default" }}
               >
                 <i className={`bi ${meta.icon}`} style={{ color: meta.color, fontSize: 17 }} />
                 <span style={{ fontSize: 13.5, fontWeight: 500 }}>{t.message}</span>

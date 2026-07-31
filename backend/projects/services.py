@@ -13,25 +13,22 @@ def _initials(full_name: str) -> str:
 
 def build_artwork_id(
     *,
-    client: str,
-    brand: str,
-    artwork_type: str,
-    category_code: str,
+    country_code: str,
+    product_name: str,
     designer_name: str,
     on: date | None = None,
 ) -> str:
     """
     Format:
-      {Company}_{Client}_{Brand}_{ArtworkType}__{YYMMDD}_{Initials}_{CategoryCode}-{YYYY}{Seq:04d}
+      {Company}_{Country}_{ProductName}_{Designer}_{DDMMYY}_K-{YYYY}{Seq:04d}
     Example:
-      KF_Nevo_Food_U_Cacao_Packaging_Design__240726_RH_K-20244002
-    The sequence resets each calendar year, scoped per category_code, and is
+      KF_UAE_Cacao_RH_260730_K-20260001
+    The sequence resets each calendar year, scoped per country_code, and is
     generated atomically (select_for_update).
     """
     on = on or date.today()
-    seq = ArtworkSequence.next_number(year=on.year, category_code=category_code)
+    seq = ArtworkSequence.next_number(year=on.year, category_code=country_code)
     return (
-        f"{COMPANY}_{client}_{brand}_{artwork_type}"
-        f"__{on:%y%m%d}_{_initials(designer_name)}"
-        f"_{category_code}-{on.year}{seq:04d}"
+        f"{COMPANY}_{country_code}_{product_name}_{_initials(designer_name)}"
+        f"_{on:%d%m%y}_K-{on.year}{seq:04d}"
     )

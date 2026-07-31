@@ -17,10 +17,9 @@ class Task(TimeStampedModel):
         HIGH = "high", "High"
 
     class BoardStatus(models.TextChoices):
-        BACKLOG = "backlog", "Backlog"
-        TODO = "todo", "To do"
-        DOING = "doing", "Doing"
-        DONE = "done", "Done"
+        TODO = "todo", "New Request"
+        DOING = "doing", "In Progress"
+        DONE = "done", "Complete"
 
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)

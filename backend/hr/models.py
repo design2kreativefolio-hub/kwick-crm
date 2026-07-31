@@ -6,7 +6,6 @@ from common.models import TimeStampedModel
 
 class EmployeeCollateral(TimeStampedModel):
     class DocType(models.TextChoices):
-        OFFER_LETTER = "offer_letter", "Offer letter"
         EXPERIENCE_LETTER = "experience_letter", "Experience letter"
         RELIEVING_LETTER = "relieving_letter", "Relieving letter"
         SALARY_CERTIFICATE = "salary_certificate", "Salary certificate"

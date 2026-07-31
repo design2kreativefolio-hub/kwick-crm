@@ -77,6 +77,11 @@ function sortNotifications(items: NotificationEvent[]) {
     const ua = a.read_at ? 1 : 0;
     const ub = b.read_at ? 1 : 0;
     if (ua !== ub) return ua - ub;
+    // Staff renewal nags (visa/insurance/ILOE) are top priority — surface
+    // them above every other reminder type once unread status is equal.
+    const pa = a.source === "staff_renewal" ? 0 : 1;
+    const pb = b.source === "staff_renewal" ? 0 : 1;
+    if (pa !== pb) return pa - pb;
     return b.created_at.localeCompare(a.created_at);
   });
 }
@@ -112,9 +117,16 @@ export default function DashboardPage() {
     )
       .then((d) => setSparkline(d.series.slice(-14).map((p) => p.completed)))
       .catch(() => {});
-    api<{ results: Task[] } | Task[]>("/api/tasks?page_size=5")
-      .then((d) => setRecentTasks(Array.isArray(d) ? d : d.results))
-      .catch(() => {});
+    // Managers see every employee's tasks relevant to today (due today or
+    // added today), not just "most recently created" — so they can tell
+    // who's doing what today without opening each person's board.
+    if (isManager) {
+      api<Task[]>("/api/dashboard/today-tasks").then(setRecentTasks).catch(() => {});
+    } else {
+      api<{ results: Task[] } | Task[]>("/api/tasks?page_size=5")
+        .then((d) => setRecentTasks(Array.isArray(d) ? d : d.results))
+        .catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isManager]);
 
@@ -137,10 +149,10 @@ export default function DashboardPage() {
   const pendingNotifications = notifications.filter((n) => !n.read_at);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 22, alignItems: "start" }}>
+    <div className="dashboard-grid" style={{ display: "grid", gap: 22, alignItems: "start" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
         <Reveal index={0}>
-          <div style={heroRow}>
+          <div className="dashboard-hero-row" style={heroRow}>
             <HeroBanner
               compact
               name={user?.full_name?.split(" ")[0] || "there"}
@@ -186,7 +198,7 @@ export default function DashboardPage() {
         </Reveal>
 
         <Reveal index={1}>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 22 }}>
+          <div className="dashboard-charts-row" style={{ display: "grid", gap: 22 }}>
             <PerformanceChart
               canScopeCompany={isManager}
               headlineValue={completed ?? 0}
@@ -202,12 +214,16 @@ export default function DashboardPage() {
         <Reveal index={4}>
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="card-title" style={{ margin: 0 }}>Recent Tasks</span>
+              <span className="card-title" style={{ margin: 0 }}>{isManager ? "Today's Tasks" : "Recent Tasks"}</span>
               <a href="/tasks" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
                 View All <i className="bi bi-arrow-right" />
               </a>
             </div>
-            {recentTasks.length === 0 && <p className="muted" style={{ marginTop: 16 }}>No tasks yet.</p>}
+            {recentTasks.length === 0 && (
+              <p className="muted" style={{ marginTop: 16 }}>
+                {isManager ? "Nothing due or added today." : "No tasks yet."}
+              </p>
+            )}
             {recentTasks.length > 0 && (
               <div className="table-wrap" style={{ marginTop: 12 }}>
                 <table className="kwick-table">
@@ -312,7 +328,6 @@ export default function DashboardPage() {
 
 const heroRow: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1.3fr 1fr 1fr 1fr",
   gap: 16,
   alignItems: "stretch",
 };

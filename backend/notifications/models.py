@@ -24,6 +24,8 @@ class NotificationEvent(TimeStampedModel):
         TASK = "task", "Task"
         LEAVE_REQUEST = "leave_request", "Leave request"
         TICKET = "ticket", "Ticket"
+        DOCUMENT = "document", "Document"
+        STAFF_RENEWAL = "staff_renewal", "Staff Renewal"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"

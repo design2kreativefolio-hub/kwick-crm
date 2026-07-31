@@ -14,6 +14,9 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             "date_joined",
             "phone",
             "avatar_url",
+            "visa_renewal_date",
+            "insurance_renewal_date",
+            "iloe_renewal_date",
         ]
 
 
@@ -123,6 +126,23 @@ class InviteCodeCreateSerializer(serializers.Serializer):
         }
 
 
+class ForgotPasswordSerializer(serializers.Serializer):
+    """Public self-service reset request. Always succeeds from the caller's
+    point of view — never reveals whether the email actually has an account,
+    same as any standard forgot-password flow."""
+
+    email = serializers.EmailField()
+
+    def save(self):
+        from .tasks import send_forgot_password_email
+
+        try:
+            user = User.objects.get(email__iexact=self.validated_data["email"])
+        except User.DoesNotExist:
+            return
+        send_forgot_password_email.delay(user.id)
+
+
 class SetPasswordSerializer(serializers.Serializer):
     """
     Lets an employee added directly via HR (StaffCreateSerializer, no invite
@@ -159,7 +179,12 @@ class SetPasswordSerializer(serializers.Serializer):
 
 
 class UpdateProfileSerializer(serializers.Serializer):
-    """Self-service profile edit — role is intentionally never accepted here."""
+    """
+    Self-service profile edit — role is intentionally never accepted here.
+    Employees' identity fields (name/email) are manager-owned (edited from the
+    HR staff page instead); only a manager editing their own account may
+    change them here. Phone stays self-service for everyone.
+    """
 
     full_name = serializers.CharField(required=False)
     email = serializers.EmailField(required=False)
@@ -173,11 +198,12 @@ class UpdateProfileSerializer(serializers.Serializer):
 
     def save(self):
         user = self.context["request"].user
-        if "full_name" in self.validated_data:
-            user.full_name = self.validated_data["full_name"]
-        if "email" in self.validated_data:
-            user.email = self.validated_data["email"]
-        user.save(update_fields=["full_name", "email", "updated_at"])
+        if user.role == Role.MANAGER:
+            if "full_name" in self.validated_data:
+                user.full_name = self.validated_data["full_name"]
+            if "email" in self.validated_data:
+                user.email = self.validated_data["email"]
+            user.save(update_fields=["full_name", "email", "updated_at"])
 
         if "phone" in self.validated_data:
             profile, _ = StaffProfile.objects.get_or_create(user=user)
@@ -209,7 +235,8 @@ class AvatarUploadSerializer(serializers.Serializer):
     file = serializers.ImageField()
 
     def save(self):
-        user = self.context["request"].user
+        request = self.context["request"]
+        user = request.user
         profile, _ = StaffProfile.objects.get_or_create(user=user)
 
         from django.core.files.storage import default_storage
@@ -221,7 +248,13 @@ class AvatarUploadSerializer(serializers.Serializer):
         if default_storage.exists(key):
             default_storage.delete(key)
         saved_path = default_storage.save(key, upload)
-        profile.avatar_url = default_storage.url(saved_path)
+        # default_storage.url() is host-relative for local FileSystemStorage
+        # (e.g. "/media/avatars/1.jpg") — fine when frontend and backend share
+        # an origin, but this project serves them from different ports/domains
+        # in dev, so a bare relative URL resolves against the WRONG origin in
+        # the browser. build_absolute_uri() fixes that; it's a no-op for S3
+        # URLs, which are already absolute.
+        profile.avatar_url = request.build_absolute_uri(default_storage.url(saved_path))
         profile.save(update_fields=["avatar_url", "updated_at"])
         return profile.avatar_url
 

@@ -27,6 +27,15 @@ const todayIso = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+function submittedLabel(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function RaiseTicketTab() {
   const { showToast } = useToast();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -105,6 +114,7 @@ export function RaiseTicketTab() {
                   <th>Description</th>
                   <th>Date</th>
                   <th>Urgency</th>
+                  <th>Submitted</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -118,6 +128,7 @@ export function RaiseTicketTab() {
                     <td>
                       <span className={`badge ${URGENCY_BADGE[t.urgency] ?? "badge-muted"}`}>{t.urgency}</span>
                     </td>
+                    <td className="muted" style={{ whiteSpace: "nowrap" }}>{submittedLabel(t.created_at)}</td>
                     <td>
                       <span className={`badge ${t.status === "resolved" ? "badge-success" : "badge-warning"}`}>
                         {t.status}

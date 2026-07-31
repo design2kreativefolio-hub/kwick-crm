@@ -1,17 +1,21 @@
+import uuid
 from datetime import date
 
 from django.contrib.auth import get_user_model
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.generics import ListCreateAPIView
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Role
+from accounts.models import Role, StaffProfile, UserStatus
+from accounts.tasks import send_password_reset_email, send_status_change_email, send_welcome_email
 from common.permissions import IsActive, IsManager, is_manager
-from notifications.services import start_recurring_reminder, stop_recurring_reminder
+from notifications.services import notify_user, start_recurring_reminder, stop_recurring_reminder
 
 from .models import EmployeeCollateral, Leave, LeaveBalance, Ticket
 from .pdf import generate_collateral_pdf
@@ -21,10 +25,24 @@ from .serializers import (
     LeaveSerializer,
     StaffCreateSerializer,
     StaffListSerializer,
+    StaffUpdateSerializer,
     TicketSerializer,
 )
 
 User = get_user_model()
+
+
+def _notify_document(collateral):
+    """A manager generated/uploaded a document for this employee — let them
+    know via the existing in-app notification channel (spec follow-up: 'each
+    time the manager uploads these, the employee should get a reminder')."""
+    notify_user(
+        user=collateral.staff,
+        source="document",
+        title=f"New document: {collateral.get_doc_type_display()}",
+        body="A manager added a new document to your profile.",
+        object_ref=f"collateral:{collateral.id}",
+    )
 
 
 class StaffViewSet(viewsets.ViewSet):
@@ -43,6 +61,7 @@ class StaffViewSet(viewsets.ViewSet):
         serializer = StaffCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        send_welcome_email.delay(user.id)
         return Response(serializer.to_representation(user), status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, pk=None):
@@ -63,6 +82,71 @@ class StaffViewSet(viewsets.ViewSet):
                 "tickets": TicketSerializer(user.tickets.all(), many=True).data,
             }
         )
+
+    def partial_update(self, request, pk=None):
+        try:
+            user = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = StaffUpdateSerializer(data=request.data, context={"user": user})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(StaffListSerializer(user).data)
+
+    @action(detail=True, methods=["post"])
+    def reset_password(self, request, pk=None):
+        """Manager forces a password reset — emails the employee a one-time
+        set-password link rather than a plaintext password (spec follow-up)."""
+        try:
+            user = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        user.set_unusable_password()
+        user.save(update_fields=["password", "updated_at"])
+        send_password_reset_email.delay(user.id)
+        return Response({"detail": "Password reset link sent to the employee."})
+
+    @action(detail=True, methods=["post"])
+    def set_status(self, request, pk=None):
+        """Manager enables/disables an employee's CRM access (spec follow-up)."""
+        try:
+            user = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        new_status = request.data.get("status")
+        if new_status not in (UserStatus.ACTIVE, UserStatus.DISABLED):
+            return Response({"detail": "status must be 'active' or 'disabled'."}, status=400)
+        user.status = new_status
+        user.save(update_fields=["status", "updated_at"])
+        send_status_change_email.delay(user.id, new_status)
+        return Response(StaffListSerializer(user).data)
+
+
+class StaffAvatarUploadView(APIView):
+    """Manager sets/replaces an employee's photo — used both from the Add
+    Staff form and the staff edit page (spec follow-up)."""
+
+    permission_classes = [IsManager]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        try:
+            staff = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response({"detail": "file is required."}, status=400)
+
+        profile, _ = StaffProfile.objects.get_or_create(user=staff)
+        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "jpg"
+        key = f"avatars/{staff.pk}.{ext}"
+        if default_storage.exists(key):
+            default_storage.delete(key)
+        saved_path = default_storage.save(key, upload)
+        profile.avatar_url = request.build_absolute_uri(default_storage.url(saved_path))
+        profile.save(update_fields=["avatar_url", "updated_at"])
+        return Response({"avatar_url": profile.avatar_url})
 
 
 class EmployeeCollateralView(APIView):
@@ -85,9 +169,60 @@ class EmployeeCollateralView(APIView):
         # TODO: fill real letter copy (spec §19) — one shared HTML template base (§5.4).
         collateral.file_url = generate_collateral_pdf(collateral)
         collateral.save(update_fields=["file_url", "updated_at"])
+        _notify_document(collateral)
         return Response(
             EmployeeCollateralSerializer(collateral).data, status=status.HTTP_201_CREATED
         )
+
+
+class EmployeeCollateralUploadView(APIView):
+    """Manager uploads a document directly (e.g. a salary certificate PDF)
+    instead of auto-generating one from a template (spec follow-up)."""
+
+    permission_classes = [IsManager]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        staff_id = request.data.get("staff")
+        doc_type = request.data.get("doc_type")
+        upload = request.FILES.get("file")
+        if not staff_id or not doc_type or not upload:
+            return Response({"detail": "staff, doc_type and file are required."}, status=400)
+        try:
+            staff = User.objects.get(pk=staff_id)
+        except (User.DoesNotExist, ValueError, TypeError):
+            return Response({"detail": "Invalid staff."}, status=400)
+
+        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "pdf"
+        key = f"collaterals/{staff.pk}/{doc_type}-{uuid.uuid4().hex}.{ext}"
+        saved_path = default_storage.save(key, upload)
+
+        collateral = EmployeeCollateral.objects.create(
+            staff=staff,
+            doc_type=doc_type,
+            generated_by=request.user,
+            generated_at=timezone.now(),
+            file_url=request.build_absolute_uri(default_storage.url(saved_path)),
+        )
+        _notify_document(collateral)
+        return Response(
+            EmployeeCollateralSerializer(collateral).data, status=status.HTTP_201_CREATED
+        )
+
+
+class EmployeeCollateralDetailView(APIView):
+    """DELETE a generated/uploaded document (spec follow-up: 'offer letter you
+    can remove')."""
+
+    permission_classes = [IsManager]
+
+    def delete(self, request, pk):
+        try:
+            collateral = EmployeeCollateral.objects.get(pk=pk)
+        except EmployeeCollateral.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        collateral.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MyCollateralsView(APIView):

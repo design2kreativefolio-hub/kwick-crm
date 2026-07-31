@@ -13,6 +13,7 @@ type LeaveBalance = {
   used: number;
   pending: number;
   remaining: number;
+  used_this_month: number;
 };
 
 type Leave = {
@@ -42,6 +43,15 @@ const todayIso = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+function submittedLabel(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export function LeaveRequestsTab() {
   const { showToast } = useToast();
@@ -86,13 +96,15 @@ export function LeaveRequestsTab() {
     <div style={twoCol}>
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div className="card">
-          <span className="card-title">Leave Balance {balance ? `(${balance.year})` : ""}</span>
+          <span className="card-title">Annual Leave Balance {balance ? `(${balance.year})` : ""}</span>
           {balance && (
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
-                <span style={{ fontSize: 32, fontWeight: 700, color: "var(--navy)" }}>{balance.remaining}</span>
+                <span style={{ fontSize: 32, fontWeight: 700, color: "var(--navy)" }}>
+                  {balance.used}<span style={{ fontSize: 20, color: "var(--text-muted)", fontWeight: 600 }}>/{balance.annual_allowance}</span>
+                </span>
                 <span className="muted" style={{ fontSize: 12.5 }}>
-                  days remaining of {balance.annual_allowance} paid days/year (UAE standard)
+                  annual days taken (UAE standard: {balance.annual_allowance}/year)
                 </span>
               </div>
               <div className="seg-bar">
@@ -106,6 +118,17 @@ export function LeaveRequestsTab() {
                 <span className="seg-legend-item">
                   <span className="seg-dot" style={{ background: "var(--blue-200)" }} />
                   Pending <strong style={{ color: "var(--text)" }}>{balance.pending}</strong>
+                </span>
+                <span className="seg-legend-item">
+                  <span className="seg-dot" style={{ background: "var(--border)" }} />
+                  Remaining <strong style={{ color: "var(--text)" }}>{balance.remaining}</strong>
+                </span>
+              </div>
+              <div style={{ ...monthStat, marginBottom: 0 }}>
+                <i className="bi bi-calendar-week-fill" style={{ color: "var(--gold)" }} />
+                <span>
+                  <strong style={{ color: "var(--text)" }}>{balance.used_this_month}</strong>{" "}
+                  day{balance.used_this_month === 1 ? "" : "s"} taken this month
                 </span>
               </div>
             </>
@@ -173,6 +196,7 @@ export function LeaveRequestsTab() {
                   <th>Dates</th>
                   <th>Days</th>
                   <th>Reason</th>
+                  <th>Submitted</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -189,6 +213,7 @@ export function LeaveRequestsTab() {
                     <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {l.reason || "—"}
                     </td>
+                    <td className="muted" style={{ whiteSpace: "nowrap" }}>{submittedLabel(l.created_at)}</td>
                     <td>
                       <span className={`badge ${STATUS_BADGE[l.status] ?? "badge-muted"}`}>{l.status}</span>
                     </td>
@@ -203,6 +228,14 @@ export function LeaveRequestsTab() {
   );
 }
 
+const monthStat: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  marginTop: 12,
+  fontSize: 12.5,
+  color: "var(--text-muted)",
+};
 const twoCol: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "380px 1fr",

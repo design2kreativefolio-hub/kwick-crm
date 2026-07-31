@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 
 import { Reveal } from "@/components/Reveal";
-import { api } from "@/lib/api";
+import { Select } from "@/components/Select";
+import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
-type BoardStatus = "backlog" | "todo" | "doing" | "done";
-const ORDER: BoardStatus[] = ["backlog", "todo", "doing", "done"];
+type BoardStatus = "todo" | "doing" | "done";
+const ORDER: BoardStatus[] = ["todo", "doing", "done"];
 
 type Task = {
   id: number;
@@ -26,9 +28,8 @@ type Column = { label: string; tasks: Task[] };
 type Board = Record<BoardStatus, Column>;
 
 const COLUMN_META: Record<BoardStatus, { dot: string }> = {
-  backlog: { dot: "var(--text-muted)" },
-  todo: { dot: "var(--gold)" },
-  doing: { dot: "var(--warning)" },
+  todo: { dot: "var(--danger)" },
+  doing: { dot: "#7C4FE0" },
   done: { dot: "var(--success)" },
 };
 
@@ -50,12 +51,18 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+const emptyNewTask = { title: "", priority: "medium" };
+
 export default function KanbanPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
   const [dragTaskId, setDragTaskId] = useState<number | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<BoardStatus | null>(null);
+  const [addingColumn, setAddingColumn] = useState<BoardStatus | null>(null);
+  const [newTask, setNewTask] = useState(emptyNewTask);
+  const [creating, setCreating] = useState(false);
 
   const load = () => {
     api<Board>("/api/kanban/board")
@@ -65,6 +72,39 @@ export default function KanbanPage() {
   };
 
   useEffect(load, []);
+
+  const openAddTask = (key: BoardStatus) => {
+    setAddingColumn(key);
+    setNewTask(emptyNewTask);
+  };
+  const cancelAddTask = () => {
+    setAddingColumn(null);
+    setNewTask(emptyNewTask);
+  };
+
+  const createTask = async (key: BoardStatus) => {
+    if (!newTask.title.trim() || !user) return;
+    setCreating(true);
+    try {
+      const created = await api<Task>("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          title: newTask.title.trim(),
+          assignee: user.id,
+          priority: newTask.priority,
+          board_status: key,
+          board_order: board?.[key].tasks.length ?? 0,
+        }),
+      });
+      setBoard((prev) => (prev ? { ...prev, [key]: { ...prev[key], tasks: [...prev[key].tasks, created] } } : prev));
+      showToast("Task added.");
+      cancelAddTask();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't add task." : err.message, "error");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const moveTask = async (taskId: number, toStatus: BoardStatus) => {
     if (!board) return;
@@ -191,6 +231,47 @@ export default function KanbanPage() {
                         )}
                       </div>
                     ))}
+
+                    {addingColumn === key ? (
+                      <div className="card" style={{ padding: 14 }}>
+                        <input
+                          className="input"
+                          placeholder="Task title"
+                          autoFocus
+                          value={newTask.title}
+                          onChange={(e) => setNewTask((f) => ({ ...f, title: e.target.value }))}
+                          style={{ marginBottom: 10 }}
+                        />
+                        <div style={{ marginBottom: 12 }}>
+                          <Select
+                            value={newTask.priority}
+                            onChange={(v) => setNewTask((f) => ({ ...f, priority: v }))}
+                            options={[
+                              { value: "low", label: "Low priority" },
+                              { value: "medium", label: "Medium priority" },
+                              { value: "high", label: "High priority" },
+                            ]}
+                            ariaLabel="Priority"
+                          />
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => createTask(key)}
+                            disabled={creating || !newTask.title.trim()}
+                          >
+                            {creating ? "Adding…" : "Add"}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" onClick={cancelAddTask}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button style={addTaskBtn} onClick={() => openAddTask(key)}>
+                        <i className="bi bi-plus-lg" /> Add task
+                      </button>
+                    )}
                   </div>
                 </div>
               </Reveal>
@@ -238,4 +319,18 @@ const cardList: React.CSSProperties = {
 const taskCard: React.CSSProperties = {
   cursor: "grab",
   padding: 14,
+};
+const addTaskBtn: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  padding: "10px 0",
+  borderRadius: 10,
+  border: "1.5px dashed var(--border)",
+  background: "none",
+  color: "var(--text-muted)",
+  fontSize: 12.5,
+  fontWeight: 600,
+  cursor: "pointer",
 };

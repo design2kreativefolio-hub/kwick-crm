@@ -6,11 +6,13 @@ import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { useAuth } from "@/lib/auth";
+import { LiveUpdatesProvider } from "@/lib/liveUpdates";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -24,13 +26,31 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // The same hamburger button in the Topbar does double duty: on desktop it
+  // collapses the sidebar to an icon rail, on mobile it opens/closes the
+  // off-canvas drawer — decided by viewport width at click time.
+  const toggleNav = () => {
+    if (typeof window !== "undefined" && window.innerWidth <= 900) {
+      setMobileNavOpen((v) => !v);
+    } else {
+      setCollapsed((v) => !v);
+    }
+  };
+
   return (
-    <div className="shell">
-      <Sidebar role={user.role} collapsed={collapsed} />
-      <div className="shell-main">
-        <Topbar collapsed={collapsed} onToggleCollapsed={() => setCollapsed((v) => !v)} />
-        <main className="shell-content">{children}</main>
+    <LiveUpdatesProvider>
+      <div className="shell">
+        <Sidebar
+          role={user.role}
+          collapsed={collapsed}
+          mobileOpen={mobileNavOpen}
+          onNavigate={() => setMobileNavOpen(false)}
+        />
+        <div className="shell-main">
+          <Topbar collapsed={collapsed} onToggleCollapsed={toggleNav} />
+          <main className="shell-content">{children}</main>
+        </div>
       </div>
-    </div>
+    </LiveUpdatesProvider>
   );
 }

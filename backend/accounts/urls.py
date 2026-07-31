@@ -5,10 +5,12 @@ from .views import (
     ApproveUserView,
     AvatarUploadView,
     ChangePasswordView,
+    ForgotPasswordView,
     InviteCodeCreateView,
     LoginView,
     MeView,
     RegisterView,
+    RejectUserView,
     SetPasswordView,
     VerifyInviteView,
 )
@@ -23,5 +25,7 @@ urlpatterns = [
     path("me/avatar", AvatarUploadView.as_view(), name="auth-avatar"),
     path("invite-codes", InviteCodeCreateView.as_view(), name="auth-invite-codes"),
     path("approve/<int:user_id>", ApproveUserView.as_view(), name="auth-approve"),
+    path("reject/<int:user_id>", RejectUserView.as_view(), name="auth-reject"),
+    path("forgot-password", ForgotPasswordView.as_view(), name="auth-forgot-password"),
     path("set-password", SetPasswordView.as_view(), name="auth-set-password"),
 ]

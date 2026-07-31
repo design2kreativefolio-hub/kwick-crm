@@ -19,6 +19,8 @@ export const SOURCE_META: Record<
   task: { icon: "bi-check-square-fill", color: "#219150", bg: "var(--success-soft)", label: "Task", href: "/tasks" },
   leave_request: { icon: "bi-airplane-fill", color: "var(--warning)", bg: "var(--warning-soft)", label: "Leave request", href: "/hr" },
   ticket: { icon: "bi-ticket-perforated-fill", color: "var(--danger)", bg: "var(--danger-soft)", label: "Ticket", href: "/hr" },
+  document: { icon: "bi-file-earmark-text-fill", color: "#7C4FE0", bg: "#F0EBFB", label: "Document", href: "/profile" },
+  staff_renewal: { icon: "bi-exclamation-triangle-fill", color: "var(--danger)", bg: "var(--danger-soft)", label: "Renewal due", href: "/hr" },
 };
 export const DEFAULT_SOURCE_META = { icon: "bi-bell-fill", color: "var(--gold)", bg: "var(--gold-soft)", label: "Update", href: "" };
 

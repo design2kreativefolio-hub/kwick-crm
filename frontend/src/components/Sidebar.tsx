@@ -5,59 +5,132 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Logo } from "@/components/Logo";
-import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { visibleNav } from "@/lib/nav";
-import { NotificationEvent } from "@/lib/notifications";
+import { useLiveUpdates } from "@/lib/liveUpdates";
+import { NavItem, visibleNav } from "@/lib/nav";
 
 export function Sidebar({
   role,
   collapsed,
+  mobileOpen = false,
+  onNavigate,
 }: {
   role: "manager" | "employee";
   collapsed: boolean;
+  mobileOpen?: boolean;
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const groups = visibleNav(role);
-  const [unread, setUnread] = useState(0);
+  const { notifUnread, chatUnread } = useLiveUpdates();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  const badgeCounts: Record<string, number> = { "/reminders": notifUnread, "/chat": chatUnread };
+
+  // Auto-expand (never auto-collapse) whichever parent contains the current
+  // page, so landing directly on e.g. /projects/clients still shows it open.
   useEffect(() => {
-    api<NotificationEvent[]>("/api/notifications")
-      .then((items) => setUnread(items.filter((n) => !n.read_at).length))
-      .catch(() => {});
+    for (const group of groups) {
+      for (const item of group.items) {
+        if (!item.children) continue;
+        const childActive = item.children.some(
+          (c) => c.href && (pathname === c.href || pathname.startsWith(c.href + "/"))
+        );
+        if (childActive) setExpanded((prev) => new Set(prev).add(item.label));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  const isActive = (href?: string) => !!href && (pathname === href || pathname.startsWith(href + "/"));
+
+  const renderLeaf = (item: NavItem) => {
+    const active = isActive(item.href);
+    const count = badgeCounts[item.href ?? ""] ?? 0;
+    const showUnreadBadge = count > 0;
+    return (
+      <Link
+        key={item.href}
+        href={item.href ?? "#"}
+        className="sidebar-link"
+        style={navLink(active, collapsed)}
+        title={collapsed ? item.label : undefined}
+        onClick={onNavigate}
+      >
+        <span style={{ position: "relative" }}>
+          <span style={iconChip(active)}>
+            <i className={`bi ${item.icon}`} style={{ fontSize: 14.5 }} />
+          </span>
+          {showUnreadBadge && <span style={navBadge}>{count > 9 ? "9+" : count}</span>}
+        </span>
+        {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+        {!collapsed && showUnreadBadge && <span className="badge badge-danger">{count}</span>}
+        {!collapsed && !showUnreadBadge && active && <span style={statusDot} />}
+      </Link>
+    );
+  };
+
+  const renderParent = (item: NavItem) => {
+    const children = item.children ?? [];
+    const anyChildActive = children.some((c) => isActive(c.href));
+    const isOpen = expanded.has(item.label);
+    return (
+      <div key={item.label}>
+        <button
+          type="button"
+          className="sidebar-link"
+          style={{ ...navLink(anyChildActive, collapsed), width: "100%", border: "none", background: anyChildActive ? "rgba(255,255,255,0.12)" : "transparent" }}
+          title={collapsed ? item.label : undefined}
+          onClick={() => {
+            if (collapsed) {
+              // No room to show children in icon-rail mode — jump to the
+              // first child instead of toggling an invisible accordion.
+              const first = children[0];
+              if (first?.href) window.location.assign(first.href);
+              return;
+            }
+            setExpanded((prev) => {
+              const next = new Set(prev);
+              if (next.has(item.label)) next.delete(item.label);
+              else next.add(item.label);
+              return next;
+            });
+          }}
+        >
+          <span style={iconChip(anyChildActive)}>
+            <i className={`bi ${item.icon}`} style={{ fontSize: 14.5 }} />
+          </span>
+          {!collapsed && <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>}
+          {!collapsed && (
+            <i
+              className="bi bi-chevron-down"
+              style={{ fontSize: 10, transition: "transform 0.15s ease", transform: isOpen ? "rotate(180deg)" : "none" }}
+            />
+          )}
+        </button>
+        {!collapsed && isOpen && (
+          <div style={{ marginLeft: 14, paddingLeft: 12, borderLeft: "1px solid rgba(255,255,255,0.1)" }}>
+            {children.map((c) => renderLeaf(c))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <aside style={aside(collapsed)}>
+    <>
+      {mobileOpen && <div className="sidebar-mobile-backdrop" onClick={onNavigate} />}
+      <aside
+        className={`app-sidebar${mobileOpen ? " sidebar-mobile-open" : ""}`}
+        style={aside(collapsed)}
+      >
       <div style={brand(collapsed)}>{collapsed ? <Logo icon height={26} /> : <Logo height={26} light />}</div>
       <nav className="sidebar-nav-scroll" style={{ padding: "14px 12px", overflowY: "auto", flex: 1 }}>
         {groups.map((group) => (
           <div key={group.heading} style={{ marginBottom: 20 }}>
             {!collapsed && <div style={heading}>{group.heading}</div>}
-            {group.items.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(item.href + "/");
-              const showUnreadBadge = item.href === "/reminders" && unread > 0;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="sidebar-link"
-                  style={navLink(active, collapsed)}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <span style={{ position: "relative" }}>
-                    <span style={iconChip(active)}>
-                      <i className={`bi ${item.icon}`} style={{ fontSize: 14.5 }} />
-                    </span>
-                    {showUnreadBadge && <span style={navBadge}>{unread > 9 ? "9+" : unread}</span>}
-                  </span>
-                  {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
-                  {!collapsed && showUnreadBadge && <span className="badge badge-danger">{unread}</span>}
-                  {!collapsed && !showUnreadBadge && active && <span style={statusDot} />}
-                </Link>
-              );
-            })}
+            {group.items.map((item) => (item.children ? renderParent(item) : renderLeaf(item)))}
           </div>
         ))}
       </nav>
@@ -75,7 +148,8 @@ export function Sidebar({
           </div>
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 }
 

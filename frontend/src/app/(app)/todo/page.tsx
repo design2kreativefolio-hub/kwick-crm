@@ -89,14 +89,21 @@ export default function TodoPage() {
     setEditText(item.text);
   };
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText("");
+  };
+
   const saveEdit = async (id: number) => {
     const text = editText.trim();
-    setEditingId(null);
     if (!text) return;
+    setEditingId(null);
     setItems((prev) => prev.map((t) => (t.id === id ? { ...t, text } : t)));
     try {
       await api(`/api/todos/${id}`, { method: "PATCH", body: JSON.stringify({ text }) });
-    } catch {
+      showToast("Todo updated.");
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't update todo." : err.message, "error");
       load();
     }
   };
@@ -147,10 +154,16 @@ export default function TodoPage() {
 
           <div style={main}>
             <div style={mainHeader}>
-              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                <input type="checkbox" checked={items.length > 0 && openCount === 0} onChange={markAll} />
+              <button
+                onClick={markAll}
+                disabled={items.length === 0 || openCount === 0}
+                style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: items.length === 0 || openCount === 0 ? "default" : "pointer", padding: 0 }}
+              >
+                <span style={{ ...tickBtn, ...(items.length > 0 && openCount === 0 ? tickBtnDone : {}) }}>
+                  <i className="bi bi-check-lg" />
+                </span>
                 <span style={{ fontSize: 13, fontWeight: 500 }}>Mark All</span>
-              </label>
+              </button>
               <span className="badge badge-success">{openCount} Tasks left</span>
             </div>
 
@@ -173,17 +186,35 @@ export default function TodoPage() {
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {visible.map((t) => (
                 <li key={t.id} style={todoRow}>
-                  <input type="checkbox" checked={t.done} onChange={() => toggle(t)} style={{ marginTop: 3 }} />
+                  <button
+                    className="icon-btn-anim"
+                    style={{ ...tickBtn, ...(t.done ? tickBtnDone : {}) }}
+                    onClick={() => toggle(t)}
+                    aria-label={t.done ? "Mark incomplete" : "Mark complete"}
+                    title={t.done ? "Mark incomplete" : "Mark complete"}
+                  >
+                    <i className="bi bi-check-lg" />
+                  </button>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {editingId === t.id ? (
-                      <input
-                        className="input"
-                        autoFocus
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        onBlur={() => saveEdit(t.id)}
-                        onKeyDown={(e) => e.key === "Enter" && saveEdit(t.id)}
-                      />
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          className="input"
+                          autoFocus
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveEdit(t.id);
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                        />
+                        <button className="btn btn-sm" onClick={() => saveEdit(t.id)} disabled={!editText.trim()}>
+                          <i className="bi bi-check-lg" />
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>
+                          <i className="bi bi-x-lg" />
+                        </button>
+                      </div>
                     ) : (
                       <>
                         <div style={{ fontSize: 14, textDecoration: t.done ? "line-through" : "none", color: t.done ? "var(--text-muted)" : "var(--text)" }}>
@@ -195,12 +226,16 @@ export default function TodoPage() {
                       </>
                     )}
                   </div>
-                  <button className="icon-btn-anim" style={rowIconBtn} onClick={() => startEdit(t)} aria-label="Edit">
-                    <i className="bi bi-pencil-fill" style={{ fontSize: 12.5 }} />
-                  </button>
-                  <button className="icon-btn-anim" style={rowIconBtn} onClick={() => remove(t.id)} aria-label="Delete">
-                    <i className="bi bi-trash-fill" style={{ fontSize: 12.5, color: "var(--danger)" }} />
-                  </button>
+                  {editingId !== t.id && (
+                    <>
+                      <button className="icon-btn-anim" style={rowIconBtn} onClick={() => startEdit(t)} aria-label="Edit">
+                        <i className="bi bi-pencil-fill" style={{ fontSize: 12.5 }} />
+                      </button>
+                      <button className="icon-btn-anim" style={rowIconBtn} onClick={() => remove(t.id)} aria-label="Delete">
+                        <i className="bi bi-trash-fill" style={{ fontSize: 12.5, color: "var(--danger)" }} />
+                      </button>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
@@ -256,4 +291,21 @@ const rowIconBtn: React.CSSProperties = {
   placeItems: "center",
   background: "var(--bg)",
   border: "none",
+};
+const tickBtn: React.CSSProperties = {
+  width: 26,
+  height: 26,
+  minWidth: 26,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "var(--bg)",
+  color: "var(--border)",
+  border: "none",
+  fontSize: 14,
+  marginTop: 2,
+};
+const tickBtnDone: React.CSSProperties = {
+  background: "var(--success-soft)",
+  color: "var(--success)",
 };
