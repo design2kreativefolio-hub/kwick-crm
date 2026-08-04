@@ -7,8 +7,9 @@ from datetime import date, datetime
 from django.db.models import Q
 
 from calendar_app.models import ManualReminder
-from common.permissions import is_manager
+from common.permissions import is_superadmin
 from daily_tracker.models import DailyTrackerEntry
+from projects.models import ContentCalendarItem, Project
 from renewals.models import Renewal
 from tasks.models import Task
 
@@ -21,12 +22,19 @@ def _iso(value):
 
 def build_agenda(*, user, dt_from, dt_to, scope="self"):
     """Return a flat, date-sorted list of agenda items. scope='all' is manager-only."""
-    company = scope == "all" and is_manager(user)
+    company = scope == "all" and is_superadmin(user)
     items = []
 
     # --- Tasks with a due_date ---
     task_qs = Task.objects.filter(due_date__range=(dt_from, dt_to)).select_related("assignee")
-    if not company:
+    if company:
+        # Company-wide view stays focused on real tasks — a task mirrored
+        # from a client's content calendar assignment (spec follow-up: the
+        # superadmin's calendar shouldn't show employees' per-client social
+        # media assignments) is surfaced on that client's own calendar
+        # instead, not here.
+        task_qs = task_qs.filter(content_item__isnull=True)
+    else:
         task_qs = task_qs.filter(assignee=user)
     for t in task_qs:
         items.append(
@@ -53,6 +61,39 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "meta": {"user": e.user_id},
             }
         )
+
+    # --- Project delivery dates ---
+    project_qs = Project.objects.filter(delivery_date__range=(dt_from, dt_to)).prefetch_related("members")
+    if not company:
+        project_qs = project_qs.filter(members=user)
+    for p in project_qs.distinct():
+        items.append(
+            {
+                "source": "project",
+                "id": p.id,
+                "title": f"{p.name} — delivery",
+                "date": _iso(p.delivery_date),
+                "meta": {"status": p.status, "client": p.client},
+            }
+        )
+
+    # --- Content calendar items (client social media calendar) — self scope
+    # only; the superadmin's company-wide calendar deliberately excludes
+    # these (spec follow-up), see that client's own calendar page instead. ---
+    if not company:
+        content_qs = ContentCalendarItem.objects.filter(
+            scheduled_date__range=(dt_from, dt_to), assignees=user
+        ).select_related("client")
+        for ci in content_qs.distinct():
+            items.append(
+                {
+                    "source": "content_calendar",
+                    "id": ci.id,
+                    "title": f"{ci.title} — {ci.client.name}",
+                    "date": _iso(ci.scheduled_date),
+                    "meta": {"status": ci.status, "content_type": ci.content_type, "client": ci.client_id},
+                }
+            )
 
     # --- Renewals (client + staff) — manager scope only ---
     if company:

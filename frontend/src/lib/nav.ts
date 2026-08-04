@@ -1,7 +1,10 @@
 // Sidebar navigation grouping (NiceAdmin-style structure, spec §2/§4 role gating).
-// `managerOnly` items are hidden for employees — but the backend still enforces
+// Items tagged with `module` are hidden unless the user is the superadmin or
+// has been granted access to that module — but the backend still enforces
 // access server-side; hiding here is cosmetic only. Icons are Bootstrap Icons
 // (`bi bi-*`), the same icon set the NiceAdmin reference template uses.
+
+export type Module = "hr" | "sales" | "renewals" | "reports";
 
 export type NavItem = {
   label: string;
@@ -9,7 +12,7 @@ export type NavItem = {
   // children and isn't itself a page.
   href?: string;
   icon: string;
-  managerOnly?: boolean;
+  module?: Module;
   children?: NavItem[];
 };
 
@@ -41,10 +44,10 @@ export const NAV: NavGroup[] = [
   {
     heading: "Business",
     items: [
-      { label: "Sales", href: "/sales", icon: "bi-briefcase-fill", managerOnly: true },
-      { label: "HR", href: "/hr", icon: "bi-people-fill", managerOnly: true },
-      { label: "Renewals", href: "/renewals", icon: "bi-calendar-check-fill", managerOnly: true },
-      { label: "Reports", href: "/reports", icon: "bi-bar-chart-line-fill", managerOnly: true },
+      { label: "Sales", href: "/sales", icon: "bi-briefcase-fill", module: "sales" },
+      { label: "HR", href: "/hr", icon: "bi-people-fill", module: "hr" },
+      { label: "Renewals", href: "/renewals", icon: "bi-calendar-check-fill", module: "renewals" },
+      { label: "Reports", href: "/reports", icon: "bi-bar-chart-line-fill", module: "reports" },
     ],
   },
   {
@@ -60,20 +63,24 @@ export const NAV: NavGroup[] = [
   },
 ];
 
-function visibleItem(item: NavItem, role: "manager" | "employee"): NavItem | null {
-  if (item.managerOnly && role !== "manager") return null;
+function visibleItem(
+  item: NavItem,
+  role: "superadmin" | "employee",
+  moduleAccess: Module[]
+): NavItem | null {
+  if (item.module && role !== "superadmin" && !moduleAccess.includes(item.module)) return null;
   if (!item.children) return item;
   const children = item.children
-    .map((c) => visibleItem(c, role))
+    .map((c) => visibleItem(c, role, moduleAccess))
     .filter((c): c is NavItem => c !== null);
   return children.length > 0 ? { ...item, children } : null;
 }
 
-export function visibleNav(role: "manager" | "employee"): NavGroup[] {
+export function visibleNav(role: "superadmin" | "employee", moduleAccess: Module[] = []): NavGroup[] {
   return NAV.map((group) => ({
     ...group,
     items: group.items
-      .map((i) => visibleItem(i, role))
+      .map((i) => visibleItem(i, role, moduleAccess))
       .filter((i): i is NavItem => i !== null),
   })).filter((group) => group.items.length > 0);
 }

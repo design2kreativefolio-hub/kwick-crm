@@ -28,15 +28,15 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user?.role !== "manager") return;
+    if (user?.role !== "superadmin") return;
     api<LogEntry[]>("/api/dashboard/logs")
       .then(setLogs)
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [user]);
 
-  if (user && user.role !== "manager") {
-    return <p className="muted">Manager access required.</p>;
+  if (user && user.role !== "superadmin") {
+    return <p className="muted">Superadmin access required.</p>;
   }
 
   return (

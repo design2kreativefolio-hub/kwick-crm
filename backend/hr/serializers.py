@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from accounts.models import Role, StaffProfile, UserStatus
 
-from .models import EmployeeCollateral, Leave, LeaveBalance, Ticket
+from .models import EmployeeCollateral, EmployeeRecord, Leave, LeaveBalance, Ticket
 
 User = get_user_model()
 
@@ -19,6 +19,19 @@ class StaffListSerializer(serializers.ModelSerializer):
     )
     iloe_renewal_date = serializers.DateField(source="profile.iloe_renewal_date", read_only=True, default=None)
     avatar_url = serializers.CharField(source="profile.avatar_url", read_only=True, default="")
+    nationality = serializers.CharField(source="profile.nationality", read_only=True, default="")
+    emergency_contact_uae = serializers.CharField(
+        source="profile.emergency_contact_uae", read_only=True, default=""
+    )
+    emergency_contact_relation = serializers.CharField(
+        source="profile.emergency_contact_relation", read_only=True, default=""
+    )
+    home_country_address = serializers.CharField(
+        source="profile.home_country_address", read_only=True, default=""
+    )
+    home_country_number = serializers.CharField(
+        source="profile.home_country_number", read_only=True, default=""
+    )
 
     class Meta:
         model = User
@@ -36,6 +49,11 @@ class StaffListSerializer(serializers.ModelSerializer):
             "insurance_renewal_date",
             "iloe_renewal_date",
             "avatar_url",
+            "nationality",
+            "emergency_contact_uae",
+            "emergency_contact_relation",
+            "home_country_address",
+            "home_country_number",
         ]
 
 
@@ -103,6 +121,11 @@ class StaffUpdateSerializer(serializers.Serializer):
     visa_renewal_date = serializers.DateField(required=False, allow_null=True)
     insurance_renewal_date = serializers.DateField(required=False, allow_null=True)
     iloe_renewal_date = serializers.DateField(required=False, allow_null=True)
+    nationality = serializers.CharField(required=False, allow_blank=True)
+    emergency_contact_uae = serializers.CharField(required=False, allow_blank=True)
+    emergency_contact_relation = serializers.CharField(required=False, allow_blank=True)
+    home_country_address = serializers.CharField(required=False, allow_blank=True)
+    home_country_number = serializers.CharField(required=False, allow_blank=True)
 
     def validate_email(self, value):
         user = self.context["user"]
@@ -131,6 +154,11 @@ class StaffUpdateSerializer(serializers.Serializer):
             "visa_renewal_date",
             "insurance_renewal_date",
             "iloe_renewal_date",
+            "nationality",
+            "emergency_contact_uae",
+            "emergency_contact_relation",
+            "home_country_address",
+            "home_country_number",
         ]
         changed = [f for f in profile_fields if f in self.validated_data]
         for f in changed:
@@ -164,6 +192,13 @@ class EmployeeCollateralSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["category", "file_url", "generated_at", "generated_by", "created_at"]
+
+
+class EmployeeRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeRecord
+        fields = ["id", "staff", "title", "file_url", "uploaded_by", "created_at"]
+        read_only_fields = ["file_url", "uploaded_by", "created_at"]
 
 
 class LeaveSerializer(serializers.ModelSerializer):

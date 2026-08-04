@@ -1,23 +1,33 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { Combobox } from "@/components/Combobox";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { DatePicker } from "@/components/DatePicker";
 import { Select } from "@/components/Select";
-import { api, ApiError, unwrapList } from "@/lib/api";
+import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
 type ProjectStatus = "assigned" | "started" | "waiting_approval" | "completed";
+type ProjectPriority = "low" | "medium" | "high";
 
 type Project = {
   id: number;
   name: string;
-  client: number | null;
-  client_name: string;
+  description: string;
+  client: string;
   status: ProjectStatus;
+  priority: ProjectPriority;
   start_date: string | null;
   end_date: string | null;
+  delivery_date: string | null;
   members: number[];
+  created_by: number | null;
+  created_by_name: string;
   created_at: string;
 };
 
@@ -30,9 +40,10 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
   waiting_approval: "Waiting for approval",
   completed: "Completed",
 };
+// Four visually distinct tones so a glance at the table tells the story.
 const STATUS_BADGE: Record<ProjectStatus, string> = {
   assigned: "badge-muted",
-  started: "badge-warning",
+  started: "badge-purple",
   waiting_approval: "badge-warning",
   completed: "badge-success",
 };
@@ -41,17 +52,43 @@ const STATUS_OPTIONS = (Object.keys(STATUS_LABEL) as ProjectStatus[]).map((s) =>
   label: STATUS_LABEL[s],
 }));
 
+const PRIORITY_LABEL: Record<ProjectPriority, string> = { low: "Low", medium: "Medium", high: "High" };
+const PRIORITY_BADGE: Record<ProjectPriority, string> = {
+  low: "badge-muted",
+  medium: "badge-warning",
+  high: "badge-danger",
+};
+const PRIORITY_OPTIONS = (Object.keys(PRIORITY_LABEL) as ProjectPriority[]).map((p) => ({
+  value: p,
+  label: PRIORITY_LABEL[p],
+}));
+
 const emptyForm = {
   name: "",
+  description: "",
   client: "",
   assignee: "",
   status: "assigned" as ProjectStatus,
+  priority: "medium" as ProjectPriority,
+  delivery_date: "",
 };
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function isOverdue(iso: string | null, status: ProjectStatus) {
+  if (!iso || status === "completed") return false;
+  return new Date(iso) < new Date(new Date().toDateString());
+}
 
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const isManager = user?.role === "manager";
+  const isSuperadmin = user?.role === "superadmin";
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,9 +101,10 @@ export default function ProjectsPage() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const [showAddClient, setShowAddClient] = useState(false);
-  const [newClientName, setNewClientName] = useState("");
-  const [addingClient, setAddingClient] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editForm, setEditForm] = useState(emptyForm);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const loadProjects = () => {
     setLoading(true);
@@ -94,34 +132,12 @@ export default function ProjectsPage() {
     return map;
   }, [directory]);
 
-  const clientOptions = useMemo(
-    () => [{ value: "", label: "No client" }, ...clients.map((c) => ({ value: String(c.id), label: c.name }))],
-    [clients]
-  );
   const assigneeOptions = useMemo(
     () => [{ value: "", label: "Unassigned" }, ...directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email }))],
     [directory]
   );
 
-  const addClient = async () => {
-    if (!newClientName.trim()) return;
-    setAddingClient(true);
-    try {
-      const created = await api<ClientOption>("/api/projects/clients", {
-        method: "POST",
-        body: JSON.stringify({ name: newClientName.trim(), services: [] }),
-      });
-      setNewClientName("");
-      setShowAddClient(false);
-      loadClients();
-      setForm((f) => ({ ...f, client: String(created.id) }));
-      showToast("Client added.");
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't add that client." : err.message, "error");
-    } finally {
-      setAddingClient(false);
-    }
-  };
+  const clientNames = useMemo(() => clients.map((c) => c.name), [clients]);
 
   const addProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,8 +148,11 @@ export default function ProjectsPage() {
         method: "POST",
         body: JSON.stringify({
           name: form.name,
-          client: form.client ? Number(form.client) : null,
+          description: form.description,
+          client: form.client.trim(),
           status: form.status,
+          priority: form.priority,
+          delivery_date: form.delivery_date || null,
           members: form.assignee ? [Number(form.assignee)] : [],
         }),
       });
@@ -142,27 +161,56 @@ export default function ProjectsPage() {
       showToast("Project added.");
       loadProjects();
     } catch (err: any) {
-      setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+      setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
     } finally {
       setCreating(false);
     }
   };
 
-  const changeStatus = async (project: Project, status: string) => {
-    setBusyId(project.id);
-    setProjects((prev) => prev.map((p) => (p.id === project.id ? { ...p, status: status as ProjectStatus } : p)));
+  const openEdit = (p: Project) => {
+    setEditingProject(p);
+    setEditForm({
+      name: p.name,
+      description: p.description || "",
+      client: p.client || "",
+      assignee: p.members[0] ? String(p.members[0]) : "",
+      status: p.status,
+      priority: p.priority,
+      delivery_date: p.delivery_date || "",
+    });
+    setEditError(null);
+  };
+
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject) return;
+    setEditError(null);
+    setSaving(true);
     try {
-      await api(`/api/projects/${project.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
-    } catch {
-      showToast("Couldn't update project status.", "error");
+      await api(`/api/projects/${editingProject.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editForm.name,
+          description: editForm.description,
+          client: editForm.client.trim(),
+          status: editForm.status,
+          priority: editForm.priority,
+          delivery_date: editForm.delivery_date || null,
+          members: editForm.assignee ? [Number(editForm.assignee)] : [],
+        }),
+      });
+      showToast("Project updated.");
+      setEditingProject(null);
       loadProjects();
+    } catch (err: any) {
+      setEditError(err instanceof ApiError ? formatApiError(err.data) : err.message);
     } finally {
-      setBusyId(null);
+      setSaving(false);
     }
   };
 
   const deleteProject = async (id: number) => {
-    if (!confirm("Delete this project?")) return;
+    if (!(await confirm("Delete this project?", { danger: true, confirmLabel: "Delete" }))) return;
     setBusyId(id);
     try {
       await api(`/api/projects/${id}`, { method: "DELETE" });
@@ -180,18 +228,15 @@ export default function ProjectsPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Projects</h1>
-          <p className="muted" style={{ marginTop: 4 }}>
-            Short-term projects — e.g. &quot;Last Flight Out Podcast&quot;. Assign a client, an employee, and track status.
-          </p>
         </div>
-        {isManager && (
+        {isSuperadmin && (
           <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
             <i className="bi bi-plus-lg" /> Add Project
           </button>
         )}
       </div>
 
-      {showForm && isManager && (
+      {showForm && isSuperadmin && (
         <form className="card" onSubmit={addProject}>
           <span className="card-title">New Project</span>
           <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
@@ -205,43 +250,30 @@ export default function ProjectsPage() {
                 required
               />
             </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Description</label>
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="What's this project about?"
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                style={{ resize: "vertical" }}
+              />
+            </div>
             <div style={fieldGrid}>
               <div>
-                <label className="field-label" style={{ marginTop: 0 }}>
-                  Client
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ marginLeft: 8, padding: "1px 8px" }}
-                    onClick={() => setShowAddClient((v) => !v)}
-                  >
-                    + new client
-                  </button>
-                </label>
-                <Select
+                <label className="field-label" style={{ marginTop: 0 }}>Client</label>
+                <Combobox
                   value={form.client}
                   onChange={(v) => setForm((f) => ({ ...f, client: v }))}
-                  options={clientOptions}
+                  options={clientNames}
+                  placeholder="Pick an existing client or type one"
                   ariaLabel="Client"
                 />
-                {showAddClient && (
-                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                    <input
-                      className="input"
-                      placeholder="New client name"
-                      value={newClientName}
-                      onChange={(e) => setNewClientName(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      disabled={addingClient || !newClientName.trim()}
-                      onClick={addClient}
-                    >
-                      {addingClient ? "…" : "Add"}
-                    </button>
-                  </div>
-                )}
+                <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  Typing a new name here won&apos;t add it to the Clients page — add it there if you want it saved.
+                </p>
               </div>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
@@ -261,6 +293,26 @@ export default function ProjectsPage() {
                   ariaLabel="Status"
                 />
               </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Priority</label>
+                <Select
+                  value={form.priority}
+                  onChange={(v) => setForm((f) => ({ ...f, priority: v as ProjectPriority }))}
+                  options={PRIORITY_OPTIONS}
+                  ariaLabel="Priority"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Delivery date</label>
+                <DatePicker
+                  value={form.delivery_date}
+                  onChange={(v) => setForm((f) => ({ ...f, delivery_date: v }))}
+                  ariaLabel="Delivery date"
+                />
+                <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  Shows on the assigned employee&apos;s Calendar and nags them daily as it nears/passes, until marked Completed.
+                </p>
+              </div>
             </div>
 
             {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
@@ -274,7 +326,7 @@ export default function ProjectsPage() {
       <div className="card">
         <span className="card-title">
           <i className="bi bi-kanban-fill" style={{ color: "var(--gold)" }} />
-          {isManager ? "All Projects" : "My Projects"}
+          {isSuperadmin ? "All Projects" : "My Projects"}
         </span>
         {loading && <p className="muted">Loading…</p>}
         {!loading && projects.length === 0 && <p className="muted">No projects yet.</p>}
@@ -286,45 +338,52 @@ export default function ProjectsPage() {
                   <th>Name</th>
                   <th>Client</th>
                   <th>Assigned to</th>
+                  <th>Priority</th>
                   <th>Status</th>
-                  {isManager && <th></th>}
+                  <th>Delivery</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {projects.map((p) => {
                   const assignee = p.members[0] ? directoryById.get(p.members[0]) : undefined;
+                  const overdue = isOverdue(p.delivery_date, p.status);
                   return (
                     <tr key={p.id}>
-                      <td style={{ fontWeight: 600, color: "var(--navy)" }}>{p.name}</td>
-                      <td>{p.client_name || "—"}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <Link href={`/projects/${p.id}`} style={{ color: "var(--navy)" }}>
+                          {p.name}
+                        </Link>
+                      </td>
+                      <td>{p.client || "—"}</td>
                       <td>{assignee ? assignee.full_name || assignee.email : "—"}</td>
                       <td>
-                        {isManager ? (
-                          <div style={{ width: 170 }}>
-                            <Select
-                              value={p.status}
-                              onChange={(v) => changeStatus(p, v)}
-                              options={STATUS_OPTIONS}
-                              compact
-                              ariaLabel={`Change status for ${p.name}`}
-                            />
-                          </div>
-                        ) : (
-                          <span className={`badge ${STATUS_BADGE[p.status]}`}>{STATUS_LABEL[p.status]}</span>
-                        )}
+                        <span className={`badge ${PRIORITY_BADGE[p.priority]}`}>{PRIORITY_LABEL[p.priority]}</span>
                       </td>
-                      {isManager && (
-                        <td>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            style={{ color: "var(--danger)" }}
-                            disabled={busyId === p.id}
-                            onClick={() => deleteProject(p.id)}
-                          >
-                            <i className="bi bi-trash-fill" />
+                      <td>
+                        <span className={`badge ${STATUS_BADGE[p.status]}`}>{STATUS_LABEL[p.status]}</span>
+                      </td>
+                      <td style={{ color: overdue ? "var(--danger)" : undefined, fontWeight: overdue ? 700 : undefined }}>
+                        {formatDate(p.delivery_date)}
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => openEdit(p)}>
+                            <i className="bi bi-pencil-fill" /> Edit
                           </button>
-                        </td>
-                      )}
+                          {isSuperadmin && (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: "var(--danger)" }}
+                              disabled={busyId === p.id}
+                              onClick={() => deleteProject(p.id)}
+                              aria-label="Delete project"
+                            >
+                              <i className="bi bi-trash-fill" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -333,6 +392,115 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {editingProject && (
+          <motion.div
+            style={modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setEditingProject(null)}
+          >
+            <motion.form
+              className="card"
+              style={modalCard}
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={saveEdit}
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="card-title" style={{ margin: 0 }}>Edit Project</span>
+                <button type="button" className="icon-btn-anim" style={closeBtn} onClick={() => setEditingProject(null)} aria-label="Close">
+                  <i className="bi bi-x-lg" style={{ fontSize: 13 }} />
+                </button>
+              </div>
+              <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Project name</label>
+                  <input
+                    className="input"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Description</label>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    placeholder="What's this project about?"
+                    value={editForm.description}
+                    onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                    style={{ resize: "vertical" }}
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Client</label>
+                  <Combobox
+                    value={editForm.client}
+                    onChange={(v) => setEditForm((f) => ({ ...f, client: v }))}
+                    options={clientNames}
+                    placeholder="Pick an existing client or type one"
+                    ariaLabel="Client"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
+                  <Select
+                    value={editForm.assignee}
+                    onChange={(v) => setEditForm((f) => ({ ...f, assignee: v }))}
+                    options={assigneeOptions}
+                    ariaLabel="Assign to"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Status</label>
+                  <Select
+                    value={editForm.status}
+                    onChange={(v) => setEditForm((f) => ({ ...f, status: v as ProjectStatus }))}
+                    options={STATUS_OPTIONS}
+                    ariaLabel="Status"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Priority</label>
+                  <Select
+                    value={editForm.priority}
+                    onChange={(v) => setEditForm((f) => ({ ...f, priority: v as ProjectPriority }))}
+                    options={PRIORITY_OPTIONS}
+                    ariaLabel="Priority"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Delivery date</label>
+                  <DatePicker
+                    value={editForm.delivery_date}
+                    onChange={(v) => setEditForm((f) => ({ ...f, delivery_date: v }))}
+                    ariaLabel="Delivery date"
+                  />
+                </div>
+
+                {editError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{editError}</p>}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="btn" disabled={saving}>
+                    {saving ? "Saving…" : "Save changes"}
+                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => setEditingProject(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {ConfirmDialog}
     </div>
   );
 }
@@ -341,4 +509,32 @@ const fieldGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 14,
+};
+
+const modalOverlay: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(16, 19, 63, 0.35)",
+  display: "grid",
+  placeItems: "center",
+  zIndex: 50,
+  padding: 16,
+};
+
+const modalCard: React.CSSProperties = {
+  width: "100%",
+  maxWidth: 440,
+  maxHeight: "90vh",
+  overflowY: "auto",
+};
+
+const closeBtn: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  minWidth: 28,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "var(--bg)",
+  border: "none",
 };

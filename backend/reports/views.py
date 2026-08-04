@@ -3,9 +3,9 @@ from datetime import date, timedelta
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import UserStatus
+from accounts.models import Module, UserStatus
 from accounts.models import User
-from common.permissions import IsManager
+from common.permissions import HasModuleAccess
 from projects.models import Project
 from renewals.models import Renewal
 from sales.models import Invoice, Proposal
@@ -13,9 +13,10 @@ from tasks.models import Task
 
 
 class ReportSummaryView(APIView):
-    """GET /api/reports/summary — cross-module manager summary (spec §16)."""
+    """GET /api/reports/summary — cross-module summary (spec §16)."""
 
-    permission_classes = [IsManager]
+    permission_classes = [HasModuleAccess]
+    required_module = Module.REPORTS
 
     def get(self, request):
         soon = date.today() + timedelta(days=30)
@@ -25,8 +26,8 @@ class ReportSummaryView(APIView):
                     status__in=[Proposal.Status.DRAFT, Proposal.Status.SENT]
                 ).count(),
                 "overdue_invoices": Invoice.objects.filter(status=Invoice.Status.OVERDUE).count(),
-                "active_projects": Project.objects.filter(
-                    status=Project.Status.ONGOING
+                "active_projects": Project.objects.exclude(
+                    status=Project.Status.COMPLETED
                 ).count(),
                 "open_tasks": Task.objects.exclude(status=Task.Status.COMPLETED).count(),
                 "upcoming_renewals": Renewal.objects.filter(

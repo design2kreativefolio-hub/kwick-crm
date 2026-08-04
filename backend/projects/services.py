@@ -4,6 +4,7 @@ from datetime import date
 from .models import ArtworkSequence
 
 COMPANY = "KF"  # Kreativefolio
+SERIES_YEAR = 2024  # fixed series label — the numbering never resets/rolls to the real current year
 
 
 def _initials(full_name: str) -> str:
@@ -13,6 +14,7 @@ def _initials(full_name: str) -> str:
 
 def build_artwork_id(
     *,
+    company_name: str,
     country_code: str,
     product_name: str,
     designer_name: str,
@@ -20,15 +22,18 @@ def build_artwork_id(
 ) -> str:
     """
     Format:
-      {Company}_{Country}_{ProductName}_{Designer}_{DDMMYY}_K-{YYYY}{Seq:04d}
+      KF_{CompanyName}_{Country}_{ProductName}_{Designer}_{DDMMYY}_K-{SeriesYear}{Seq:04d}
     Example:
-      KF_UAE_Cacao_RH_260730_K-20260001
-    The sequence resets each calendar year, scoped per country_code, and is
-    generated atomically (select_for_update).
+      KF_Acme_UAE_Cacao_RH_260730_K-20264001
+    The {DDMMYY} segment is the real generation date, but the sequence's
+    leading "year" digits are a fixed series label (SERIES_YEAR) rather than
+    the actual current year — the count starts at 4001 and never resets, it
+    just keeps incrementing per country_code (generated atomically via
+    select_for_update).
     """
     on = on or date.today()
-    seq = ArtworkSequence.next_number(year=on.year, category_code=country_code)
+    seq = ArtworkSequence.next_number(year=SERIES_YEAR, category_code=country_code)
     return (
-        f"{COMPANY}_{country_code}_{product_name}_{_initials(designer_name)}"
-        f"_{on:%d%m%y}_K-{on.year}{seq:04d}"
+        f"{COMPANY}_{company_name}_{country_code}_{product_name}_{_initials(designer_name)}"
+        f"_{on:%d%m%y}_K-{SERIES_YEAR}{seq:04d}"
     )

@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { useConfirm } from "@/components/ConfirmDialog";
+import { Combobox } from "@/components/Combobox";
 import { DatePicker } from "@/components/DatePicker";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
@@ -14,8 +17,10 @@ type Task = {
   description: string;
   project: number | null;
   project_name: string;
+  client_name: string;
   assignee: number | null;
   assignee_name: string;
+  content_item: number | null;
   status: "todo" | "in_progress" | "completed";
   priority: "low" | "medium" | "high";
   due_date: string | null;
@@ -23,7 +28,7 @@ type Task = {
   created_at: string;
 };
 
-type Project = { id: number; name: string };
+type ClientOption = { id: number; name: string };
 type Contact = { id: number; full_name: string; email: string; role: string };
 
 const STATUS_OPTIONS = [
@@ -59,7 +64,7 @@ const STATUS_LABEL: Record<string, string> = {
 const emptyForm = {
   title: "",
   description: "",
-  project: "",
+  client_name: "",
   assignee: "",
   priority: "medium",
   due_date: "",
@@ -74,13 +79,15 @@ function formatDate(iso: string | null) {
 export default function TasksPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const isManager = user?.role === "manager";
+  const { confirm, ConfirmDialog } = useConfirm();
+  const isSuperadmin = user?.role === "superadmin";
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [tab, setTab] = useState<"all" | "mine">("all");
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -97,6 +104,7 @@ export default function TasksPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);
     if (search.trim()) params.set("search", search.trim());
+    if (isSuperadmin && tab === "mine" && user) params.set("assignee", String(user.id));
     const qs = params.toString();
     api<Task[] | { results: Task[] }>(`/api/tasks${qs ? `?${qs}` : ""}`)
       .then((d) => setTasks(unwrapList(d)))
@@ -104,17 +112,17 @@ export default function TasksPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [statusFilter, priorityFilter, search]);
+  useEffect(load, [statusFilter, priorityFilter, search, tab, isSuperadmin]);
 
   useEffect(() => {
-    api<Project[] | { results: Project[] }>("/api/projects")
-      .then((d) => setProjects(unwrapList(d)))
+    api<ClientOption[] | { results: ClientOption[] }>("/api/projects/clients")
+      .then((d) => setClients(unwrapList(d)))
       .catch(() => {});
-    if (isManager) {
+    if (isSuperadmin) {
       api<Contact[]>("/api/messages/directory").then(setContacts).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager]);
+  }, [isSuperadmin]);
 
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,9 +135,9 @@ export default function TasksPage() {
         description: form.description,
         priority: form.priority,
         due_date: form.due_date || null,
-        project: form.project ? Number(form.project) : null,
+        client_name: form.client_name.trim(),
       };
-      if (isManager && form.assignee) body.assignee = Number(form.assignee);
+      if (isSuperadmin && form.assignee) body.assignee = Number(form.assignee);
       await api<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) });
       setForm(emptyForm);
       setShowForm(false);
@@ -158,7 +166,7 @@ export default function TasksPage() {
   };
 
   const deleteTask = async (task: Task) => {
-    if (!confirm(`Delete "${task.title}"?`)) return;
+    if (!(await confirm(`Delete "${task.title}"?`, { danger: true, confirmLabel: "Delete" }))) return;
     setBusyId(task.id);
     try {
       await api(`/api/tasks/${task.id}`, { method: "DELETE" });
@@ -171,8 +179,12 @@ export default function TasksPage() {
     }
   };
 
-  const projectOptions = [{ value: "", label: "No project" }, ...projects.map((p) => ({ value: String(p.id), label: p.name }))];
-  const assigneeOptions = contacts.map((c) => ({ value: String(c.id), label: c.full_name || c.email }));
+  const clientOptions = clients.map((c) => c.name);
+  const assigneeOptions = [
+    ...(user ? [{ value: String(user.id), label: "Myself" }] : []),
+    ...contacts.map((c) => ({ value: String(c.id), label: c.full_name || c.email })),
+  ];
+  const showAssigneeColumn = isSuperadmin && tab === "all";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -180,8 +192,10 @@ export default function TasksPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Tasks</h1>
           <p className="muted" style={{ marginTop: 4 }}>
-            {isManager
-              ? "All tasks across the team."
+            {isSuperadmin
+              ? tab === "mine"
+                ? "Your own tasks."
+                : "All tasks across the team."
               : "Your assigned tasks."}
           </p>
         </div>
@@ -189,6 +203,23 @@ export default function TasksPage() {
           <i className="bi bi-plus-lg" /> Add Task
         </button>
       </div>
+
+      {isSuperadmin && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className={tab === "all" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+            onClick={() => setTab("all")}
+          >
+            All Tasks
+          </button>
+          <button
+            className={tab === "mine" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+            onClick={() => setTab("mine")}
+          >
+            My Tasks
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <form className="card" onSubmit={addTask}>
@@ -215,15 +246,16 @@ export default function TasksPage() {
             </div>
             <div style={fieldGrid}>
               <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Project</label>
-                <Select
-                  value={form.project}
-                  onChange={(v) => setForm((f) => ({ ...f, project: v }))}
-                  options={projectOptions}
-                  ariaLabel="Project"
+                <label className="field-label" style={{ marginTop: 0 }}>Client</label>
+                <Combobox
+                  value={form.client_name}
+                  onChange={(v) => setForm((f) => ({ ...f, client_name: v }))}
+                  options={clientOptions}
+                  placeholder="Select or type a client…"
+                  ariaLabel="Client"
                 />
               </div>
-              {isManager && (
+              {isSuperadmin && (
                 <div>
                   <label className="field-label" style={{ marginTop: 0 }}>Assignee</label>
                   <Select
@@ -264,7 +296,7 @@ export default function TasksPage() {
       <div className="card">
         <span className="card-title">
           <i className="bi bi-list-task" style={{ color: "var(--gold)" }} />
-          All Tasks
+          {isSuperadmin && tab === "mine" ? "My Tasks" : "All Tasks"}
         </span>
 
         <div style={{ ...fieldGrid, marginTop: 14, marginBottom: 6 }}>
@@ -305,8 +337,8 @@ export default function TasksPage() {
               <thead>
                 <tr>
                   <th>Title</th>
-                  <th>Project</th>
-                  {isManager && <th>Assignee</th>}
+                  <th>Client</th>
+                  {showAssigneeColumn && <th>Assignee</th>}
                   <th>Priority</th>
                   <th>Status</th>
                   <th>Due date</th>
@@ -316,9 +348,13 @@ export default function TasksPage() {
               <tbody>
                 {tasks.map((t) => (
                   <tr key={t.id}>
-                    <td style={{ fontWeight: 600, color: "var(--navy)" }}>{t.title}</td>
-                    <td>{t.project_name || "—"}</td>
-                    {isManager && <td>{t.assignee_name || "—"}</td>}
+                    <td>
+                      <Link href={`/tasks/${t.id}`} style={{ fontWeight: 600, color: "var(--navy)" }}>
+                        {t.title}
+                      </Link>
+                    </td>
+                    <td>{t.client_name || "—"}</td>
+                    {showAssigneeColumn && <td>{t.assignee_name || "—"}</td>}
                     <td>
                       <span className={`badge ${PRIORITY_BADGE[t.priority] ?? "badge-muted"}`}>{t.priority}</span>
                     </td>
@@ -329,25 +365,36 @@ export default function TasksPage() {
                     </td>
                     <td>{formatDate(t.due_date)}</td>
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 150 }}>
-                          <Select
-                            value={t.status}
-                            onChange={(v) => changeStatus(t, v)}
-                            options={STATUS_OPTIONS}
-                            compact
-                            ariaLabel={`Change status for ${t.title}`}
-                          />
-                        </div>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          style={{ color: "var(--danger)" }}
-                          disabled={busyId === t.id}
-                          onClick={() => deleteTask(t)}
+                      {t.content_item ? (
+                        <span
+                          className="muted"
+                          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}
+                          title="From a client content calendar assignment — edit or remove it from that calendar."
                         >
-                          <i className="bi bi-trash-fill" />
-                        </button>
-                      </div>
+                          <i className="bi bi-calendar3-fill" style={{ color: "var(--gold)" }} />
+                          {isSuperadmin ? t.assignee_name || "—" : "From client calendar"}
+                        </span>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 150 }}>
+                            <Select
+                              value={t.status}
+                              onChange={(v) => changeStatus(t, v)}
+                              options={STATUS_OPTIONS}
+                              compact
+                              ariaLabel={`Change status for ${t.title}`}
+                            />
+                          </div>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: "var(--danger)" }}
+                            disabled={busyId === t.id}
+                            onClick={() => deleteTask(t)}
+                          >
+                            <i className="bi bi-trash-fill" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -356,6 +403,7 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+      {ConfirmDialog}
     </div>
   );
 }

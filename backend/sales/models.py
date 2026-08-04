@@ -18,15 +18,30 @@ class Client(TimeStampedModel):
         PODCAST = "podcast", "Podcast Production"
         OTHER = "other", "Other Services"
 
+    # Auto-generated (see sales.services.generate_client_id): "KF" + 4 random
+    # digits + 2 random uppercase letters, e.g. "KF4821XY".
+    client_id = models.CharField(max_length=20, unique=True, blank=True, default="")
     name = models.CharField(max_length=200)
+    # start_date/poc_name: added for the Projects > Clients "Add Client" form.
+    # poc_name is the point-of-contact person's name; their number reuses
+    # contact_phone below (labeled "Point of Contact Number" in that UI).
+    start_date = models.DateField(null=True, blank=True)
+    poc_name = models.CharField(max_length=150, blank=True, default="")
     contact_email = models.EmailField(blank=True)
     contact_phone = models.CharField(max_length=40, blank=True)
     company = models.CharField(max_length=200, blank=True)
+    # notes: shown as "Description" in the Projects > Clients UI.
     notes = models.TextField(blank=True)
     # Which of the fixed service categories we provide this client — edited
     # from the Projects > Clients directory (open to employees too, unlike
     # the rest of this model which stays manager-only via Sales).
     services = models.JSONField(default=list, blank=True)
+    # Per-client branding — lets the Projects > Clients list and each
+    # client's content calendar carry that client's own color/logo instead
+    # of one generic look, so clients are visually distinguishable at a
+    # glance (spec follow-up).
+    accent_color = models.CharField(max_length=7, blank=True, default="")
+    logo_url = models.URLField(blank=True, default="")
 
     class Meta:
         ordering = ["name"]

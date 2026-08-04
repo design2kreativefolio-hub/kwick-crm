@@ -96,4 +96,20 @@ export class ApiError extends Error {
   }
 }
 
+// DRF validation errors come back as {field: ["message", ...]} — turn that
+// into a readable sentence instead of dumping raw JSON in the UI.
+export function formatApiError(data: any): string {
+  if (!data) return "Something went wrong.";
+  if (typeof data === "string") return data;
+  if (data.detail) return data.detail;
+  if (data.message) return data.message;
+  const messages: string[] = [];
+  for (const key of Object.keys(data)) {
+    const val = data[key];
+    if (Array.isArray(val)) messages.push(val.join(" "));
+    else if (typeof val === "string") messages.push(val);
+  }
+  return messages.length ? messages.join(" ") : JSON.stringify(data);
+}
+
 export { API_BASE };

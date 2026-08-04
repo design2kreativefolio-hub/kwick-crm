@@ -5,28 +5,20 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Logo } from "@/components/Logo";
-import { Select } from "@/components/Select";
 import { api } from "@/lib/api";
 
-// Employees self-register with no invite code — they land in awaiting_approval
-// until a manager approves them. Managers still need an invite code and
-// activate immediately (spec §4).
+// Everyone self-registers as an employee — there is only one superadmin
+// (the company owner), created via the bootstrap_superadmin management
+// command. Every self-registered account lands in awaiting_approval until
+// the superadmin approves it.
 export default function RegisterPage() {
   const router = useRouter();
-  const [form, setForm] = useState({
-    full_name: "",
-    email: "",
-    password: "",
-    role: "employee",
-    invite_code: "",
-  });
+  const [form, setForm] = useState({ full_name: "", email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const isManager = form.role === "manager";
-
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -40,11 +32,7 @@ export default function RegisterPage() {
         auth: false,
         body: JSON.stringify(form),
       });
-      if (res.status === "active") {
-        router.push("/login");
-      } else {
-        setMsg(res.detail);
-      }
+      setMsg(res.detail);
     } catch (err: any) {
       setError(err.data ? JSON.stringify(err.data) : err.message);
     } finally {
@@ -60,9 +48,7 @@ export default function RegisterPage() {
         </div>
         <h2 style={{ margin: "0 0 4px" }}>Create your account</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          {isManager
-            ? "Managers need an invite code and are active immediately."
-            : "No invite code needed — a manager will approve your account before you can log in."}
+          The superadmin will approve your account before you can log in.
         </p>
         <label className="field-label">Full name</label>
         <input className="input" value={form.full_name} onChange={set("full_name")} required />
@@ -77,22 +63,6 @@ export default function RegisterPage() {
           required
           minLength={8}
         />
-        <label className="field-label">Role</label>
-        <Select
-          value={form.role}
-          onChange={(role) => setForm((f) => ({ ...f, role }))}
-          options={[
-            { value: "employee", label: "Employee" },
-            { value: "manager", label: "Manager" },
-          ]}
-          ariaLabel="Role"
-        />
-        {isManager && (
-          <>
-            <label className="field-label">Manager invite code</label>
-            <input className="input" value={form.invite_code} onChange={set("invite_code")} required />
-          </>
-        )}
         {error && <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>}
         {msg && <p style={{ color: "var(--gold)", fontSize: 13 }}>{msg}</p>}
         <button className="btn" style={{ width: "100%", marginTop: 16 }} disabled={busy}>

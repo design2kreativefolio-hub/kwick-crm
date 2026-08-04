@@ -15,8 +15,10 @@ class TaskSerializer(serializers.ModelSerializer):
             "description",
             "project",
             "project_name",
+            "client_name",
             "assignee",
             "assignee_name",
+            "content_item",
             "status",
             "priority",
             "due_date",
@@ -25,7 +27,10 @@ class TaskSerializer(serializers.ModelSerializer):
             "board_order",
             "created_at",
         ]
-        read_only_fields = ["completed_at", "created_at"]
+        # content_item is set only for a Task auto-created from a client
+        # content calendar assignment — never client-writable; that link is
+        # only ever created/removed via ContentCalendarItemViewSet.
+        read_only_fields = ["completed_at", "created_at", "content_item"]
         # Not required at the serializer level — perform_create always fills
         # it in (self for employees, self-as-fallback for managers) so a
         # request that simply omits it shouldn't fail validation before

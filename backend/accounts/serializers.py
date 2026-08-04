@@ -1,8 +1,7 @@
-from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import InviteCode, Role, StaffProfile, User, UserStatus
+from .models import ModuleAccess, Role, StaffProfile, User, UserStatus
 
 
 class StaffProfileSerializer(serializers.ModelSerializer):
@@ -22,108 +21,44 @@ class StaffProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile = StaffProfileSerializer(read_only=True)
+    module_access = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "full_name", "role", "status", "profile"]
+        fields = ["id", "email", "full_name", "role", "status", "profile", "module_access"]
         read_only_fields = ["id", "role", "status"]
 
-
-class VerifyInviteSerializer(serializers.Serializer):
-    """Manager invite codes only — employees don't need one to register."""
-
-    invite_code = serializers.CharField()
-
-    def validate(self, attrs):
-        try:
-            code = InviteCode.objects.get(code_hash=InviteCode.hash_code(attrs["invite_code"]))
-        except InviteCode.DoesNotExist:
-            raise serializers.ValidationError({"invite_code": "Invalid invite code."})
-        if not code.is_valid_for(Role.MANAGER):
-            raise serializers.ValidationError(
-                {"invite_code": "Invite code is expired, used, or not a manager invite."}
-            )
-        attrs["invite_obj"] = code
-        return attrs
+    def get_module_access(self, obj):
+        return list(obj.module_access.values_list("module", flat=True))
 
 
 class RegisterSerializer(serializers.Serializer):
     """
-    Public self-registration for both roles. Manager: requires an invite code,
-    skips approval, active immediately. Employee: open registration, no code
-    needed — lands in awaiting_approval until a manager approves (which
-    triggers an email notification to the employee).
+    Public self-registration. There is only ever one superadmin (created via
+    the bootstrap_superadmin management command) — every self-registered
+    account is an employee, and always lands in awaiting_approval until the
+    superadmin approves it (which triggers an email notification).
     """
 
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
     full_name = serializers.CharField()
-    role = serializers.ChoiceField(choices=Role.choices, default=Role.EMPLOYEE)
-    invite_code = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return value
 
-    def validate(self, attrs):
-        if attrs["role"] == Role.MANAGER:
-            try:
-                code = InviteCode.objects.get(
-                    code_hash=InviteCode.hash_code(attrs["invite_code"])
-                )
-            except InviteCode.DoesNotExist:
-                raise serializers.ValidationError({"invite_code": "Invalid invite code."})
-            if not code.is_valid_for(Role.MANAGER):
-                raise serializers.ValidationError(
-                    {"invite_code": "Invite code is expired, used, or not a manager invite."}
-                )
-            attrs["invite_obj"] = code
-        # Employees need no code — attrs["invite_obj"] stays unset.
-        return attrs
-
     def create(self, validated):
-        role = validated["role"]
-        # Manager self-registering with a valid code skips approval entirely (spec §4).
-        # Employee self-registration is open, but always awaits manager approval.
-        status = UserStatus.ACTIVE if role == Role.MANAGER else UserStatus.AWAITING_APPROVAL
         user = User.objects.create_user(
             email=validated["email"],
             password=validated["password"],
             full_name=validated["full_name"],
-            role=role,
-            status=status,
+            role=Role.EMPLOYEE,
+            status=UserStatus.AWAITING_APPROVAL,
         )
         StaffProfile.objects.create(user=user)
-        code = validated.get("invite_obj")
-        if code:
-            code.mark_used(user)
         return user
-
-
-class InviteCodeCreateSerializer(serializers.Serializer):
-    """Manager issues an invite code for another manager (e.g. a co-owner)."""
-
-    expires_in_days = serializers.IntegerField(default=7, min_value=1, max_value=90)
-
-    def create(self, validated):
-        expires_at = timezone.now() + timezone.timedelta(days=validated["expires_in_days"])
-        instance, raw = InviteCode.issue(
-            issued_by=self.context["request"].user,
-            role_for=Role.MANAGER,
-            expires_at=expires_at,
-        )
-        # raw code returned exactly once — never stored in cleartext.
-        self._raw = raw
-        return instance
-
-    def to_representation(self, instance):
-        return {
-            "id": instance.id,
-            "code": getattr(self, "_raw", None),
-            "role_for": instance.role_for,
-            "expires_at": instance.expires_at,
-        }
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
@@ -181,9 +116,9 @@ class SetPasswordSerializer(serializers.Serializer):
 class UpdateProfileSerializer(serializers.Serializer):
     """
     Self-service profile edit — role is intentionally never accepted here.
-    Employees' identity fields (name/email) are manager-owned (edited from the
-    HR staff page instead); only a manager editing their own account may
-    change them here. Phone stays self-service for everyone.
+    Employees' identity fields (name/email) are superadmin-owned (edited from
+    the HR staff page instead); only the superadmin editing their own account
+    may change them here. Phone stays self-service for everyone.
     """
 
     full_name = serializers.CharField(required=False)
@@ -198,7 +133,7 @@ class UpdateProfileSerializer(serializers.Serializer):
 
     def save(self):
         user = self.context["request"].user
-        if user.role == Role.MANAGER:
+        if user.role == Role.SUPERADMIN:
             if "full_name" in self.validated_data:
                 user.full_name = self.validated_data["full_name"]
             if "email" in self.validated_data:
@@ -266,7 +201,7 @@ class KwickTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         if not self.user.can_login:
             raise serializers.ValidationError(
-                "Account is not active yet. A manager must approve it before you can log in."
+                "Account is not active yet. The superadmin must approve it before you can log in."
             )
         data["user"] = UserSerializer(self.user).data
         return data
@@ -277,3 +212,18 @@ class KwickTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["role"] = user.role
         token["status"] = user.status
         return token
+
+
+class ModuleAccessSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_email = serializers.CharField(source="user.email", read_only=True)
+
+    class Meta:
+        model = ModuleAccess
+        fields = ["id", "user", "user_name", "user_email", "module", "created_at"]
+        read_only_fields = ["created_at"]
+
+    def validate_user(self, value):
+        if value.role == Role.SUPERADMIN:
+            raise serializers.ValidationError("The superadmin already has full access.")
+        return value

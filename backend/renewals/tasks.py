@@ -1,7 +1,7 @@
 """
 Renewal reminders (spec §14). Celery Beat runs `scan_renewals` daily:
   - flags renewals inside the lead windows (default 30/14/7/1 days) and pushes
-    a notification to every active manager;
+    a notification to the superadmin and anyone granted Renewals access;
   - auto-flips status to `overdue` past due_date.
 """
 from datetime import date
@@ -9,17 +9,17 @@ from datetime import date
 from celery import shared_task
 from django.conf import settings
 
-from notifications.services import notify_user
+from notifications.services import notify_user, users_with_module_access
 
 
 @shared_task
 def scan_renewals():
-    from accounts.models import Role, UserStatus, User
+    from accounts.models import Module
     from .models import Renewal
 
     today = date.today()
     windows = sorted(settings.RENEWAL_LEAD_WINDOWS_DAYS)  # e.g. [1, 7, 14, 30]
-    managers = list(User.objects.filter(role=Role.MANAGER, status=UserStatus.ACTIVE))
+    managers = list(users_with_module_access(Module.RENEWALS))
 
     # 1) Overdue flip.
     Renewal.objects.filter(

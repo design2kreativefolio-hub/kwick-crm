@@ -37,12 +37,15 @@ export default function ReportsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (user?.role === "manager") load();
-  }, [user, load]);
+  const hasAccess = user?.role === "superadmin" || (user?.module_access ?? []).includes("reports");
 
-  if (user && user.role !== "manager") {
-    return <p className="muted">Manager access required.</p>;
+  useEffect(() => {
+    if (hasAccess) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasAccess, load]);
+
+  if (user && !hasAccess) {
+    return <p className="muted">You don&apos;t have access to Reports.</p>;
   }
 
   return (
@@ -51,7 +54,7 @@ export default function ReportsPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Reports</h1>
           <p className="muted" style={{ marginTop: 4 }}>
-            Cross-module summary for managers.
+            Cross-module summary.
           </p>
         </div>
         <button className="btn btn-ghost" onClick={load} disabled={loading}>

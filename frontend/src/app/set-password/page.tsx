@@ -45,7 +45,7 @@ function SetPasswordForm() {
   if (!uid || !token) {
     return (
       <p style={{ color: "var(--danger)" }}>
-        This link is missing required details. Ask your manager to resend the approval email.
+        This link is missing required details. Ask the superadmin to resend the approval email.
       </p>
     );
   }

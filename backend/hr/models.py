@@ -28,6 +28,25 @@ class EmployeeCollateral(TimeStampedModel):
         return f"{self.get_doc_type_display()} for {self.staff_id}"
 
 
+class EmployeeRecord(TimeStampedModel):
+    """A freeform HR document attached to an employee — e.g. a passport copy
+    or visa page — distinct from EmployeeCollateral's fixed set of generated
+    letters. `title` is whatever the uploader types (spec follow-up: 'attach
+    the file and a field to tell what is the document')."""
+
+    staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="records"
+    )
+    title = models.CharField(max_length=200)
+    file_url = models.URLField()
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+
+    def __str__(self):
+        return f"{self.title} for {self.staff_id}"
+
+
 class Leave(TimeStampedModel):
     class LeaveType(models.TextChoices):
         ANNUAL = "annual", "Annual"

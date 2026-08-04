@@ -77,10 +77,12 @@ function sortNotifications(items: NotificationEvent[]) {
     const ua = a.read_at ? 1 : 0;
     const ub = b.read_at ? 1 : 0;
     if (ua !== ub) return ua - ub;
-    // Staff renewal nags (visa/insurance/ILOE) are top priority — surface
-    // them above every other reminder type once unread status is equal.
-    const pa = a.source === "staff_renewal" ? 0 : 1;
-    const pb = b.source === "staff_renewal" ? 0 : 1;
+    // Top-priority, time-sensitive reminders — staff renewal nags and
+    // project delivery dates — surface above everything else once unread
+    // status is equal.
+    const rank = (s: string) => (s === "staff_renewal" || s === "project" ? 0 : 1);
+    const pa = rank(a.source);
+    const pb = rank(b.source);
     if (pa !== pb) return pa - pb;
     return b.created_at.localeCompare(a.created_at);
   });
@@ -101,7 +103,7 @@ function relativeDate(iso: string) {
 export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const isManager = user?.role === "manager";
+  const isSuperadmin = user?.role === "superadmin";
   const [summary, setSummary] = useState<Summary | null>(null);
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [sparkline, setSparkline] = useState<number[]>([]);
@@ -113,14 +115,14 @@ export default function DashboardPage() {
       .then((items) => setNotifications(sortNotifications(items)))
       .catch(() => {});
     api<{ series: { completed: number }[] }>(
-      `/api/dashboard/performance?granularity=daily&scope=${isManager ? "company" : "self"}`
+      `/api/dashboard/performance?granularity=daily&scope=${isSuperadmin ? "company" : "self"}`
     )
       .then((d) => setSparkline(d.series.slice(-14).map((p) => p.completed)))
       .catch(() => {});
     // Managers see every employee's tasks relevant to today (due today or
     // added today), not just "most recently created" — so they can tell
     // who's doing what today without opening each person's board.
-    if (isManager) {
+    if (isSuperadmin) {
       api<Task[]>("/api/dashboard/today-tasks").then(setRecentTasks).catch(() => {});
     } else {
       api<{ results: Task[] } | Task[]>("/api/tasks?page_size=5")
@@ -128,21 +130,21 @@ export default function DashboardPage() {
         .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager]);
+  }, [isSuperadmin]);
 
   useEffect(load, [load]);
 
   const donutSlices: DonutSlice[] =
-    isManager && summary?.project_status_breakdown
+    isSuperadmin && summary?.project_status_breakdown
       ? toSlices(summary.project_status_breakdown)
       : toSlices(summary?.task_status_breakdown);
 
-  const completed = isManager ? summary?.company_completed_this_month : summary?.completed_this_month;
-  const completedPrev = isManager ? summary?.company_completed_last_month : summary?.completed_last_month;
+  const completed = isSuperadmin ? summary?.company_completed_this_month : summary?.completed_this_month;
+  const completedPrev = isSuperadmin ? summary?.company_completed_last_month : summary?.completed_last_month;
   const completedTrend = summary ? trendPct(completed ?? 0, completedPrev ?? 0) : null;
 
   const invoicesTrend =
-    isManager && summary
+    isSuperadmin && summary
       ? trendPct(summary.invoices_this_month ?? 0, summary.invoices_last_month ?? 0)
       : null;
 
@@ -157,7 +159,7 @@ export default function DashboardPage() {
               compact
               name={user?.full_name?.split(" ")[0] || "there"}
               subtitle={
-                isManager
+                isSuperadmin
                   ? "Stay updated with the company's performance today."
                   : "Stay updated with your workload today."
               }
@@ -178,7 +180,7 @@ export default function DashboardPage() {
               tone="mint"
               sparkline={sparkline}
             />
-            {isManager ? (
+            {isSuperadmin ? (
               <KpiCard
                 label="Invoices This Month"
                 value={summary?.invoices_this_month ?? "—"}
@@ -200,12 +202,12 @@ export default function DashboardPage() {
         <Reveal index={1}>
           <div className="dashboard-charts-row" style={{ display: "grid", gap: 22 }}>
             <PerformanceChart
-              canScopeCompany={isManager}
+              canScopeCompany={isSuperadmin}
               headlineValue={completed ?? 0}
               previousValue={completedPrev ?? 0}
             />
             <DonutCard
-              title={isManager ? "Projects by Status" : "My Tasks by Status"}
+              title={isSuperadmin ? "Projects by Status" : "My Tasks by Status"}
               slices={donutSlices.length ? donutSlices : [{ label: "No data yet", value: 1, color: "var(--border)" }]}
             />
           </div>
@@ -214,14 +216,14 @@ export default function DashboardPage() {
         <Reveal index={4}>
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="card-title" style={{ margin: 0 }}>{isManager ? "Today's Tasks" : "Recent Tasks"}</span>
+              <span className="card-title" style={{ margin: 0 }}>{isSuperadmin ? "Today's Tasks" : "Recent Tasks"}</span>
               <a href="/tasks" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
                 View All <i className="bi bi-arrow-right" />
               </a>
             </div>
             {recentTasks.length === 0 && (
               <p className="muted" style={{ marginTop: 16 }}>
-                {isManager ? "Nothing due or added today." : "No tasks yet."}
+                {isSuperadmin ? "Nothing due or added today." : "No tasks yet."}
               </p>
             )}
             {recentTasks.length > 0 && (
@@ -230,7 +232,7 @@ export default function DashboardPage() {
                   <thead>
                     <tr>
                       <th>Task</th>
-                      {isManager && <th>Assignee</th>}
+                      {isSuperadmin && <th>Assignee</th>}
                       <th>Priority</th>
                       <th>Status</th>
                       <th>Due</th>
@@ -240,7 +242,7 @@ export default function DashboardPage() {
                     {recentTasks.map((t) => (
                       <tr key={t.id}>
                         <td>{t.title}</td>
-                        {isManager && <td>{t.assignee_name || "—"}</td>}
+                        {isSuperadmin && <td>{t.assignee_name || "—"}</td>}
                         <td>
                           <span className={`badge ${TASK_PRIORITY_BADGE[t.priority] ?? "badge-muted"}`}>
                             {t.priority}

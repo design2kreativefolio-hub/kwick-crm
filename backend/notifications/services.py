@@ -12,10 +12,23 @@ blocks on network I/O.
 from __future__ import annotations
 
 
-def _managers():
+def _superadmins():
     from accounts.models import Role, UserStatus, User
 
-    return User.objects.filter(role=Role.MANAGER, status=UserStatus.ACTIVE)
+    return User.objects.filter(role=Role.SUPERADMIN, status=UserStatus.ACTIVE)
+
+
+def users_with_module_access(module: str):
+    """Superadmin + every active employee granted `module` — the audience
+    for a module's own recurring reminders (e.g. HR leave/ticket alerts, once
+    an employee has been granted HR access)."""
+    from django.db.models import Q
+
+    from accounts.models import Role, UserStatus, User
+
+    return User.objects.filter(status=UserStatus.ACTIVE).filter(
+        Q(role=Role.SUPERADMIN) | Q(module_access__module=module)
+    ).distinct()
 
 
 def notify_user(*, user, source, title, body="", recurring=False, object_ref=""):
@@ -36,17 +49,20 @@ def notify_user(*, user, source, title, body="", recurring=False, object_ref="")
     return event
 
 
-def start_recurring_reminder(*, source, title, body="", object_ref=""):
+def start_recurring_reminder(*, source, title, body="", object_ref="", users=None):
     """
-    Fan a recurring-until-actioned reminder out to every active manager
-    (leave requests / tickets, spec §5.4 / §13). Idempotent per (manager, object_ref).
+    Fan a recurring-until-actioned reminder out to every active superadmin
+    (leave requests / tickets, spec §5.4 / §13). Idempotent per (user, object_ref).
+    Defaults to just the superadmin; pass `users` to target a different
+    audience instead (e.g. everyone with HR module access).
     """
     from .models import NotificationEvent
 
+    target_users = list(users) if users is not None else list(_superadmins())
     events = []
-    for manager in _managers():
+    for target_user in target_users:
         event, _ = NotificationEvent.objects.get_or_create(
-            user=manager,
+            user=target_user,
             object_ref=object_ref,
             defaults={
                 "source": source,
@@ -71,21 +87,27 @@ def stop_recurring_reminder(*, object_ref):
     )
 
 
-def refresh_daily_reminder(*, source, title, body="", object_ref=""):
+def refresh_daily_reminder(*, source, title, body="", object_ref="", users=None):
     """
     Like start_recurring_reminder, but explicitly resets read_at to None (and
     re-pushes) on every call, instead of only ever creating the row once.
     For reminders that should reappear each day even after being dismissed
-    "for today" — e.g. staff visa/insurance/ILOE renewals still overdue —
-    where ticking it off is a "seen today", not a resolution.
+    "for today" — e.g. staff visa/insurance/ILOE renewals still overdue, or a
+    project delivery date closing in — where ticking it off is a "seen
+    today", not a resolution.
+
+    Defaults to every active manager (the original staff-renewal use case);
+    pass `users` explicitly to target a different audience instead (e.g. the
+    employees a project is assigned to).
     """
     from .models import NotificationEvent
     from .tasks import deliver_notification
 
+    target_users = list(users) if users is not None else list(_superadmins())
     events = []
-    for manager in _managers():
+    for target_user in target_users:
         event, created = NotificationEvent.objects.get_or_create(
-            user=manager,
+            user=target_user,
             object_ref=object_ref,
             defaults={
                 "source": source,

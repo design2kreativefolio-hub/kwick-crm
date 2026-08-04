@@ -1,24 +1,24 @@
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from common.permissions import IsActive, IsManager
+from common.permissions import IsActive, IsSuperadmin
+from common.services import log_activity
 
-from .models import User, UserStatus
+from .models import ModuleAccess, Role, User, UserStatus
 from .serializers import (
     AvatarUploadSerializer,
     ChangePasswordSerializer,
     ForgotPasswordSerializer,
-    InviteCodeCreateSerializer,
     KwickTokenObtainPairSerializer,
+    ModuleAccessSerializer,
     RegisterSerializer,
     SetPasswordSerializer,
     UpdateProfileSerializer,
     UserSerializer,
-    VerifyInviteSerializer,
 )
 from .tasks import send_approval_email
 
@@ -36,24 +36,10 @@ class RegisterView(APIView):
                 "email": user.email,
                 "role": user.role,
                 "status": user.status,
-                "detail": (
-                    "Registered. Awaiting manager approval."
-                    if user.status == UserStatus.AWAITING_APPROVAL
-                    else "Registered and active."
-                ),
+                "detail": "Registered. Awaiting approval.",
             },
             status=status.HTTP_201_CREATED,
         )
-
-
-class VerifyInviteView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = VerifyInviteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        code = serializer.validated_data["invite_obj"]
-        return Response({"valid": True, "role_for": code.role_for})
 
 
 class LoginView(TokenObtainPairView):
@@ -92,18 +78,8 @@ class AvatarUploadView(APIView):
         return Response({"avatar_url": avatar_url})
 
 
-class InviteCodeCreateView(APIView):
-    permission_classes = [IsManager]
-
-    def post(self, request):
-        serializer = InviteCodeCreateSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        instance = serializer.save()
-        return Response(serializer.to_representation(instance), status=status.HTTP_201_CREATED)
-
-
 class ApproveUserView(APIView):
-    permission_classes = [IsManager]
+    permission_classes = [IsSuperadmin]
 
     def post(self, request, user_id):
         try:
@@ -120,11 +96,11 @@ class ApproveUserView(APIView):
 
 
 class RejectUserView(APIView):
-    """Manager declines a self-registered signup still awaiting approval.
+    """Superadmin declines a self-registered signup still awaiting approval.
     There's nothing worth keeping for a request that was never active, so
     this removes the account outright rather than adding a new status value."""
 
-    permission_classes = [IsManager]
+    permission_classes = [IsSuperadmin]
 
     def post(self, request, user_id):
         try:
@@ -136,6 +112,51 @@ class RejectUserView(APIView):
             )
         user.delete()
         return Response({"detail": "Registration rejected."})
+
+
+class EmployeeListView(APIView):
+    """GET /api/auth/employees — superadmin-only lightweight list of active
+    employees, used to populate the 'grant module access' picker on the
+    HR/Sales/Renewals/Reports pages."""
+
+    permission_classes = [IsSuperadmin]
+
+    def get(self, request):
+        employees = User.objects.filter(role=Role.EMPLOYEE, status=UserStatus.ACTIVE).order_by(
+            "full_name"
+        )
+        return Response(
+            [
+                {"id": e.id, "full_name": e.full_name, "email": e.email}
+                for e in employees
+            ]
+        )
+
+
+class ModuleAccessViewSet(viewsets.ModelViewSet):
+    """Superadmin grants/revokes an employee's access to a normally
+    superadmin-only module (HR, Sales, Renewals, Reports) — the replacement
+    for the old blanket manager role."""
+
+    queryset = ModuleAccess.objects.select_related("user").all()
+    serializer_class = ModuleAccessSerializer
+    permission_classes = [IsSuperadmin]
+    filterset_fields = ["module", "user"]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def perform_create(self, serializer):
+        access = serializer.save(granted_by=self.request.user)
+        log_activity(
+            actor=self.request.user,
+            action=f"gave {access.user.full_name or access.user.email} access to {access.get_module_display()}",
+        )
+
+    def perform_destroy(self, instance):
+        log_activity(
+            actor=self.request.user,
+            action=f"removed {instance.user.full_name or instance.user.email}'s access to {instance.get_module_display()}",
+        )
+        instance.delete()
 
 
 class ForgotPasswordView(APIView):

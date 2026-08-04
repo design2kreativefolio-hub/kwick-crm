@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { BackLink } from "@/components/BackLink";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 
@@ -115,9 +116,7 @@ export default function StaffDetailPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <Link href="/hr" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
-          <i className="bi bi-arrow-left" /> Back to Staff
-        </Link>
+        <BackLink href="/hr" label="Back to Staff" />
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8 }}>
           <span style={avatar}>{(staff.full_name || staff.email)[0].toUpperCase()}</span>
           <div>

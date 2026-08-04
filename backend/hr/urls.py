@@ -5,6 +5,8 @@ from .views import (
     EmployeeCollateralDetailView,
     EmployeeCollateralUploadView,
     EmployeeCollateralView,
+    EmployeeRecordDetailView,
+    EmployeeRecordUploadView,
     LeaveBalanceView,
     LeaveViewSet,
     MyCollateralsView,
@@ -25,6 +27,8 @@ urlpatterns = [
     # generate-by-slug view (Django tries urlpatterns in order).
     path("employee-collaterals/<int:pk>", EmployeeCollateralDetailView.as_view(), name="collaterals-detail"),
     path("employee-collaterals/<str:doc_type>", EmployeeCollateralView.as_view(), name="collaterals-generate"),
+    path("employee-records", EmployeeRecordUploadView.as_view(), name="records-upload"),
+    path("employee-records/<int:pk>", EmployeeRecordDetailView.as_view(), name="records-detail"),
     path("leaves/balance", LeaveBalanceView.as_view(), name="leaves-balance"),
     path("staff/<int:pk>/avatar", StaffAvatarUploadView.as_view(), name="staff-avatar"),
 ]

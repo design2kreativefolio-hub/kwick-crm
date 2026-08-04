@@ -38,8 +38,7 @@ export default function ForgotPasswordPage() {
         </div>
         <h2 style={{ margin: "0 0 4px" }}>Forgot your password?</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Enter your account email — works for both managers and employees — and
-          we&apos;ll send you a link to set a new one.
+          Enter your account email and we&apos;ll send you a link to set a new one.
         </p>
 
         {done ? (

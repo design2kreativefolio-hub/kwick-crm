@@ -21,6 +21,8 @@ export const SOURCE_META: Record<
   ticket: { icon: "bi-ticket-perforated-fill", color: "var(--danger)", bg: "var(--danger-soft)", label: "Ticket", href: "/hr" },
   document: { icon: "bi-file-earmark-text-fill", color: "#7C4FE0", bg: "#F0EBFB", label: "Document", href: "/profile" },
   staff_renewal: { icon: "bi-exclamation-triangle-fill", color: "var(--danger)", bg: "var(--danger-soft)", label: "Renewal due", href: "/hr" },
+  project: { icon: "bi-kanban-fill", color: "#7C4FE0", bg: "#F0EBFB", label: "Project", href: "/projects" },
+  content_calendar: { icon: "bi-calendar3-fill", color: "var(--gold)", bg: "var(--gold-soft)", label: "Content Calendar", href: "/projects/clients" },
 };
 export const DEFAULT_SOURCE_META = { icon: "bi-bell-fill", color: "var(--gold)", bg: "var(--gold-soft)", label: "Update", href: "" };
 

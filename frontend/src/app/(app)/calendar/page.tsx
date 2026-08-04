@@ -22,6 +22,8 @@ const SOURCE_META: Record<string, { color: string; label: string; href: string }
   daily_tracker: { color: "var(--success)", label: "Daily Tracker", href: "/reports" },
   renewal: { color: "var(--danger)", label: "Renewal", href: "/renewals" },
   manual: { color: "var(--warning)", label: "Reminder", href: "" },
+  project: { color: "#7C4FE0", label: "Project Delivery", href: "/projects" },
+  content_calendar: { color: "#E0387D", label: "Content Calendar", href: "/projects/clients" },
 };
 const DEFAULT_META = { color: "var(--gold)", label: "Item", href: "" };
 
@@ -42,7 +44,7 @@ function startOfWeek(d: Date) {
 export default function CalendarPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const isManager = user?.role === "manager";
+  const isSuperadmin = user?.role === "superadmin";
 
   const [view, setView] = useState<View>("month");
   const [anchor, setAnchor] = useState(() => new Date());
@@ -72,7 +74,7 @@ export default function CalendarPage() {
 
   const load = () => {
     api<{ items: AgendaItem[] }>(
-      `/api/calendar/agenda?from=${toIso(rangeFrom)}&to=${toIso(rangeTo)}&scope=${isManager ? "all" : "self"}`
+      `/api/calendar/agenda?from=${toIso(rangeFrom)}&to=${toIso(rangeTo)}&scope=${isSuperadmin ? "all" : "self"}`
     )
       .then((d) => setItems(d.items))
       .catch(() => {});

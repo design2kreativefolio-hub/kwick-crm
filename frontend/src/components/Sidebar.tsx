@@ -15,14 +15,14 @@ export function Sidebar({
   mobileOpen = false,
   onNavigate,
 }: {
-  role: "manager" | "employee";
+  role: "superadmin" | "employee";
   collapsed: boolean;
   mobileOpen?: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const groups = visibleNav(role);
+  const groups = visibleNav(role, user?.module_access ?? []);
   const { notifUnread, chatUnread } = useLiveUpdates();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -45,8 +45,18 @@ export function Sidebar({
 
   const isActive = (href?: string) => !!href && (pathname === href || pathname.startsWith(href + "/"));
 
-  const renderLeaf = (item: NavItem) => {
-    const active = isActive(item.href);
+  // Sibling-aware version for leaves inside a group: a prefix match (e.g.
+  // /projects matching /projects/artwork) shouldn't win when the pathname
+  // matches a MORE specific sibling route more exactly — otherwise "Projects"
+  // and "Artwork Generator" both light up at once.
+  const isActiveAmongSiblings = (href: string | undefined, siblingHrefs: string[]) => {
+    if (!href || !isActive(href)) return false;
+    if (pathname === href) return true;
+    return !siblingHrefs.some((h) => h !== href && isActive(h) && h.length > href.length);
+  };
+
+  const renderLeaf = (item: NavItem, siblingHrefs: string[] = []) => {
+    const active = isActiveAmongSiblings(item.href, siblingHrefs);
     const count = badgeCounts[item.href ?? ""] ?? 0;
     const showUnreadBadge = count > 0;
     return (
@@ -111,7 +121,7 @@ export function Sidebar({
         </button>
         {!collapsed && isOpen && (
           <div style={{ marginLeft: 14, paddingLeft: 12, borderLeft: "1px solid rgba(255,255,255,0.1)" }}>
-            {children.map((c) => renderLeaf(c))}
+            {children.map((c) => renderLeaf(c, children.map((sib) => sib.href).filter((h): h is string => !!h)))}
           </div>
         )}
       </div>

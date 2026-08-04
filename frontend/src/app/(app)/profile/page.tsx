@@ -20,20 +20,20 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
 export default function ProfilePage() {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("profile");
-  const isManager = user?.role === "manager";
+  const isSuperadmin = user?.role === "superadmin";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Reveal index={0}>
         <ProfileHeader
-          tabs={isManager ? undefined : TABS}
+          tabs={isSuperadmin ? undefined : TABS}
           activeTab={tab}
           onTabChange={(k) => setTab(k as Tab)}
         />
       </Reveal>
 
       <Reveal index={1}>
-        {isManager || tab === "profile" ? (
+        {isSuperadmin || tab === "profile" ? (
           <EditProfileTab />
         ) : tab === "leave" ? (
           <LeaveRequestsTab />

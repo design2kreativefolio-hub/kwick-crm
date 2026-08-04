@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { BackLink } from "@/components/BackLink";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
+import { useAuth, Module } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
 type StaffDetail = {
@@ -23,6 +25,11 @@ type StaffDetail = {
     insurance_renewal_date: string | null;
     iloe_renewal_date: string | null;
     avatar_url?: string;
+    nationality: string;
+    emergency_contact_uae: string;
+    emergency_contact_relation: string;
+    home_country_address: string;
+    home_country_number: string;
   };
   collaterals: {
     id: number;
@@ -30,12 +37,27 @@ type StaffDetail = {
     file_url: string;
     generated_at: string | null;
   }[];
+  records: {
+    id: number;
+    title: string;
+    file_url: string;
+    created_at: string;
+  }[];
 };
+
+type Grant = { id: number; module: Module };
 
 const DOC_TYPES: { key: string; label: string }[] = [
   { key: "experience_letter", label: "Experience Letter" },
   { key: "relieving_letter", label: "Relieving Letter" },
   { key: "salary_certificate", label: "Salary Certificate" },
+];
+
+const MODULES: { key: Module; label: string }[] = [
+  { key: "hr", label: "HR" },
+  { key: "sales", label: "Sales" },
+  { key: "renewals", label: "Renewals" },
+  { key: "reports", label: "Reports" },
 ];
 
 const emptyForm = {
@@ -48,13 +70,21 @@ const emptyForm = {
   visa_renewal_date: "",
   insurance_renewal_date: "",
   iloe_renewal_date: "",
+  nationality: "",
+  emergency_contact_uae: "",
+  emergency_contact_relation: "",
+  home_country_address: "",
+  home_country_number: "",
 };
 
 export default function StaffEditPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
+  const { user } = useAuth();
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
+  const isSuperadmin = user?.role === "superadmin";
 
   const [data, setData] = useState<StaffDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,6 +98,13 @@ export default function StaffEditPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const uploadDocType = useRef<string>("");
+
+  const [recordTitle, setRecordTitle] = useState("");
+  const [addingRecord, setAddingRecord] = useState(false);
+  const recordFileRef = useRef<HTMLInputElement>(null);
+
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [grantBusy, setGrantBusy] = useState<Module | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -84,6 +121,11 @@ export default function StaffEditPage() {
           visa_renewal_date: d.staff.visa_renewal_date || "",
           insurance_renewal_date: d.staff.insurance_renewal_date || "",
           iloe_renewal_date: d.staff.iloe_renewal_date || "",
+          nationality: d.staff.nationality || "",
+          emergency_contact_uae: d.staff.emergency_contact_uae || "",
+          emergency_contact_relation: d.staff.emergency_contact_relation || "",
+          home_country_address: d.staff.home_country_address || "",
+          home_country_number: d.staff.home_country_number || "",
         });
       })
       .catch(() => {})
@@ -92,22 +134,63 @@ export default function StaffEditPage() {
 
   useEffect(load, [id]);
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const loadGrants = () => {
+    if (!isSuperadmin) return;
+    api<Grant[] | { results: Grant[] }>(`/api/auth/module-access?user=${id}`)
+      .then((d) => setGrants(unwrapList(d)))
+      .catch(() => {});
+  };
+
+  useEffect(loadGrants, [id, isSuperadmin]);
+
+  const toggleModule = async (module: Module, checked: boolean) => {
+    setGrantBusy(module);
+    try {
+      if (checked) {
+        await api("/api/auth/module-access", {
+          method: "POST",
+          body: JSON.stringify({ user: Number(id), module }),
+        });
+      } else {
+        const grant = grants.find((g) => g.module === module);
+        if (grant) await api(`/api/auth/module-access/${grant.id}`, { method: "DELETE" });
+      }
+      showToast(checked ? "Access granted." : "Access removed.");
+      loadGrants();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : "Couldn't update access.", "error");
+    } finally {
+      setGrantBusy(null);
+    }
+  };
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitDetails = async (payload: Record<string, unknown>) => {
     setError(null);
     setSaving(true);
     try {
-      await api(`/api/hr/staff/${id}`, { method: "PATCH", body: JSON.stringify(form) });
+      await api(`/api/hr/staff/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
       showToast("Staff details updated.");
       load();
     } catch (err: any) {
-      setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+      if (err instanceof ApiError && err.status === 409 && err.data?.duplicate_warning === "phone") {
+        setSaving(false);
+        if (await confirm(`${err.data.message}\n\nSave this phone number anyway?`, { confirmLabel: "Save anyway" })) {
+          await submitDetails({ ...payload, confirm_duplicate_phone: true });
+        }
+        return;
+      }
+      setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitDetails(form);
   };
 
   const resetPassword = async () => {
@@ -209,6 +292,42 @@ export default function StaffEditPage() {
     }
   };
 
+  const uploadRecord = async (file: File) => {
+    if (!recordTitle.trim()) {
+      showToast("Enter a document name first.", "error");
+      return;
+    }
+    setAddingRecord(true);
+    try {
+      const body = new FormData();
+      body.append("staff", id);
+      body.append("title", recordTitle.trim());
+      body.append("file", file);
+      await api("/api/hr/employee-records", { method: "POST", body });
+      setRecordTitle("");
+      showToast("Record added.");
+      load();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't add record." : err.message, "error");
+    } finally {
+      setAddingRecord(false);
+      if (recordFileRef.current) recordFileRef.current.value = "";
+    }
+  };
+
+  const removeRecord = async (recordId: number) => {
+    setBusyDoc(`remove-record-${recordId}`);
+    try {
+      await api(`/api/hr/employee-records/${recordId}`, { method: "DELETE" });
+      showToast("Record removed.");
+      load();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't remove record." : err.message, "error");
+    } finally {
+      setBusyDoc(null);
+    }
+  };
+
   if (loading) return <p className="muted">Loading…</p>;
   if (!data) return <p className="muted">Staff not found.</p>;
 
@@ -217,9 +336,7 @@ export default function StaffEditPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <Link href={`/hr/staff/${id}`} className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
-          <i className="bi bi-arrow-left" /> Back to {data.staff.full_name || "Staff"}
-        </Link>
+        <BackLink href={`/hr/staff/${id}`} label={`Back to ${data.staff.full_name || "Staff"}`} />
         <h1 style={{ margin: "8px 0 0", fontSize: 22 }}>Edit Staff</h1>
       </div>
 
@@ -279,6 +396,41 @@ export default function StaffEditPage() {
           </div>
           <label className="field-label">Department</label>
           <input className="input" value={form.department} onChange={set("department")} />
+
+          <div style={{ ...fieldGrid, marginTop: 14 }}>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Nationality</label>
+              <input className="input" value={form.nationality} onChange={set("nationality")} />
+            </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Home country number</label>
+              <input className="input" value={form.home_country_number} onChange={set("home_country_number")} />
+            </div>
+          </div>
+
+          <label className="field-label">Home country address</label>
+          <textarea
+            className="input"
+            rows={2}
+            style={{ resize: "vertical" }}
+            value={form.home_country_address}
+            onChange={set("home_country_address")}
+          />
+
+          <div style={{ ...fieldGrid, marginTop: 14 }}>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Emergency contact (UAE)</label>
+              <input className="input" value={form.emergency_contact_uae} onChange={set("emergency_contact_uae")} />
+            </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Relation to emergency contact</label>
+              <input
+                className="input"
+                value={form.emergency_contact_relation}
+                onChange={set("emergency_contact_relation")}
+              />
+            </div>
+          </div>
 
           <label className="field-label">Joining date</label>
           <DatePicker
@@ -346,6 +498,41 @@ export default function StaffEditPage() {
             </div>
           </div>
 
+          {isSuperadmin && (
+            <div className="card">
+              <span className="card-title">Module Access</span>
+              <p className="muted" style={{ fontSize: 12.5, marginTop: -8, marginBottom: 10 }}>
+                By default this employee only has their standard access. Grant full access to any
+                of these modules below.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {MODULES.map((m) => {
+                  const granted = grants.some((g) => g.module === m.key);
+                  return (
+                    <label
+                      key={m.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        fontSize: 13.5,
+                        cursor: grantBusy ? "default" : "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={granted}
+                        disabled={grantBusy === m.key}
+                        onChange={(e) => toggleModule(m.key, e.target.checked)}
+                      />
+                      {m.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="card">
             <span className="card-title">Documents</span>
             <input
@@ -401,8 +588,66 @@ export default function StaffEditPage() {
               );
             })}
           </div>
+
+          <div className="card">
+            <span className="card-title">Employee Records</span>
+            <p className="muted" style={{ fontSize: 12.5, marginTop: -8, marginBottom: 12 }}>
+              Attach any document — passport copy, visa page, and so on — with a name of your choosing.
+            </p>
+            <input
+              ref={recordFileRef}
+              type="file"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadRecord(file);
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input
+                className="input"
+                placeholder="Document name (e.g. Passport copy)"
+                value={recordTitle}
+                onChange={(e) => setRecordTitle(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={addingRecord}
+                onClick={() => recordFileRef.current?.click()}
+              >
+                <i className="bi bi-upload" /> {addingRecord ? "Uploading…" : "Add"}
+              </button>
+            </div>
+            {data.records.length === 0 && <p className="muted">No records yet.</p>}
+            {data.records.map((r) => (
+              <div key={r.id} style={docRow}>
+                <a
+                  href={r.file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="muted"
+                  style={{ fontSize: 12.5, color: "var(--gold)" }}
+                >
+                  <i className="bi bi-file-earmark-text-fill" /> {r.title}
+                </a>
+                <button
+                  className="icon-btn-anim"
+                  style={removeBtn}
+                  disabled={busyDoc === `remove-record-${r.id}`}
+                  onClick={() => removeRecord(r.id)}
+                  aria-label="Remove"
+                  title="Remove"
+                >
+                  <i className="bi bi-trash-fill" style={{ fontSize: 12, color: "var(--danger)" }} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+      {ConfirmDialog}
     </div>
   );
 }

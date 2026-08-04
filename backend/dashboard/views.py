@@ -6,10 +6,10 @@ from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Role
+from accounts.models import Module, Role
 from calendar_app.services import build_agenda
 from common.models import ActivityLog
-from common.permissions import IsActive, IsManager, is_manager
+from common.permissions import IsActive, IsSuperadmin, has_module_access, is_superadmin
 from projects.models import Project
 from renewals.models import Renewal
 from sales.models import Client, Invoice, Proposal
@@ -44,7 +44,7 @@ class SummaryView(APIView):
 
     def get(self, request):
         user = request.user
-        manager = is_manager(user)
+        manager = is_superadmin(user)
         month_start, _ = _month_bounds()
         last_month_start, last_month_end = _last_month_bounds()
 
@@ -60,8 +60,8 @@ class SummaryView(APIView):
                 completed_at__date__gte=last_month_start,
                 completed_at__date__lt=last_month_end,
             ).count(),
-            "ongoing_projects": Project.objects.filter(
-                members=user, status=Project.Status.ONGOING
+            "ongoing_projects": Project.objects.filter(members=user).exclude(
+                status=Project.Status.COMPLETED
             ).count(),
             # Task status breakdown, own tasks — powers a donut/segmented-bar widget.
             "task_status_breakdown": self._status_counts(
@@ -94,8 +94,8 @@ class SummaryView(APIView):
                         created_at__date__gte=last_month_start,
                         created_at__date__lt=last_month_end,
                     ).count(),
-                    "company_ongoing_projects": Project.objects.filter(
-                        status=Project.Status.ONGOING
+                    "company_ongoing_projects": Project.objects.exclude(
+                        status=Project.Status.COMPLETED
                     ).count(),
                     "company_task_status_breakdown": self._status_counts(
                         all_tasks, Task.Status.choices, "status"
@@ -125,7 +125,7 @@ class RemindersView(APIView):
 
     def get(self, request):
         today = date.today()
-        scope = "all" if is_manager(request.user) else "self"
+        scope = "all" if is_superadmin(request.user) else "self"
         items = build_agenda(
             user=request.user, dt_from=today, dt_to=today + timedelta(days=30), scope=scope
         )
@@ -148,7 +148,7 @@ class PerformanceView(APIView):
         if granularity not in self.TRUNC:
             granularity = "daily"
         scope = request.query_params.get("scope", "self")
-        if scope == "company" and not is_manager(request.user):
+        if scope == "company" and not is_superadmin(request.user):
             scope = "self"
 
         base = Task.objects.all()
@@ -194,7 +194,7 @@ class PerformanceView(APIView):
 class ProjectsTrendView(APIView):
     """GET /api/dashboard/projects-trend?months=12 — projects started per month (spec §15.3)."""
 
-    permission_classes = [IsManager]
+    permission_classes = [IsSuperadmin]
 
     def get(self, request):
         months = int(request.query_params.get("months", 12))
@@ -221,8 +221,9 @@ class ProjectsTrendView(APIView):
 class GlobalSearchView(APIView):
     """GET /api/dashboard/search?q= — powers the Topbar search box. Each
     result category respects the same visibility rules as its own module's
-    list endpoint (employees only see their own tasks/projects; staff and
-    client results are manager-only, matching HR/Sales access)."""
+    list endpoint (employees only see their own tasks/projects; staff,
+    client, renewal, proposal and invoice results need the matching
+    HR/Sales/Renewals module access, same as those modules' own pages)."""
 
     permission_classes = [IsActive]
 
@@ -231,7 +232,10 @@ class GlobalSearchView(APIView):
         if len(q) < 2:
             return Response({"results": []})
 
-        mgr = is_manager(request.user)
+        mgr = is_superadmin(request.user)
+        has_hr = has_module_access(request.user, Module.HR)
+        has_sales = has_module_access(request.user, Module.SALES)
+        has_renewals = has_module_access(request.user, Module.RENEWALS)
         results = []
 
         tasks = Task.objects.all() if mgr else Task.objects.filter(assignee=request.user)
@@ -260,7 +264,7 @@ class GlobalSearchView(APIView):
                 }
             )
 
-        if mgr:
+        if has_hr:
             staff = User.objects.filter(role=Role.EMPLOYEE).filter(
                 Q(full_name__icontains=q) | Q(email__icontains=q)
             )
@@ -276,6 +280,7 @@ class GlobalSearchView(APIView):
                     }
                 )
 
+        if has_sales:
             clients = Client.objects.filter(Q(name__icontains=q) | Q(company__icontains=q))
             for c in clients[:5]:
                 results.append(
@@ -286,27 +291,6 @@ class GlobalSearchView(APIView):
                         "sublabel": c.company or "Client",
                         "href": "/sales",
                         "icon": "bi-briefcase-fill",
-                    }
-                )
-
-            renewals = Renewal.objects.select_related("client", "staff").filter(
-                Q(renewal_type__icontains=q)
-                | Q(notes__icontains=q)
-                | Q(client__name__icontains=q)
-                | Q(staff__full_name__icontains=q)
-            )
-            for r in renewals[:5]:
-                subject = r.client.name if r.subject_type == "client" and r.client else (
-                    r.staff.full_name or r.staff.email if r.staff else "—"
-                )
-                results.append(
-                    {
-                        "type": "renewal",
-                        "id": r.id,
-                        "label": f"{r.get_renewal_type_display()} — {subject}",
-                        "sublabel": "Renewal",
-                        "href": "/renewals",
-                        "icon": "bi-calendar-check-fill",
                     }
                 )
 
@@ -340,6 +324,28 @@ class GlobalSearchView(APIView):
                     }
                 )
 
+        if has_renewals:
+            renewals = Renewal.objects.select_related("client", "staff").filter(
+                Q(renewal_type__icontains=q)
+                | Q(notes__icontains=q)
+                | Q(client__name__icontains=q)
+                | Q(staff__full_name__icontains=q)
+            )
+            for r in renewals[:5]:
+                subject = r.client.name if r.subject_type == "client" and r.client else (
+                    r.staff.full_name or r.staff.email if r.staff else "—"
+                )
+                results.append(
+                    {
+                        "type": "renewal",
+                        "id": r.id,
+                        "label": f"{r.get_renewal_type_display()} — {subject}",
+                        "sublabel": "Renewal",
+                        "href": "/renewals",
+                        "icon": "bi-calendar-check-fill",
+                    }
+                )
+
         todos = TodoItem.objects.filter(owner=request.user, text__icontains=q)
         for item in todos[:5]:
             results.append(
@@ -360,7 +366,7 @@ class ActivityLogListView(APIView):
     """GET /api/dashboard/logs — manager-only audit trail (spec follow-up:
     who added/edited a task, client, or project, and when)."""
 
-    permission_classes = [IsManager]
+    permission_classes = [IsSuperadmin]
 
     def get(self, request):
         logs = ActivityLog.objects.select_related("actor")[:200]
@@ -383,7 +389,7 @@ class TodayTasksView(APIView):
     that are relevant to today (due today, or added today), so a manager
     can see who's doing what today without opening each employee's board."""
 
-    permission_classes = [IsManager]
+    permission_classes = [IsSuperadmin]
 
     def get(self, request):
         today = date.today()

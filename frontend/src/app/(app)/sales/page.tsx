@@ -111,7 +111,8 @@ function formatCurrency(amount: string | number | null | undefined) {
 export default function SalesPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const isManager = user?.role === "manager";
+  const isSuperadmin = user?.role === "superadmin";
+  const hasAccess = isSuperadmin || (user?.module_access ?? []).includes("sales");
 
   const [tab, setTab] = useState<Tab>("clients");
 
@@ -136,11 +137,11 @@ export default function SalesPage() {
   };
 
   useEffect(() => {
-    if (!isManager) return;
+    if (!hasAccess) return;
     const timer = setTimeout(loadClients, 250);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, clientSearch]);
+  }, [hasAccess, clientSearch]);
 
   const clientOptions = useMemo(
     () => clients.map((c) => ({ value: String(c.id), label: c.name })),
@@ -230,10 +231,10 @@ export default function SalesPage() {
   };
 
   useEffect(() => {
-    if (!isManager) return;
+    if (!hasAccess) return;
     loadProposals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, proposalStatusFilter, proposalClientFilter]);
+  }, [hasAccess, proposalStatusFilter, proposalClientFilter]);
 
   const resetProposalForm = () => {
     setProposalForm(emptyProposalForm);
@@ -339,10 +340,10 @@ export default function SalesPage() {
   };
 
   useEffect(() => {
-    if (!isManager) return;
+    if (!hasAccess) return;
     loadInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, invoiceStatusFilter, invoiceClientFilter]);
+  }, [hasAccess, invoiceStatusFilter, invoiceClientFilter]);
 
   const proposalOptionsForInvoiceForm = useMemo(() => {
     const relevant = invoiceForm.client
@@ -471,8 +472,8 @@ export default function SalesPage() {
 
   if (!user) return null;
 
-  if (!isManager) {
-    return <p className="muted">Manager access required.</p>;
+  if (!hasAccess) {
+    return <p className="muted">You don&apos;t have access to Sales.</p>;
   }
 
   return (

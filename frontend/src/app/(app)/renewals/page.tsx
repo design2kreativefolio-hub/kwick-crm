@@ -97,7 +97,7 @@ export default function RenewalsPage() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const isManager = user?.role === "manager";
+  const hasAccess = user?.role === "superadmin" || (user?.module_access ?? []).includes("renewals");
 
   const load = () => {
     setLoading(true);
@@ -112,20 +112,20 @@ export default function RenewalsPage() {
   };
 
   useEffect(() => {
-    if (!isManager) return;
+    if (!hasAccess) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, subjectFilter, statusFilter]);
+  }, [hasAccess, subjectFilter, statusFilter]);
 
   useEffect(() => {
-    if (!isManager) return;
+    if (!hasAccess) return;
     api<Client[] | { results: Client[] }>("/api/sales/clients")
       .then((d) => setClients(unwrapList(d)))
       .catch(() => {});
     api<Staff[]>("/api/hr/staff")
       .then((d) => setStaff(unwrapList(d)))
       .catch(() => {});
-  }, [isManager]);
+  }, [hasAccess]);
 
   const clientOptions = useMemo(
     () => [{ value: "", label: "Select client…" }, ...clients.map((c) => ({ value: String(c.id), label: c.name }))],
@@ -203,8 +203,8 @@ export default function RenewalsPage() {
 
   if (!user) return null;
 
-  if (!isManager) {
-    return <p className="muted">Manager access required.</p>;
+  if (!hasAccess) {
+    return <p className="muted">You don&apos;t have access to Renewals.</p>;
   }
 
   return (

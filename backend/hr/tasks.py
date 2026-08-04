@@ -28,7 +28,12 @@ def renewal_object_ref(user_id: int, field: str) -> str:
 
 
 def evaluate_staff_renewal(profile, field: str, label: str) -> None:
-    from notifications.services import refresh_daily_reminder, stop_recurring_reminder
+    from accounts.models import Module
+    from notifications.services import (
+        refresh_daily_reminder,
+        stop_recurring_reminder,
+        users_with_module_access,
+    )
 
     today = date.today()
     lead_cutoff = today + timedelta(days=LEAD_DAYS)
@@ -48,10 +53,11 @@ def evaluate_staff_renewal(profile, field: str, label: str) -> None:
                 else f"{name}'s {label.lower()} is due {due_date.strftime('%b %d, %Y')}."
             ),
             object_ref=object_ref,
+            users=users_with_module_access(Module.HR),
         )
     else:
         # Date is unset or outside the lead window — nothing to nag about
-        # (also the safety net if a manager's edit didn't already stop it).
+        # (also the safety net if an HR edit didn't already stop it).
         stop_recurring_reminder(object_ref=object_ref)
 
 

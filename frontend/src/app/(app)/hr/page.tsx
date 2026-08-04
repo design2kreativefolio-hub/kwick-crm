@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
-import { api, ApiError, unwrapList } from "@/lib/api";
+import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 
 type Staff = {
@@ -51,6 +52,7 @@ function generatePassword() {
 
 export default function HrPage() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -81,12 +83,11 @@ export default function HrPage() {
     setAvatarPreview(file ? URL.createObjectURL(file) : null);
   };
 
-  const addStaff = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitStaff = async (payload: Record<string, unknown>) => {
     setError(null);
     setCreating(true);
     try {
-      const created = await api<Staff>("/api/hr/staff", { method: "POST", body: JSON.stringify(form) });
+      const created = await api<Staff>("/api/hr/staff", { method: "POST", body: JSON.stringify(payload) });
       if (avatarFile) {
         const fd = new FormData();
         fd.append("file", avatarFile);
@@ -99,10 +100,22 @@ export default function HrPage() {
       showToast("Staff account created — a welcome email was sent.");
       load();
     } catch (err: any) {
-      setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+      if (err instanceof ApiError && err.status === 409 && err.data?.duplicate_warning === "phone") {
+        setCreating(false);
+        if (await confirm(`${err.data.message}\n\nSave this staff member with the same phone number anyway?`, { confirmLabel: "Save anyway" })) {
+          await submitStaff({ ...payload, confirm_duplicate_phone: true });
+        }
+        return;
+      }
+      setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
     } finally {
       setCreating(false);
     }
+  };
+
+  const addStaff = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitStaff(form);
   };
 
   const approve = async (id: number) => {
@@ -346,6 +359,7 @@ export default function HrPage() {
           </div>
         )}
       </div>
+      {ConfirmDialog}
     </div>
   );
 }

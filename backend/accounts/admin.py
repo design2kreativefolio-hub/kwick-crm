@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import InviteCode, StaffProfile, User
+from .models import ModuleAccess, StaffProfile, User
 
 
 @admin.register(User)
@@ -22,4 +22,4 @@ class UserAdmin(BaseUserAdmin):
 
 
 admin.site.register(StaffProfile)
-admin.site.register(InviteCode)
+admin.site.register(ModuleAccess)

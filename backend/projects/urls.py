@@ -5,6 +5,7 @@ from .views import (
     ArtworkViewSet,
     CategoryCodeViewSet,
     ClientDirectoryViewSet,
+    ContentCalendarItemViewSet,
     ProjectClientViewSet,
     ProjectViewSet,
 )
@@ -18,6 +19,7 @@ router.register("category-codes", CategoryCodeViewSet, basename="category-codes"
 router.register("artwork-types", ArtworkTypeViewSet, basename="artwork-types")
 router.register("project-clients", ProjectClientViewSet, basename="project-clients")
 router.register("clients", ClientDirectoryViewSet, basename="client-directory")
+router.register("content-calendar", ContentCalendarItemViewSet, basename="content-calendar")
 
 urlpatterns = router.urls
 

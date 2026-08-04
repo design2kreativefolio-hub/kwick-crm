@@ -26,6 +26,23 @@ class Task(TimeStampedModel):
     project = models.ForeignKey(
         "projects.Project", on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks"
     )
+    # Free text, same convention as Project.client (see projects/models.py) —
+    # pick an existing client's name or just type any name; never creates or
+    # touches a row in the real Clients directory. Replaces "Project" as the
+    # context field on the Tasks page's own create form (spec follow-up).
+    client_name = models.CharField(max_length=200, blank=True, default="")
+    # Set only for a Task auto-created to mirror one assignee's slot on a
+    # client's content calendar item — kept in sync (title/dates/status) by
+    # ContentCalendarItemViewSet, and deleted along with the item or when
+    # that assignee is removed from it (spec follow-up: assigning content
+    # calendar work must show up in the assignee's own Tasks list too).
+    content_item = models.ForeignKey(
+        "projects.ContentCalendarItem",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="tasks",
+    )
     assignee = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tasks"
     )

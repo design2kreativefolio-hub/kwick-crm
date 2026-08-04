@@ -1,0 +1,258 @@
+"use client";
+
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
+import { BackLink } from "@/components/BackLink";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { Select } from "@/components/Select";
+import { api, ApiError, formatApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
+
+type Task = {
+  id: number;
+  title: string;
+  description: string;
+  project: number | null;
+  project_name: string;
+  client_name: string;
+  assignee: number | null;
+  assignee_name: string;
+  content_item: number | null;
+  status: "todo" | "in_progress" | "completed";
+  priority: "low" | "medium" | "high";
+  due_date: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
+type ContentItem = { id: number; client: number };
+
+const STATUS_OPTIONS = [
+  { value: "todo", label: "To do" },
+  { value: "in_progress", label: "In progress" },
+  { value: "completed", label: "Completed" },
+];
+const PRIORITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+const STATUS_BADGE: Record<string, string> = {
+  todo: "badge-muted",
+  in_progress: "badge-warning",
+  completed: "badge-success",
+};
+const PRIORITY_BADGE: Record<string, string> = {
+  low: "badge-muted",
+  medium: "badge-warning",
+  high: "badge-danger",
+};
+const STATUS_LABEL: Record<string, string> = {
+  todo: "To do",
+  in_progress: "In progress",
+  completed: "Completed",
+};
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+export default function TaskDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
+  const router = useRouter();
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
+  const isSuperadmin = user?.role === "superadmin";
+
+  const [task, setTask] = useState<Task | null>(null);
+  const [contentClientId, setContentClientId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    setNotFound(false);
+    api<Task>(`/api/tasks/${id}`)
+      .then((t) => {
+        setTask(t);
+        if (t.content_item) {
+          api<ContentItem>(`/api/projects/content-calendar/${t.content_item}`)
+            .then((ci) => setContentClientId(ci.client))
+            .catch(() => {});
+        }
+      })
+      .catch(() => setNotFound(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [id]);
+
+  const isSynced = !!task?.content_item;
+
+  const updateField = async (payload: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      const updated = await api<Task>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      setTask(updated);
+      showToast("Task updated.");
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : err.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!task) return;
+    const ok = await confirm(`Delete "${task.title}"?`, { danger: true, confirmLabel: "Delete" });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api(`/api/tasks/${id}`, { method: "DELETE" });
+      showToast("Task deleted.");
+      router.push("/tasks");
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : "Couldn't delete task.", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) return <p className="muted">Loading…</p>;
+  if (notFound || !task) return <p className="muted">Task not found.</p>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div>
+        <BackLink href="/tasks" label="Back to Tasks" />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+          <h1 style={{ margin: 0, fontSize: 22 }}>{task.title}</h1>
+          <span className={`badge ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
+          <span className={`badge ${STATUS_BADGE[task.status]}`}>{STATUS_LABEL[task.status]}</span>
+        </div>
+      </div>
+
+      <div className="staff-edit-grid" style={twoCol}>
+        <div className="card">
+          <span className="card-title">Details</span>
+          {task.description ? (
+            <p style={{ fontSize: 14, whiteSpace: "pre-line" }}>{task.description}</p>
+          ) : (
+            <p className="muted">No description.</p>
+          )}
+          <div style={fieldGrid}>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Client</label>
+              <div className="input" style={readonlyInput}>{task.client_name || "—"}</div>
+            </div>
+            {isSuperadmin && (
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Assignee</label>
+                <div className="input" style={readonlyInput}>{task.assignee_name || "—"}</div>
+              </div>
+            )}
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Due date</label>
+              <div className="input" style={readonlyInput}>{formatDate(task.due_date)}</div>
+            </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Priority</label>
+              {isSynced ? (
+                <div className="input" style={readonlyInput}>{task.priority}</div>
+              ) : (
+                <Select
+                  value={task.priority}
+                  onChange={(v) => updateField({ priority: v })}
+                  options={PRIORITY_OPTIONS}
+                  ariaLabel="Priority"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div className="card">
+            <span className="card-title">Status</span>
+            {isSynced ? (
+              <>
+                <span className={`badge ${STATUS_BADGE[task.status]}`} style={{ fontSize: 13 }}>
+                  {STATUS_LABEL[task.status]}
+                </span>
+                <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+                  <i className="bi bi-calendar3-fill" style={{ color: "var(--gold)", marginRight: 6 }} />
+                  This task comes from a client content calendar assignment — its status stays in sync
+                  with the calendar either way.
+                </p>
+                {contentClientId && (
+                  <Link
+                    href={`/projects/clients/${contentClientId}/calendar`}
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginTop: 10 }}
+                  >
+                    <i className="bi bi-arrow-right" /> View in client calendar
+                  </Link>
+                )}
+              </>
+            ) : (
+              <Select
+                value={task.status}
+                onChange={(v) => updateField({ status: v })}
+                options={STATUS_OPTIONS}
+                ariaLabel="Status"
+              />
+            )}
+          </div>
+
+          {isSynced ? (
+            <div className="card">
+              <span className="card-title">Delete</span>
+              <p className="muted" style={{ fontSize: 12.5 }}>
+                This task can't be deleted here — remove the assignee (or the item) from the client
+                content calendar instead.
+              </p>
+            </div>
+          ) : (
+            <div className="card">
+              <span className="card-title">Danger zone</span>
+              <button
+                className="btn btn-ghost"
+                style={{ color: "var(--danger)" }}
+                disabled={busy}
+                onClick={remove}
+              >
+                <i className="bi bi-trash-fill" /> Delete task
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      {ConfirmDialog}
+    </div>
+  );
+}
+
+const twoCol: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "2fr 1fr",
+  gap: 20,
+  alignItems: "start",
+};
+const fieldGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 14,
+  marginTop: 14,
+};
+const readonlyInput: React.CSSProperties = {
+  background: "var(--bg)",
+  color: "var(--text)",
+};

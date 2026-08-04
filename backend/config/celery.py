@@ -27,6 +27,12 @@ app.conf.beat_schedule = {
         "task": "hr.tasks.check_staff_renewals",
         "schedule": crontab(hour=8, minute=5),
     },
+    # Nag assigned employees daily about project delivery dates closing in
+    # or overdue — same reset-to-unread pattern as the staff renewal check.
+    "check-project-deliveries-daily": {
+        "task": "projects.tasks.check_project_deliveries",
+        "schedule": crontab(hour=8, minute=10),
+    },
 }
 
 

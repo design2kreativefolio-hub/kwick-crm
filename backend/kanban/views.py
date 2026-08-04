@@ -1,7 +1,7 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from common.permissions import IsActive, is_manager
+from common.permissions import IsActive, is_superadmin
 from tasks.models import Task
 from tasks.serializers import TaskSerializer
 
@@ -20,7 +20,7 @@ class BoardView(APIView):
         columns = {}
         for value, label in Task.BoardStatus.choices:
             qs = Task.objects.filter(board_status=value)
-            if not is_manager(request.user):
+            if not is_superadmin(request.user):
                 qs = qs.filter(assignee=request.user)
             qs = qs.order_by("board_order").select_related("assignee", "project")
             columns[value] = {"label": label, "tasks": TaskSerializer(qs, many=True).data}
@@ -37,7 +37,7 @@ class MoveTaskView(APIView):
             task = Task.objects.get(pk=task_id)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
-        if not is_manager(request.user) and task.assignee_id != request.user.id:
+        if not is_superadmin(request.user) and task.assignee_id != request.user.id:
             return Response({"detail": "You can only move your own tasks."}, status=403)
 
         board_status = request.data.get("board_status")

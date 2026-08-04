@@ -38,7 +38,7 @@ function generatePassword() {
 export function EditProfileTab() {
   const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
-  const isManager = user?.role === "manager";
+  const isSuperadmin = user?.role === "superadmin";
 
   const [form, setForm] = useState({ full_name: "", email: "", phone: "" });
   const [savingProfile, setSavingProfile] = useState(false);
@@ -49,10 +49,6 @@ export function EditProfileTab() {
   const [pwError, setPwError] = useState<string | null>(null);
 
   const [collaterals, setCollaterals] = useState<Collateral[]>([]);
-
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [inviteBusy, setInviteBusy] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -82,10 +78,10 @@ export function EditProfileTab() {
     setSavingProfile(true);
     setProfileError(null);
     try {
-      // Employees' name/email are manager-owned — only phone ever goes out
+      // Employees' name/email are superadmin-owned — only phone ever goes out
       // for them; the backend also enforces this, this just avoids a
       // pointless round trip.
-      const body = isManager ? form : { phone: form.phone };
+      const body = isSuperadmin ? form : { phone: form.phone };
       await api("/api/auth/me", { method: "PATCH", body: JSON.stringify(body) });
       await refreshUser();
       showToast("Profile updated.");
@@ -115,24 +111,6 @@ export function EditProfileTab() {
       setPwError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
     } finally {
       setSavingPw(false);
-    }
-  };
-
-  const generateInvite = async () => {
-    setInviteBusy(true);
-    setInviteError(null);
-    setInviteCode(null);
-    try {
-      const res = await api<{ code: string }>("/api/auth/invite-codes", {
-        method: "POST",
-        body: JSON.stringify({ expires_in_days: 7 }),
-      });
-      setInviteCode(res.code);
-      showToast("Invite code generated.");
-    } catch (err: any) {
-      setInviteError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
-    } finally {
-      setInviteBusy(false);
     }
   };
 
@@ -172,40 +150,7 @@ export function EditProfileTab() {
           </button>
         </form>
 
-        {isManager && (
-          <div className="card">
-            <span className="card-title">Manager Invite Codes</span>
-            <p className="muted" style={{ fontSize: 13, marginTop: -8, marginBottom: 14 }}>
-              Generate a single-use code so another manager (e.g. a co-owner) can register at{" "}
-              <code style={{ color: "var(--gold)" }}>/register</code> and activate immediately.
-              Employees don&apos;t need a code — they self-register and just wait for your approval.
-            </p>
-            <button className="btn btn-sm" onClick={generateInvite} disabled={inviteBusy}>
-              {inviteBusy ? "Generating…" : "Generate code"}
-            </button>
-            {inviteError && <p style={{ color: "var(--danger)", fontSize: 13 }}>{inviteError}</p>}
-            {inviteCode && (
-              <p style={{ marginTop: 12, marginBottom: 0 }}>
-                <code
-                  style={{
-                    background: "var(--bg)",
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    color: "var(--gold)",
-                    fontWeight: 600,
-                  }}
-                >
-                  {inviteCode}
-                </code>
-                <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
-                  Valid 7 days, shown once — copy it now.
-                </span>
-              </p>
-            )}
-          </div>
-        )}
-
-        {!isManager && (
+        {!isSuperadmin && (
           <div className="card">
             <span className="card-title">My Documents</span>
             {collaterals.length === 0 && <p className="muted">No documents issued yet.</p>}
@@ -244,8 +189,8 @@ export function EditProfileTab() {
                 value={form.full_name}
                 onChange={set("full_name")}
                 required
-                disabled={!isManager}
-                style={!isManager ? disabledInput : undefined}
+                disabled={!isSuperadmin}
+                style={!isSuperadmin ? disabledInput : undefined}
               />
             </div>
             <div>
@@ -256,8 +201,8 @@ export function EditProfileTab() {
                 value={form.email}
                 onChange={set("email")}
                 required
-                disabled={!isManager}
-                style={!isManager ? disabledInput : undefined}
+                disabled={!isSuperadmin}
+                style={!isSuperadmin ? disabledInput : undefined}
               />
             </div>
           </div>
@@ -277,7 +222,7 @@ export function EditProfileTab() {
           </button>
         </form>
 
-        {!isManager && (
+        {!isSuperadmin && (
           <div className="card">
             <span className="card-title">Employment Details</span>
             <div style={fieldGrid}>

@@ -1,16 +1,22 @@
-import hashlib
-import secrets
-
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
-from django.utils import timezone
 
 from common.models import TimeStampedModel
 
 
 class Role(models.TextChoices):
-    MANAGER = "manager", "Manager"
+    SUPERADMIN = "superadmin", "Superadmin"
     EMPLOYEE = "employee", "Employee"
+
+
+class Module(models.TextChoices):
+    """The business modules a superadmin can hand out to specific employees
+    one at a time, in place of the old blanket manager role."""
+
+    HR = "hr", "HR"
+    SALES = "sales", "Sales"
+    RENEWALS = "renewals", "Renewals"
+    REPORTS = "reports", "Reports"
 
 
 class UserStatus(models.TextChoices):
@@ -42,7 +48,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra):
         extra.update(
             {
-                "role": Role.MANAGER,
+                "role": Role.SUPERADMIN,
                 "status": UserStatus.ACTIVE,
                 "is_staff": True,
                 "is_superuser": True,
@@ -75,13 +81,16 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         return f"{self.email} ({self.role})"
 
     @property
-    def is_manager(self):
-        return self.role == Role.MANAGER
+    def is_superadmin(self):
+        return self.role == Role.SUPERADMIN
 
     @property
     def can_login(self):
         # Employee cannot log in until status=active (spec §4 acceptance).
         return self.status == UserStatus.ACTIVE and self.is_active
+
+    def has_module_access(self, module: str) -> bool:
+        return self.is_superadmin or self.module_access.filter(module=module).exists()
 
 
 class StaffProfile(TimeStampedModel):
@@ -98,53 +107,35 @@ class StaffProfile(TimeStampedModel):
     visa_renewal_date = models.DateField(null=True, blank=True)
     insurance_renewal_date = models.DateField(null=True, blank=True)
     iloe_renewal_date = models.DateField(null=True, blank=True)
+    # HR record fields (spec follow-up).
+    nationality = models.CharField(max_length=100, blank=True)
+    emergency_contact_uae = models.CharField(max_length=40, blank=True)
+    emergency_contact_relation = models.CharField(max_length=100, blank=True)
+    home_country_address = models.TextField(blank=True)
+    home_country_number = models.CharField(max_length=40, blank=True)
 
     def __str__(self):
         return f"Profile<{self.user.email}>"
 
 
-class InviteCode(TimeStampedModel):
-    """Single-use, hashed invite code issued by a manager (spec §4)."""
+class ModuleAccess(TimeStampedModel):
+    """
+    Superadmin-granted access to one normally superadmin-only module, for one
+    employee. Replaces the old multi-manager role entirely — there is only
+    ever one superadmin (Rajathi); everyone else registers as an employee and
+    gets extended into specific modules (HR, Sales, Renewals, Reports) here,
+    from a control inside that module's own page.
+    """
 
-    code_hash = models.CharField(max_length=64, unique=True, db_index=True)
-    issued_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, related_name="issued_invites"
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="module_access")
+    module = models.CharField(max_length=20, choices=Module.choices)
+    granted_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="+"
     )
-    role_for = models.CharField(max_length=20, choices=Role.choices, default=Role.EMPLOYEE)
-    expires_at = models.DateTimeField()
-    used_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="used_invite"
-    )
-    used_at = models.DateTimeField(null=True, blank=True)
 
-    @staticmethod
-    def hash_code(raw_code: str) -> str:
-        return hashlib.sha256(raw_code.encode("utf-8")).hexdigest()
+    class Meta:
+        unique_together = ("user", "module")
+        ordering = ["module", "user__full_name"]
 
-    @classmethod
-    def issue(cls, *, issued_by, role_for, expires_at):
-        """Create a code, returning (instance, raw_code). Only the hash is stored."""
-        raw = secrets.token_urlsafe(9)  # ~12 chars
-        instance = cls.objects.create(
-            code_hash=cls.hash_code(raw),
-            issued_by=issued_by,
-            role_for=role_for,
-            expires_at=expires_at,
-        )
-        return instance, raw
-
-    @property
-    def is_used(self):
-        return self.used_by_id is not None
-
-    @property
-    def is_expired(self):
-        return timezone.now() >= self.expires_at
-
-    def is_valid_for(self, role: str) -> bool:
-        return (not self.is_used) and (not self.is_expired) and self.role_for == role
-
-    def mark_used(self, user):
-        self.used_by = user
-        self.used_at = timezone.now()
-        self.save(update_fields=["used_by", "used_at", "updated_at"])
+    def __str__(self):
+        return f"{self.user.email} -> {self.module}"

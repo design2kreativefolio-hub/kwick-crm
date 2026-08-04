@@ -16,13 +16,16 @@ export type StaffProfile = {
   iloe_renewal_date: string | null;
 };
 
+export type Module = "hr" | "sales" | "renewals" | "reports";
+
 export type User = {
   id: number;
   email: string;
   full_name: string;
-  role: "manager" | "employee";
+  role: "superadmin" | "employee";
   status: string;
   profile?: StaffProfile;
+  module_access: Module[];
 };
 
 const AuthContext = createContext<{

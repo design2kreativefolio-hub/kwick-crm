@@ -226,7 +226,7 @@ export function Topbar({
                 <Link href="/profile" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                   <i className="bi bi-person-fill" /> Profile
                 </Link>
-                {user?.role === "manager" && (
+                {user?.role === "superadmin" && (
                   <Link href="/logs" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                     <i className="bi bi-clock-history" /> Logs
                   </Link>
