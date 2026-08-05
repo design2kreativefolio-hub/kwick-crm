@@ -9,12 +9,15 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tiptap/extension-underline": "^2.11.5",
+    "@tiptap/react": "^2.11.5",
+    "@tiptap/starter-kit": "^2.11.5",
+    "bootstrap-icons": "1.11.3",
+    "framer-motion": "12.42.2",
     "next": "14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "recharts": "2.12.7",
-    "bootstrap-icons": "1.11.3",
-    "framer-motion": "12.42.2"
+    "recharts": "2.12.7"
   },
   "devDependencies": {
     "@types/node": "20.14.10",

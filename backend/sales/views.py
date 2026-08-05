@@ -1,5 +1,8 @@
-from rest_framework import viewsets
+import uuid
+
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from accounts.models import Module
@@ -7,6 +10,8 @@ from common.permissions import HasModuleAccess
 from common.services import log_activity
 
 from .models import Client, Invoice, Proposal
+from .proposal_docx import render_proposal_docx
+from .proposal_pdf import render_proposal_pdf
 from .serializers import ClientSerializer, InvoiceSerializer, ProposalSerializer
 
 
@@ -34,6 +39,39 @@ class ProposalViewSet(viewsets.ModelViewSet):
     permission_classes = [HasModuleAccess]
     required_module = Module.SALES
     filterset_fields = ["status", "client"]
+
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
+    def upload_image(self, request, pk=None):
+        """POST /api/sales/proposals/{id}/upload_image — used by every image
+        field in the builder (cover background, section images, gallery
+        images). Returns the URL to store back into content."""
+        proposal = self.get_object()
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response({"detail": "file is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.core.files.storage import default_storage
+
+        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "png"
+        key = f"proposal-assets/{proposal.pk}/{uuid.uuid4().hex}.{ext}"
+        saved_path = default_storage.save(key, upload)
+        return Response({"url": request.build_absolute_uri(default_storage.url(saved_path))})
+
+    @action(detail=True, methods=["post"])
+    def pdf(self, request, pk=None):
+        """POST /api/sales/proposals/{id}/pdf — render the builder content to
+        a branded PDF and return its URL."""
+        proposal = self.get_object()
+        url = render_proposal_pdf(proposal, request)
+        return Response({"file_url": url})
+
+    @action(detail=True, methods=["post"])
+    def docx(self, request, pk=None):
+        """POST /api/sales/proposals/{id}/docx — same content, as an
+        editable Word document."""
+        proposal = self.get_object()
+        url = render_proposal_docx(proposal, request)
+        return Response({"file_url": url})
 
 
 class InvoiceViewSet(viewsets.ModelViewSet):

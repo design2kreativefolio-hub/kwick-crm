@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import Client, Invoice, InvoiceLineItem, Proposal
+from .proposal_content import merged_content
 
 
 class ClientSerializer(serializers.ModelSerializer):
@@ -19,7 +20,10 @@ class ClientSerializer(serializers.ModelSerializer):
 
 
 class ProposalSerializer(serializers.ModelSerializer):
-    client_name = serializers.CharField(source="client.name", read_only=True)
+    # Display name for list rows: the linked CRM client if there is one,
+    # otherwise whatever name was typed into the cover (content.home
+    # .client_name) for a one-off client that isn't in the CRM.
+    client_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Proposal
@@ -29,10 +33,34 @@ class ProposalSerializer(serializers.ModelSerializer):
             "client_name",
             "title",
             "status",
-            "amount",
-            "valid_until",
+            "content",
             "created_at",
+            "updated_at",
         ]
+
+    def get_client_name(self, obj):
+        if obj.client_id:
+            return obj.client.name
+        return (obj.content or {}).get("home", {}).get("client_name", "")
+
+    def _synced_title(self, content, fallback):
+        title = (content or {}).get("home", {}).get("title", "").strip()
+        return title or fallback
+
+    def create(self, validated_data):
+        # Always store a fully-shaped content object (defaults filled in),
+        # regardless of what the client posted — every section key is then
+        # guaranteed present for the builder/preview/exports to read.
+        content = merged_content(validated_data.get("content"))
+        validated_data["content"] = content
+        validated_data["title"] = self._synced_title(content, validated_data.get("title") or "Untitled Proposal")
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if "content" in validated_data:
+            validated_data["content"] = merged_content(validated_data["content"])
+            validated_data["title"] = self._synced_title(validated_data["content"], instance.title)
+        return super().update(instance, validated_data)
 
 
 class InvoiceLineItemSerializer(serializers.ModelSerializer):

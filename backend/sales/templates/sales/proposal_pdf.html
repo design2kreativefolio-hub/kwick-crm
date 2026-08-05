@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 100px 42px 95px 42px;
+  }
+  /* Header/footer as margin-box background images (not position:running() +
+     element()) — that mechanism is documented to spawn a spurious blank
+     page around named-page transitions like the cover (pagedjs/pagedjs#301),
+     and it isn't needed here anyway since these images don't change
+     per-page. width/height are required — @top-center/@bottom-center
+     otherwise default to a content-sized (not page-wide) box. */
+  @page {
+    @top-center {
+      content: "";
+      background-image: url('{{ logo_data_uri }}');
+      background-repeat: no-repeat;
+      background-position: right center;
+      background-size: contain;
+      opacity: 0.7;
+      width: 100%;
+      height: 34px;
+    }
+    @bottom-center {
+      content: "";
+      background-image: url('{{ footer_data_uri }}');
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+      width: 100%;
+      height: 46px;
+    }
+  }
+  @page cover {
+    margin: 0;
+    @top-center { content: normal; }
+    @bottom-center { content: normal; }
+  }
+  @page fullbleed {
+    margin: 0;
+    @top-center { content: normal; }
+    @bottom-center { content: normal; }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: #2a2f45;
+    font-size: 11.5px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  h1, h2, h3 { color: #1b2559; margin: 0 0 12px; }
+  h2 { font-size: 20px; border-bottom: 2px solid #e4c9ae; padding-bottom: 8px; margin-bottom: 16px; }
+  h3 { font-size: 14.5px; margin-top: 18px; }
+  p { margin: 0 0 10px; }
+  ul, ol { margin: 0 0 10px; padding-left: 22px; }
+  img.section-image { max-width: 100%; border-radius: 6px; margin: 10px 0; }
+  img.section-image-full { width: 100%; border-radius: 6px; margin: 10px 0; }
+
+  /* Sections flow continuously — no forced page break between them, only
+     natural overflow pagination. A little top margin plus each h2's own
+     border keeps them visually distinct. */
+  .doc-section { margin-top: 10px; }
+
+  /* ---- Cover (section 1) — background is the fixed brand template image,
+     not per-proposal — its bottom half already carries the tagline + a
+     footer bar, so this page intentionally shows no @top-center/@bottom-center
+     (see the @page cover override above). ---- */
+  .cover-page {
+    page: cover; position: relative; width: 100%; min-height: 297mm;
+    background-image: url('{{ cover_full_data_uri }}');
+    background-size: cover; background-position: top center;
+  }
+  /* Logo centered top; QTN/date box absolutely positioned top-right —
+     avoids flexbox (WeasyPrint's flex support has known gaps around table
+     children that were silently dropping this block off the page) in
+     favor of plain block + absolute positioning, both well-supported. */
+  .cover-logo-row { text-align: center; padding-top: 40px; }
+  .cover-logo { height: 68px; }
+  .qtn-box-wrap { position: absolute; top: 40px; right: 44px; }
+  .qtn-box { border-collapse: collapse; font-size: 11px; }
+  .qtn-box td { border: 1px solid #1b2559; padding: 4px 10px; }
+  .qtn-box td:first-child { font-weight: 700; color: #1b2559; background: #f4f0ea; }
+  .cover-title { font-size: 40px; font-weight: 800; padding: 34px 44px 0; }
+  .cover-client { padding: 6px 44px 0; font-size: 12.5px; }
+  .cover-client strong { text-decoration: underline; }
+
+  /* ---- Tables (strategy / what-we-can-do / pricing) ---- */
+  table.doc-table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 11px; }
+  table.doc-table th, table.doc-table td { border: 1px solid #1b2559; padding: 7px 10px; text-align: left; vertical-align: top; }
+  table.doc-table th { background: #1b2559; color: #fff; font-size: 11px; }
+
+  .platform-block, .pricing-block { margin-bottom: 20px; }
+  .platform-block h3, .pricing-block h3 { text-transform: capitalize; }
+  .field-form { border: 1px solid #d8d4cb; background: #faf8f4; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; }
+  .field-form .label { font-weight: 700; color: #1b2559; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 3px; }
+
+  /* ---- Full-bleed image (section 13) ---- */
+  .fullbleed-page { page: fullbleed; width: 100%; height: 297mm; }
+  .fullbleed-page img { width: 100%; height: 100%; object-fit: cover; display: block; }
+</style>
+</head>
+<body>
+
+  {% if home.enabled %}
+  <section class="cover-page">
+    <div class="cover-logo-row">
+      <img class="cover-logo" src="{{ logo_data_uri }}" />
+    </div>
+    <div class="qtn-box-wrap">
+      <table class="qtn-box">
+        <tbody>
+          <tr><td>QTN No:</td><td>{{ home.qtn_no }}</td></tr>
+          <tr><td>Date:</td><td>{{ home.date_display }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h1 class="cover-title">{{ home.title }}</h1>
+    <div class="cover-client">
+      <p>To: <strong>{{ home.client_name }}</strong></p>
+      {% if home.client_email %}<p>Email: {{ home.client_email }}</p>{% endif %}
+      {% if home.client_phone %}<p>Contact No: {{ home.client_phone }}</p>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if about_kreativefolio.enabled %}
+  <section class="doc-section">
+    <h2>About Kreativefolio</h2>
+    {{ about_kreativefolio.content|safe }}
+  </section>
+  {% endif %}
+
+  {% if about_client.enabled %}
+  <section class="doc-section">
+    <h2>About {{ client_display_name }}</h2>
+    {{ about_client.content|safe }}
+    {% for url in about_client.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
+  </section>
+  {% endif %}
+
+  {% if traffic.enabled %}
+  <section class="doc-section">
+    <h2>Traffic</h2>
+    {% for url in traffic.image_urls %}<img class="section-image-full" src="{{ url }}" />{% endfor %}
+  </section>
+  {% endif %}
+
+  {% if technical_seo.enabled %}
+  <section class="doc-section">
+    <h2>Technical SEO</h2>
+    {{ technical_seo.content|safe }}
+  </section>
+  {% endif %}
+
+  {% if keyword_strategy.enabled %}
+  <section class="doc-section">
+    <h2>Keyword Strategy</h2>
+    {% for url in keyword_strategy.image_urls %}<img class="section-image-full" src="{{ url }}" />{% endfor %}
+  </section>
+  {% endif %}
+
+  {% if onpage_seo.enabled %}
+  <section class="doc-section">
+    <h2>Onpage SEO</h2>
+    {{ onpage_seo.content|safe }}
+    {% for url in onpage_seo.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
+  </section>
+  {% endif %}
+
+  {% if geo.enabled %}
+  <section class="doc-section">
+    <h2>GEO</h2>
+    {% if geo.description %}<div class="field-form"><span class="label">Description</span>{{ geo.description }}</div>{% endif %}
+    <h3>Recommendations</h3>
+    {{ geo.recommendations|safe }}
+    <h3>Our Approach</h3>
+    {{ geo.approach|safe }}
+  </section>
+  {% endif %}
+
+  {% if social_medias.enabled and visible_platforms %}
+  <section class="doc-section">
+    <h2>Social Medias</h2>
+    {% for p in visible_platforms %}
+    <div class="platform-block">
+      <h3>{{ p.platform_label }}</h3>
+      {% if p.description %}<div class="field-form"><span class="label">Description</span>{{ p.description }}</div>{% endif %}
+      {% for url in p.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
+      {% if p.key_problems %}<h3 style="font-size:12.5px;">Key Problems Identified</h3>{{ p.key_problems|safe }}{% endif %}
+      {% if p.strategy_rows %}
+      <table class="doc-table">
+        <thead><tr><th>Category</th><th>Details</th><th>Goal</th></tr></thead>
+        <tbody>
+          {% for row in p.strategy_rows %}
+          <tr><td>{{ row.category }}</td><td>{{ row.details }}</td><td>{{ row.goal }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if what_we_can_do.enabled and what_we_can_do.rows %}
+  <section class="doc-section">
+    <h2>What We Can Do</h2>
+    <table class="doc-table">
+      <thead><tr><th>Area</th><th>How Kreativefolio Can Help</th></tr></thead>
+      <tbody>
+        {% for row in what_we_can_do.rows %}
+        <tr><td>{{ row.area }}</td><td>{{ row.details }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if visible_pricing %}
+  <section class="doc-section">
+    <h2>Pricing</h2>
+    {% for item in visible_pricing %}
+    <div class="pricing-block">
+      <h3>{{ item.service_name }}</h3>
+      {% if item.ad_budget %}<div class="field-form"><span class="label">{{ item.ad_budget_label }}</span>{{ item.ad_budget }}</div>{% endif %}
+      {% if item.management_fee %}<div class="field-form"><span class="label">{{ item.management_fee_label }}</span>{{ item.management_fee }}</div>{% endif %}
+      {% if item.rows %}
+      <table class="doc-table">
+        <thead><tr><th>Category</th><th>Details</th><th>Frequency</th></tr></thead>
+        <tbody>
+          {% for row in item.rows %}
+          <tr><td>{{ row.category }}</td><td>{{ row.details }}</td><td>{{ row.frequency }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if terms.enabled %}
+  <section class="doc-section">
+    <h2>Terms</h2>
+    {{ terms_html|safe }}
+  </section>
+  {% endif %}
+
+  {% if full_page_image.enabled and full_page_image.image_url %}
+  <section class="doc-section fullbleed-page">
+    <img src="{{ full_page_image.image_url }}" />
+  </section>
+  {% endif %}
+
+</body>
+</html>

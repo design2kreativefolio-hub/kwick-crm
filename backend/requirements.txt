@@ -28,7 +28,15 @@ pywebpush==2.0.0
 py-vapid==1.9.0
 
 # ---- PDF generation (Employee Collaterals / invoices) ----
+# pydyf pinned: 62.1 was built against pydyf's 0.11 API. Without pinning it,
+# pip resolves pydyf's latest (0.12+, a breaking release that renamed/removed
+# the Stream.transform base method) and every PDF export crashes with
+# "AttributeError: 'super' object has no attribute 'transform'".
 weasyprint==62.1
+pydyf==0.11.0
+
+# ---- DOCX generation (Proposal builder export) ----
+python-docx==1.1.2
 
 # ---- Image handling (avatar upload validation) ----
 Pillow==10.4.0

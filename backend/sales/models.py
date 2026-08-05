@@ -51,17 +51,29 @@ class Client(TimeStampedModel):
 
 
 class Proposal(TimeStampedModel):
+    """A built proposal document (Sales > Proposals > Add Proposal). The full
+    document — cover, every toggleable section, tables, image refs — lives in
+    `content` (see frontend/src/lib/proposalContent.ts for the canonical
+    shape). `client`/`title`/`status` are kept as real columns purely so the
+    Proposals list can query/filter/search without unpacking JSON; `title`
+    is synced from content.home.title on every save (see serializer)."""
+
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         SENT = "sent", "Sent"
         ACCEPTED = "accepted", "Accepted"
         REJECTED = "rejected", "Rejected"
 
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="proposals")
-    title = models.CharField(max_length=200)
+    # Optional: a proposal's cover can name a client picked from the CRM list
+    # (this FK) or a one-off typed name that isn't a CRM client at all — the
+    # actual display name/email/phone always live in content.home, this is
+    # just for linking/reporting when it IS a real client.
+    client = models.ForeignKey(
+        Client, on_delete=models.SET_NULL, null=True, blank=True, related_name="proposals"
+    )
+    title = models.CharField(max_length=200, blank=True, default="Untitled Proposal")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
-    amount = models.DecimalField(**MONEY)
-    valid_until = models.DateField(null=True, blank=True)
+    content = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"{self.title} ({self.status})"
