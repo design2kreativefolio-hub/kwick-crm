@@ -161,7 +161,7 @@ export default function KanbanPage() {
             const meta = COLUMN_META[key];
             const isOver = dragOverColumn === key;
             return (
-              <Reveal key={key} index={colIndex}>
+              <Reveal key={key} index={colIndex} style={columnWrapper}>
                 <div
                   style={{ ...column, background: isOver ? "var(--gold-soft)" : "var(--bg)" }}
                   onDragOver={(e) => {
@@ -286,13 +286,18 @@ export default function KanbanPage() {
 const boardRow: React.CSSProperties = {
   display: "flex",
   gap: 16,
+  width: "100%",
   alignItems: "flex-start",
   overflowX: "auto",
   paddingBottom: 8,
 };
-const column: React.CSSProperties = {
-  width: 280,
+const columnWrapper: React.CSSProperties = {
+  flex: "1 0 280px",
   minWidth: 280,
+};
+const column: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
   borderRadius: "var(--radius)",
   padding: 14,
   display: "flex",

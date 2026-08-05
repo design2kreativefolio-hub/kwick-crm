@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Combobox } from "@/components/Combobox";
 import { DatePicker } from "@/components/DatePicker";
+import { Modal } from "@/components/Modal";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -67,6 +68,7 @@ const emptyForm = {
   client_name: "",
   assignee: "",
   priority: "medium",
+  status: "todo",
   due_date: "",
 };
 
@@ -93,6 +95,7 @@ export default function TasksPage() {
   const [search, setSearch] = useState("");
 
   const [showForm, setShowForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +127,37 @@ export default function TasksPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperadmin]);
 
-  const addTask = async (e: React.FormEvent) => {
+  const openCreateForm = () => {
+    setEditingTask(null);
+    setForm(emptyForm);
+    setError(null);
+    setShowForm(true);
+  };
+
+  const openEditForm = (task: Task) => {
+    setEditingTask(task);
+    setForm({
+      title: task.title,
+      description: task.description || "",
+      client_name: task.client_name || "",
+      assignee: task.assignee ? String(task.assignee) : "",
+      priority: task.priority,
+      status: task.status,
+      due_date: task.due_date || "",
+    });
+    setError(null);
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    if (creating) return;
+    setShowForm(false);
+    setEditingTask(null);
+    setForm(emptyForm);
+    setError(null);
+  };
+
+  const saveTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) return;
     setError(null);
@@ -137,11 +170,17 @@ export default function TasksPage() {
         due_date: form.due_date || null,
         client_name: form.client_name.trim(),
       };
+      if (editingTask) body.status = form.status;
       if (isSuperadmin && form.assignee) body.assignee = Number(form.assignee);
-      await api<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) });
+      await api<Task>(editingTask ? `/api/tasks/${editingTask.id}` : "/api/tasks", {
+        method: editingTask ? "PATCH" : "POST",
+        body: JSON.stringify(body),
+      });
+      const wasEditing = !!editingTask;
       setForm(emptyForm);
       setShowForm(false);
-      showToast("Task created.");
+      setEditingTask(null);
+      showToast(wasEditing ? "Task updated." : "Task created.");
       load();
     } catch (err: any) {
       setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
@@ -199,7 +238,7 @@ export default function TasksPage() {
               : "Your assigned tasks."}
           </p>
         </div>
-        <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
+        <button className="btn btn-accent" onClick={openCreateForm}>
           <i className="bi bi-plus-lg" /> Add Task
         </button>
       </div>
@@ -221,9 +260,9 @@ export default function TasksPage() {
         </div>
       )}
 
-      {showForm && (
-        <form className="card" onSubmit={addTask}>
-          <span className="card-title">New Task</span>
+      <Modal open={showForm} onClose={closeForm} maxWidth={760}>
+        <form onSubmit={saveTask}>
+          <span className="card-title">{editingTask ? "Edit Task" : "New Task"}</span>
           <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Title</label>
@@ -275,6 +314,17 @@ export default function TasksPage() {
                   ariaLabel="Priority"
                 />
               </div>
+              {editingTask && (
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Status</label>
+                  <Select
+                    value={form.status}
+                    onChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                    options={STATUS_OPTIONS}
+                    ariaLabel="Status"
+                  />
+                </div>
+              )}
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Due date</label>
                 <DatePicker
@@ -286,12 +336,17 @@ export default function TasksPage() {
             </div>
 
             {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
-            <button className="btn" style={{ width: "fit-content" }} disabled={creating}>
-              {creating ? "Creating…" : "Create task"}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn" disabled={creating}>
+                {creating ? "Saving…" : editingTask ? "Save changes" : "Create task"}
+              </button>
+              <button type="button" className="btn btn-ghost" disabled={creating} onClick={closeForm}>
+                Cancel
+              </button>
+            </div>
           </div>
         </form>
-      )}
+      </Modal>
 
       <div className="card">
         <span className="card-title">
@@ -376,6 +431,15 @@ export default function TasksPage() {
                         </span>
                       ) : (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            disabled={busyId === t.id}
+                            onClick={() => openEditForm(t)}
+                            title={`Edit ${t.title}`}
+                            aria-label={`Edit ${t.title}`}
+                          >
+                            <i className="bi bi-pencil-fill" />
+                          </button>
                           <div style={{ width: 150 }}>
                             <Select
                               value={t.status}

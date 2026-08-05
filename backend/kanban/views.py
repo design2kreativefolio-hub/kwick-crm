@@ -1,17 +1,16 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from common.permissions import IsActive, is_superadmin
+from common.permissions import IsActive
 from tasks.models import Task
 from tasks.serializers import TaskSerializer
 
 
 class BoardView(APIView):
     """
-    GET /api/kanban/board — tasks grouped by board_status. Managers see the
-    whole company board; employees only see tasks they own (their own
-    to-dos + whatever's been assigned to them), per spec §11's "kanban should
-    work for employees too" follow-up.
+    GET /api/kanban/board — the current user's tasks grouped by board_status.
+    Kanban is a personal work board, so superadmins also see only work assigned
+    to themselves here; company-wide work remains available on the Tasks page.
     """
 
     permission_classes = [IsActive]
@@ -19,9 +18,7 @@ class BoardView(APIView):
     def get(self, request):
         columns = {}
         for value, label in Task.BoardStatus.choices:
-            qs = Task.objects.filter(board_status=value)
-            if not is_superadmin(request.user):
-                qs = qs.filter(assignee=request.user)
+            qs = Task.objects.filter(board_status=value, assignee=request.user)
             qs = qs.order_by("board_order").select_related("assignee", "project")
             columns[value] = {"label": label, "tasks": TaskSerializer(qs, many=True).data}
         return Response(columns)
@@ -37,7 +34,7 @@ class MoveTaskView(APIView):
             task = Task.objects.get(pk=task_id)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
-        if not is_superadmin(request.user) and task.assignee_id != request.user.id:
+        if task.assignee_id != request.user.id:
             return Response({"detail": "You can only move your own tasks."}, status=403)
 
         board_status = request.data.get("board_status")
