@@ -44,7 +44,16 @@ export const NAV: NavGroup[] = [
   {
     heading: "Business",
     items: [
-      { label: "Sales", href: "/sales", icon: "bi-briefcase-fill", module: "sales" },
+      {
+        label: "Sales",
+        icon: "bi-briefcase-fill",
+        module: "sales",
+        children: [
+          { label: "Clients", href: "/sales/clients", icon: "bi-person-lines-fill" },
+          { label: "Proposals", href: "/sales/proposals", icon: "bi-file-earmark-text-fill" },
+          { label: "Invoices", href: "/sales/invoices", icon: "bi-receipt" },
+        ],
+      },
       { label: "HR", href: "/hr", icon: "bi-people-fill", module: "hr" },
       { label: "Renewals", href: "/renewals", icon: "bi-calendar-check-fill", module: "renewals" },
       { label: "Reports", href: "/reports", icon: "bi-bar-chart-line-fill", module: "reports" },

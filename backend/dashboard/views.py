@@ -289,7 +289,7 @@ class GlobalSearchView(APIView):
                         "id": c.id,
                         "label": c.name,
                         "sublabel": c.company or "Client",
-                        "href": "/sales",
+                        "href": "/sales/clients",
                         "icon": "bi-briefcase-fill",
                     }
                 )
@@ -304,7 +304,7 @@ class GlobalSearchView(APIView):
                         "id": p.id,
                         "label": p.title,
                         "sublabel": "Proposal",
-                        "href": "/sales",
+                        "href": "/sales/proposals",
                         "icon": "bi-file-earmark-text-fill",
                     }
                 )
@@ -319,7 +319,7 @@ class GlobalSearchView(APIView):
                         "id": inv.id,
                         "label": inv.invoice_number,
                         "sublabel": "Invoice",
-                        "href": "/sales",
+                        "href": "/sales/invoices",
                         "icon": "bi-receipt",
                     }
                 )
