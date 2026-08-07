@@ -15,6 +15,12 @@ function esc(value: string | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Escape cell text and turn newlines into <br> so pricing/strategy bullets
+ *  stack one-per-line in the preview (plain HTML collapses \n to spaces). */
+function cellHtml(value: string | null | undefined): string {
+  return esc(value).replace(/\r\n|\r|\n/g, "<br>");
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return new Date().toLocaleDateString("en-GB");
   const [y, m, d] = iso.split("-").map(Number);
@@ -26,7 +32,7 @@ function table(headers: string[], rows: Record<string, string>[], keys: string[]
   if (rows.length === 0) return "";
   const head = `<thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>`;
   const body = rows
-    .map((row) => `<tr>${keys.map((k) => `<td>${esc(row[k])}</td>`).join("")}</tr>`)
+    .map((row) => `<tr>${keys.map((k) => `<td>${cellHtml(row[k])}</td>`).join("")}</tr>`)
     .join("");
   return `<table class="doc-table">${head}<tbody>${body}</tbody></table>`;
 }
@@ -38,6 +44,10 @@ function fieldBox(label: string, text: string): string {
 
 function imgs(urls: string[], cls: string): string {
   return urls.map((u) => `<img class="${cls}" src="${esc(u)}" />`).join("");
+}
+
+function sectionClass(pageBreakBefore?: boolean, extra = "doc-section"): string {
+  return `${extra}${pageBreakBefore ? " page-break-before" : ""}`;
 }
 
 export function buildProposalHtml(content: ProposalContent): string {
@@ -66,12 +76,14 @@ export function buildProposalHtml(content: ProposalContent): string {
   }
 
   if (content.about_kreativefolio.enabled) {
-    parts.push(`<section class="doc-section"><h2>About Kreativefolio</h2>${content.about_kreativefolio.content}</section>`);
+    parts.push(
+      `<section class="${sectionClass(content.about_kreativefolio.page_break_before)}"><h2>About Kreativefolio</h2>${content.about_kreativefolio.content}</section>`
+    );
   }
 
   if (content.about_client.enabled) {
     parts.push(`
-      <section class="doc-section">
+      <section class="${sectionClass(content.about_client.page_break_before)}">
         <h2>About ${esc(clientDisplayName)}</h2>
         ${content.about_client.content}
         ${imgs(content.about_client.image_urls, "section-image")}
@@ -81,7 +93,7 @@ export function buildProposalHtml(content: ProposalContent): string {
 
   if (content.traffic.enabled) {
     parts.push(`
-      <section class="doc-section">
+      <section class="${sectionClass(content.traffic.page_break_before)}">
         <h2>Traffic</h2>
         ${imgs(content.traffic.image_urls, "section-image-full")}
       </section>
@@ -89,12 +101,14 @@ export function buildProposalHtml(content: ProposalContent): string {
   }
 
   if (content.technical_seo.enabled) {
-    parts.push(`<section class="doc-section"><h2>Technical SEO</h2>${content.technical_seo.content}</section>`);
+    parts.push(
+      `<section class="${sectionClass(content.technical_seo.page_break_before)}"><h2>Technical SEO</h2>${content.technical_seo.content}</section>`
+    );
   }
 
   if (content.keyword_strategy.enabled) {
     parts.push(`
-      <section class="doc-section">
+      <section class="${sectionClass(content.keyword_strategy.page_break_before)}">
         <h2>Keyword Strategy</h2>
         ${imgs(content.keyword_strategy.image_urls, "section-image-full")}
       </section>
@@ -103,7 +117,7 @@ export function buildProposalHtml(content: ProposalContent): string {
 
   if (content.onpage_seo.enabled) {
     parts.push(`
-      <section class="doc-section">
+      <section class="${sectionClass(content.onpage_seo.page_break_before)}">
         <h2>Onpage SEO</h2>
         ${content.onpage_seo.content}
         ${imgs(content.onpage_seo.image_urls, "section-image")}
@@ -113,7 +127,7 @@ export function buildProposalHtml(content: ProposalContent): string {
 
   if (content.geo.enabled) {
     parts.push(`
-      <section class="doc-section">
+      <section class="${sectionClass(content.geo.page_break_before)}">
         <h2>GEO</h2>
         ${fieldBox("Description", content.geo.description)}
         <h3>Recommendations</h3>
@@ -130,7 +144,7 @@ export function buildProposalHtml(content: ProposalContent): string {
       .map((p) => {
         const label = SOCIAL_PLATFORM_OPTIONS.find((o) => o.value === p.platform)?.label || p.platform;
         return `
-          <div class="platform-block">
+          <div class="${sectionClass(p.page_break_before, "platform-block")}">
             <h3>${esc(label)}</h3>
             ${fieldBox("Description", p.description)}
             ${imgs(p.image_urls, "section-image")}
@@ -140,12 +154,14 @@ export function buildProposalHtml(content: ProposalContent): string {
         `;
       })
       .join("");
-    parts.push(`<section class="doc-section"><h2>Social Medias</h2>${blocks}</section>`);
+    parts.push(
+      `<section class="${sectionClass(content.social_medias.page_break_before)}"><h2>Social Medias</h2>${blocks}</section>`
+    );
   }
 
   if (content.what_we_can_do.enabled && content.what_we_can_do.rows.length > 0) {
     parts.push(`
-      <section class="doc-section">
+      <section class="${sectionClass(content.what_we_can_do.page_break_before)}">
         <h2>What We Can Do</h2>
         ${table(["Area", "How Kreativefolio Can Help"], content.what_we_can_do.rows as unknown as Record<string, string>[], ["area", "details"])}
       </section>
@@ -157,7 +173,7 @@ export function buildProposalHtml(content: ProposalContent): string {
     const blocks = visiblePricing
       .map(
         (item) => `
-          <div class="pricing-block">
+          <div class="${sectionClass(item.page_break_before, "pricing-block")}">
             <h3>${esc(item.service_name || "Service")}</h3>
             ${fieldBox(item.ad_budget_label || "Ad Budget", item.ad_budget)}
             ${fieldBox(item.management_fee_label || "Ad Management Fee", item.management_fee)}
@@ -170,14 +186,14 @@ export function buildProposalHtml(content: ProposalContent): string {
   }
 
   if (content.terms.enabled) {
-    parts.push(`<section class="doc-section"><h2>Terms</h2>${termsHtml(content.terms)}</section>`);
+    parts.push(
+      `<section class="${sectionClass(content.terms.page_break_before)}"><h2>Terms</h2>${termsHtml(content.terms)}</section>`
+    );
   }
 
   if (content.full_page_image.enabled && content.full_page_image.image_url) {
     parts.push(`
-      <section class="doc-section fullbleed-page">
-        <img src="${esc(content.full_page_image.image_url)}" />
-      </section>
+      <section class="fullbleed-page" style="background-image: url('${esc(content.full_page_image.image_url)}');"></section>
     `);
   }
 

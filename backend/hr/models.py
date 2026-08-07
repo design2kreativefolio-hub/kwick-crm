@@ -28,11 +28,55 @@ class EmployeeCollateral(TimeStampedModel):
         return f"{self.get_doc_type_display()} for {self.staff_id}"
 
 
+class HrLetter(TimeStampedModel):
+    """HR letter builder documents (Documents module). Offer letters are not
+    assigned to staff; all other types may link to an employee and appear on
+    their profile Documents list after PDF export."""
+
+    class DocType(models.TextChoices):
+        HANDOVER = "handover_letter", "Handover Letter"
+        EXPERIENCE = "experience_letter", "Experience Letter"
+        PAYSLIP = "payslip_letter", "Payslip Letter"
+        RELIEVING = "relieving_letter", "Relieving Letter"
+        PROBATION = "probation_confirmation", "Probation Confirmation Letter"
+        WARNING = "warning_letter", "Warning Letter"
+        INCREMENT = "increment_letter", "Increment Letter"
+        OFFER = "offer_letter", "Offer Letter"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ISSUED = "issued", "Issued"
+
+    doc_type = models.CharField(max_length=40, choices=DocType.choices)
+    title = models.CharField(max_length=200, blank=True, default="")
+    staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="hr_letters",
+    )
+    content = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    file_url = models.URLField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_hr_letters",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title or f"{self.get_doc_type_display()} #{self.pk}"
+
+
 class EmployeeRecord(TimeStampedModel):
     """A freeform HR document attached to an employee — e.g. a passport copy
     or visa page — distinct from EmployeeCollateral's fixed set of generated
-    letters. `title` is whatever the uploader types (spec follow-up: 'attach
-    the file and a field to tell what is the document')."""
+    letters."""
 
     staff = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="records"

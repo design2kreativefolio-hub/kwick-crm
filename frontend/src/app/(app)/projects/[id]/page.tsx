@@ -27,6 +27,7 @@ type Project = {
   end_date: string | null;
   delivery_date: string | null;
   members: number[];
+  member_names: { id: number; name: string }[];
   created_by: number | null;
   created_by_name: string;
   created_at: string;
@@ -77,7 +78,6 @@ export default function ProjectDetailPage() {
   const id = params.id as string;
   const router = useRouter();
   const { user } = useAuth();
-  const isSuperadmin = user?.role === "superadmin";
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -131,7 +131,15 @@ export default function ProjectDetailPage() {
 
   const clientNames = useMemo(() => clients.map((c) => c.name), [clients]);
 
-  const assignee = project && project.members[0] ? directoryById.get(project.members[0]) : undefined;
+  const assigneeLabel = (() => {
+    if (!project?.members[0]) return null;
+    const named = project.member_names?.[0];
+    if (named?.name) return named.name;
+    const fromDir = directoryById.get(project.members[0]);
+    if (fromDir) return fromDir.full_name || fromDir.email;
+    if (user && project.members[0] === user.id) return user.full_name || user.email;
+    return null;
+  })();
   const overdue = project ? isOverdue(project.delivery_date, project.status) : false;
 
   const openEdit = () => {
@@ -179,7 +187,14 @@ export default function ProjectDetailPage() {
 
   const deleteProject = async () => {
     if (!project) return;
-    if (!(await confirm("Delete this project?", { danger: true, confirmLabel: "Delete" }))) return;
+    if (
+      !(await confirm(`Are you sure you want to delete "${project.name}"? This cannot be undone.`, {
+        title: "Delete Project",
+        danger: true,
+        confirmLabel: "Delete",
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await api(`/api/projects/${project.id}`, { method: "DELETE" });
@@ -204,11 +219,9 @@ export default function ProjectDetailPage() {
             <button className="btn btn-ghost btn-sm" onClick={openEdit}>
               <i className="bi bi-pencil-fill" /> Edit
             </button>
-            {isSuperadmin && (
-              <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} disabled={busy} onClick={deleteProject}>
-                <i className="bi bi-trash-fill" /> Delete
-              </button>
-            )}
+            <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} disabled={busy} onClick={deleteProject}>
+              <i className="bi bi-trash-fill" /> Delete
+            </button>
           </div>
         </div>
       </div>
@@ -222,7 +235,7 @@ export default function ProjectDetailPage() {
 
       <div style={infoGrid}>
         <InfoTile icon="bi-person-lines-fill" label="Client" value={project.client || "—"} />
-        <InfoTile icon="bi-person-fill" label="Assigned to" value={assignee ? assignee.full_name || assignee.email : "Unassigned"} />
+        <InfoTile icon="bi-person-fill" label="Assigned to" value={assigneeLabel || "Unassigned"} />
         <InfoTile
           icon="bi-flag-fill"
           label="Priority"

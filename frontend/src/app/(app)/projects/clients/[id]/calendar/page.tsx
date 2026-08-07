@@ -229,7 +229,9 @@ export default function ClientCalendarPage() {
 
   const remove = async () => {
     if (!editingId) return;
-    const ok = await confirm("Delete this content item? This can't be undone.", {
+    const name = form.title.trim() || "this content item";
+    const ok = await confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`, {
+      title: "Delete Content Item",
       danger: true,
       confirmLabel: "Delete",
     });

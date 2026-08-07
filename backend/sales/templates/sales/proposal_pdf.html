@@ -5,7 +5,7 @@
 <style>
   @page {
     size: A4;
-    margin: 100px 42px 95px 42px;
+    margin: 100px 42px 112px 42px;
   }
   /* Header/footer as margin-box background images (not position:running() +
      element()) — that mechanism is documented to spawn a spurious blank
@@ -31,7 +31,7 @@
       background-position: center;
       background-size: contain;
       width: 100%;
-      height: 46px;
+      height: 60px;
     }
   }
   @page cover {
@@ -40,6 +40,7 @@
     @bottom-center { content: normal; }
   }
   @page fullbleed {
+    size: A4;
     margin: 0;
     @top-center { content: normal; }
     @bottom-center { content: normal; }
@@ -58,13 +59,25 @@
   h3 { font-size: 14.5px; margin-top: 18px; }
   p { margin: 0 0 10px; }
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
-  img.section-image { max-width: 100%; border-radius: 6px; margin: 10px 0; }
-  img.section-image-full { width: 100%; border-radius: 6px; margin: 10px 0; }
+  img.section-image {
+    display: block;
+    max-width: 100%;
+    border-radius: 6px;
+    margin: 10px auto;
+  }
+  img.section-image-full {
+    display: block;
+    width: 100%;
+    border-radius: 6px;
+    margin: 10px auto;
+  }
 
   /* Sections flow continuously — no forced page break between them, only
      natural overflow pagination. A little top margin plus each h2's own
-     border keeps them visually distinct. */
+     border keeps them visually distinct. Opt-in .page-break-before (from
+     the builder checkbox) forces a section/block onto the next page. */
   .doc-section { margin-top: 10px; }
+  .page-break-before { break-before: page; page-break-before: always; }
 
   /* ---- Cover (section 1) — background is the fixed brand template image,
      not per-proposal — its bottom half already carries the tagline + a
@@ -93,15 +106,29 @@
   table.doc-table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 11px; }
   table.doc-table th, table.doc-table td { border: 1px solid #1b2559; padding: 7px 10px; text-align: left; vertical-align: top; }
   table.doc-table th { background: #1b2559; color: #fff; font-size: 11px; }
+  /* Keep Enter / bullet line breaks from the editor (HTML collapses them otherwise). */
+  table.doc-table td { white-space: pre-line; }
 
   .platform-block, .pricing-block { margin-bottom: 20px; }
   .platform-block h3, .pricing-block h3 { text-transform: capitalize; }
   .field-form { border: 1px solid #d8d4cb; background: #faf8f4; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; }
   .field-form .label { font-weight: 700; color: #1b2559; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 3px; }
 
-  /* ---- Full-bleed image (section 13) ---- */
-  .fullbleed-page { page: fullbleed; width: 100%; height: 297mm; }
-  .fullbleed-page img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* ---- Full-bleed image (section 13) — same background-cover approach as
+     the cover page. WeasyPrint's object-fit on <img> is unreliable and left
+     white side margins; a page-sized box + background-size:cover fills A4. */
+  .fullbleed-page {
+    page: fullbleed;
+    break-before: page;
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
 </style>
 </head>
 <body>
@@ -129,14 +156,14 @@
   {% endif %}
 
   {% if about_kreativefolio.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if about_kreativefolio.page_break_before %} page-break-before{% endif %}">
     <h2>About Kreativefolio</h2>
     {{ about_kreativefolio.content|safe }}
   </section>
   {% endif %}
 
   {% if about_client.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if about_client.page_break_before %} page-break-before{% endif %}">
     <h2>About {{ client_display_name }}</h2>
     {{ about_client.content|safe }}
     {% for url in about_client.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
@@ -144,28 +171,28 @@
   {% endif %}
 
   {% if traffic.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if traffic.page_break_before %} page-break-before{% endif %}">
     <h2>Traffic</h2>
     {% for url in traffic.image_urls %}<img class="section-image-full" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
 
   {% if technical_seo.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if technical_seo.page_break_before %} page-break-before{% endif %}">
     <h2>Technical SEO</h2>
     {{ technical_seo.content|safe }}
   </section>
   {% endif %}
 
   {% if keyword_strategy.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if keyword_strategy.page_break_before %} page-break-before{% endif %}">
     <h2>Keyword Strategy</h2>
     {% for url in keyword_strategy.image_urls %}<img class="section-image-full" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
 
   {% if onpage_seo.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if onpage_seo.page_break_before %} page-break-before{% endif %}">
     <h2>Onpage SEO</h2>
     {{ onpage_seo.content|safe }}
     {% for url in onpage_seo.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
@@ -173,7 +200,7 @@
   {% endif %}
 
   {% if geo.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if geo.page_break_before %} page-break-before{% endif %}">
     <h2>GEO</h2>
     {% if geo.description %}<div class="field-form"><span class="label">Description</span>{{ geo.description }}</div>{% endif %}
     <h3>Recommendations</h3>
@@ -184,10 +211,10 @@
   {% endif %}
 
   {% if social_medias.enabled and visible_platforms %}
-  <section class="doc-section">
+  <section class="doc-section{% if social_medias.page_break_before %} page-break-before{% endif %}">
     <h2>Social Medias</h2>
     {% for p in visible_platforms %}
-    <div class="platform-block">
+    <div class="platform-block{% if p.page_break_before %} page-break-before{% endif %}">
       <h3>{{ p.platform_label }}</h3>
       {% if p.description %}<div class="field-form"><span class="label">Description</span>{{ p.description }}</div>{% endif %}
       {% for url in p.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
@@ -197,7 +224,7 @@
         <thead><tr><th>Category</th><th>Details</th><th>Goal</th></tr></thead>
         <tbody>
           {% for row in p.strategy_rows %}
-          <tr><td>{{ row.category }}</td><td>{{ row.details }}</td><td>{{ row.goal }}</td></tr>
+          <tr><td>{{ row.category }}</td><td>{{ row.details|linebreaksbr }}</td><td>{{ row.goal|linebreaksbr }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -208,13 +235,13 @@
   {% endif %}
 
   {% if what_we_can_do.enabled and what_we_can_do.rows %}
-  <section class="doc-section">
+  <section class="doc-section{% if what_we_can_do.page_break_before %} page-break-before{% endif %}">
     <h2>What We Can Do</h2>
     <table class="doc-table">
       <thead><tr><th>Area</th><th>How Kreativefolio Can Help</th></tr></thead>
       <tbody>
         {% for row in what_we_can_do.rows %}
-        <tr><td>{{ row.area }}</td><td>{{ row.details }}</td></tr>
+        <tr><td>{{ row.area }}</td><td>{{ row.details|linebreaksbr }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -225,7 +252,7 @@
   <section class="doc-section">
     <h2>Pricing</h2>
     {% for item in visible_pricing %}
-    <div class="pricing-block">
+    <div class="pricing-block{% if item.page_break_before %} page-break-before{% endif %}">
       <h3>{{ item.service_name }}</h3>
       {% if item.ad_budget %}<div class="field-form"><span class="label">{{ item.ad_budget_label }}</span>{{ item.ad_budget }}</div>{% endif %}
       {% if item.management_fee %}<div class="field-form"><span class="label">{{ item.management_fee_label }}</span>{{ item.management_fee }}</div>{% endif %}
@@ -234,7 +261,7 @@
         <thead><tr><th>Category</th><th>Details</th><th>Frequency</th></tr></thead>
         <tbody>
           {% for row in item.rows %}
-          <tr><td>{{ row.category }}</td><td>{{ row.details }}</td><td>{{ row.frequency }}</td></tr>
+          <tr><td>{{ row.category }}</td><td>{{ row.details|linebreaksbr }}</td><td>{{ row.frequency|linebreaksbr }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -245,16 +272,14 @@
   {% endif %}
 
   {% if terms.enabled %}
-  <section class="doc-section">
+  <section class="doc-section{% if terms.page_break_before %} page-break-before{% endif %}">
     <h2>Terms</h2>
     {{ terms_html|safe }}
   </section>
   {% endif %}
 
   {% if full_page_image.enabled and full_page_image.image_url %}
-  <section class="doc-section fullbleed-page">
-    <img src="{{ full_page_image.image_url }}" />
-  </section>
+  <section class="fullbleed-page" style="background-image: url('{{ full_page_image.image_url }}');"></section>
   {% endif %}
 
 </body>

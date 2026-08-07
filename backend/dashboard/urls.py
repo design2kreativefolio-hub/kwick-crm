@@ -7,6 +7,7 @@ from .views import (
     ProjectsTrendView,
     RemindersView,
     SummaryView,
+    SupportContactView,
     TodayTasksView,
 )
 
@@ -18,4 +19,5 @@ urlpatterns = [
     path("search", GlobalSearchView.as_view(), name="dashboard-search"),
     path("logs", ActivityLogListView.as_view(), name="dashboard-logs"),
     path("today-tasks", TodayTasksView.as_view(), name="dashboard-today-tasks"),
+    path("support", SupportContactView.as_view(), name="dashboard-support"),
 ]

@@ -47,7 +47,16 @@ export function Select({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setRect({ top: r.bottom + 6, left: r.left, width: r.width });
+    // Prefer opening downward; if near the viewport edge, keep the panel
+    // on-screen horizontally (minWidth follows the trigger so short
+    // compact status pickers can still fit labels like "Accepted").
+    const minWidth = Math.max(r.width, 148);
+    const maxLeft = Math.max(8, window.innerWidth - minWidth - 8);
+    setRect({
+      top: r.bottom + 6,
+      left: Math.min(r.left, maxLeft),
+      width: minWidth,
+    });
   };
 
   useLayoutEffect(() => {
@@ -64,10 +73,15 @@ export function Select({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    // Scroll on ANY ancestor (capture: true catches non-bubbling scroll
-    // events from nested scroll containers too, e.g. a modal body) closes
-    // the panel rather than letting it drift away from its trigger.
-    const onScroll = () => setOpen(false);
+    // Close when the page/modal scrolls so the floating panel doesn't drift —
+    // but ignore scroll that happens *inside* the panel itself (option list).
+    const onScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      if (panelRef.current && target && (target === panelRef.current || panelRef.current.contains(target))) {
+        return;
+      }
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onClick);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);
@@ -93,7 +107,16 @@ export function Select({
       // document.body — it must out-rank every modal/overlay in the app
       // (currently up to z-index 50), not just whatever ambient value the
       // class happens to declare.
-      style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, right: "auto", zIndex: 1000 }}
+      style={{
+        position: "fixed",
+        top: rect.top,
+        left: rect.left,
+        minWidth: rect.width,
+        width: "max-content",
+        maxWidth: 320,
+        right: "auto",
+        zIndex: 1000,
+      }}
     >
       {options.map((o) => (
         <li

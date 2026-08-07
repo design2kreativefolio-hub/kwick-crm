@@ -149,16 +149,20 @@ def _add_html(container, html_string: str):
 # Layout helpers
 # ---------------------------------------------------------------------------
 
-def _heading(doc, text: str):
+def _heading(doc, text: str, page_break: bool = False):
     p = doc.add_paragraph()
+    if page_break:
+        p.paragraph_format.page_break_before = True
     p.paragraph_format.space_before = Pt(16)
     p.paragraph_format.space_after = Pt(10)
     _style_run(p.add_run(text), size=19, bold=True, color=NAVY)
     return p
 
 
-def _subheading(doc, text: str):
+def _subheading(doc, text: str, page_break: bool = False):
     p = doc.add_paragraph()
+    if page_break:
+        p.paragraph_format.page_break_before = True
     p.paragraph_format.space_before = Pt(10)
     _style_run(p.add_run(text), size=13, bold=True, color=NAVY)
     return p
@@ -197,7 +201,13 @@ def _table(doc, headers, rows, keys):
         for i, key in enumerate(keys):
             cell = cells[i]
             cell.text = ""
-            _style_run(cell.paragraphs[0].add_run(str(row.get(key, "") or "")))
+            text = str(row.get(key, "") or "")
+            lines = text.splitlines() or [""]
+            p = cell.paragraphs[0]
+            for li, line in enumerate(lines):
+                if li > 0:
+                    p.add_run().add_break(WD_BREAK.LINE)
+                _style_run(p.add_run(line))
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
     return table
 
@@ -287,47 +297,47 @@ def render_proposal_docx(proposal, request) -> str:
 
     client_display_name = home.get("client_name") or "Client"
 
-    def start(title):
-        _heading(doc, title)
+    def start(title, page_break=False):
+        _heading(doc, title, page_break=page_break)
 
     if content["about_kreativefolio"].get("enabled", True):
-        start("About Kreativefolio")
+        start("About Kreativefolio", content["about_kreativefolio"].get("page_break_before", False))
         _add_html(doc, content["about_kreativefolio"].get("content"))
 
     ac = content["about_client"]
     if ac.get("enabled", True):
-        start(f"About {client_display_name}")
+        start(f"About {client_display_name}", ac.get("page_break_before", False))
         _add_html(doc, ac.get("content"))
         for url in ac.get("image_urls") or []:
             _picture(doc, url)
 
     traffic = content["traffic"]
     if traffic.get("enabled", True):
-        start("Traffic")
+        start("Traffic", traffic.get("page_break_before", False))
         for url in traffic.get("image_urls") or []:
             _picture(doc, url)
 
     tseo = content["technical_seo"]
     if tseo.get("enabled", True):
-        start("Technical SEO")
+        start("Technical SEO", tseo.get("page_break_before", False))
         _add_html(doc, tseo.get("content"))
 
     kw = content["keyword_strategy"]
     if kw.get("enabled", True):
-        start("Keyword Strategy")
+        start("Keyword Strategy", kw.get("page_break_before", False))
         for url in kw.get("image_urls") or []:
             _picture(doc, url)
 
     opseo = content["onpage_seo"]
     if opseo.get("enabled", True):
-        start("Onpage SEO")
+        start("Onpage SEO", opseo.get("page_break_before", False))
         _add_html(doc, opseo.get("content"))
         for url in opseo.get("image_urls") or []:
             _picture(doc, url)
 
     geo = content["geo"]
     if geo.get("enabled", True):
-        start("GEO")
+        start("GEO", geo.get("page_break_before", False))
         if geo.get("description"):
             _labelled_box(doc, "Description", geo["description"])
         _subheading(doc, "Recommendations")
@@ -338,12 +348,12 @@ def render_proposal_docx(proposal, request) -> str:
     social = content["social_medias"]
     visible_platforms = [p for p in social.get("platforms", []) if p.get("enabled", True)]
     if social.get("enabled", True) and visible_platforms:
-        start("Social Medias")
+        start("Social Medias", social.get("page_break_before", False))
         for i, p in enumerate(visible_platforms):
-            if i > 0:
+            if i > 0 and not p.get("page_break_before"):
                 _subheading(doc, "")
             label = SOCIAL_PLATFORM_LABELS.get(p.get("platform"), (p.get("platform") or "").title())
-            _subheading(doc, label)
+            _subheading(doc, label, page_break=p.get("page_break_before", False))
             if p.get("description"):
                 _labelled_box(doc, "Description", p["description"])
             for url in p.get("image_urls") or []:
@@ -356,16 +366,16 @@ def render_proposal_docx(proposal, request) -> str:
 
     wwcd = content["what_we_can_do"]
     if wwcd.get("enabled", True) and wwcd.get("rows"):
-        start("What We Can Do")
+        start("What We Can Do", wwcd.get("page_break_before", False))
         _table(doc, ["Area", "How Kreativefolio Can Help"], wwcd["rows"], ["area", "details"])
 
     visible_pricing = [item for item in content["pricing"] if item.get("enabled", True)]
     if visible_pricing:
         start("Pricing")
         for i, item in enumerate(visible_pricing):
-            if i > 0:
+            if i > 0 and not item.get("page_break_before"):
                 _subheading(doc, "")
-            _subheading(doc, item.get("service_name") or "Service")
+            _subheading(doc, item.get("service_name") or "Service", page_break=item.get("page_break_before", False))
             if item.get("ad_budget"):
                 _labelled_box(doc, "Ad Budget", item["ad_budget"])
             if item.get("management_fee"):
@@ -374,7 +384,7 @@ def render_proposal_docx(proposal, request) -> str:
 
     terms = content["terms"]
     if terms.get("enabled", True):
-        start("Terms")
+        start("Terms", terms.get("page_break_before", False))
         _add_html(doc, terms_html(terms))
 
     # ---- Section 13: full-bleed image, no header/footer ----

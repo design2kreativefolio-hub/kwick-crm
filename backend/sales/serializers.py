@@ -1,7 +1,8 @@
 from rest_framework import serializers
 
-from .models import Client, Invoice, InvoiceLineItem, Proposal
+from .models import Client, Estimate, Invoice, InvoiceLineItem, Proposal
 from .proposal_content import merged_content
+from .estimate_content import merged_content as merged_estimate_content
 
 
 class ClientSerializer(serializers.ModelSerializer):
@@ -15,8 +16,31 @@ class ClientSerializer(serializers.ModelSerializer):
             "company",
             "notes",
             "services",
+            "website",
+            "address",
+            "trade_license_url",
+            "vat_registration_url",
+            "executives",
+            "additional_fields",
+            "accent_color",
+            "logo_url",
             "created_at",
+            "updated_at",
         ]
+        read_only_fields = ["logo_url"]
+
+    def _sync_company(self, validated_data):
+        # Sales treats company name and name as the same identity field.
+        name = validated_data.get("name")
+        if name is not None:
+            validated_data["company"] = name
+        return validated_data
+
+    def create(self, validated_data):
+        return super().create(self._sync_company(validated_data))
+
+    def update(self, instance, validated_data):
+        return super().update(instance, self._sync_company(validated_data))
 
 
 class ProposalSerializer(serializers.ModelSerializer):
@@ -53,13 +77,65 @@ class ProposalSerializer(serializers.ModelSerializer):
         # guaranteed present for the builder/preview/exports to read.
         content = merged_content(validated_data.get("content"))
         validated_data["content"] = content
-        validated_data["title"] = self._synced_title(content, validated_data.get("title") or "Untitled Proposal")
+        # CRM/list/PDF-filename title is independent of the cover heading
+        # (content.home.title). Default from cover only when none is supplied.
+        supplied = (validated_data.get("title") or "").strip()
+        validated_data["title"] = supplied or self._synced_title(content, "Untitled Proposal")
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         if "content" in validated_data:
             validated_data["content"] = merged_content(validated_data["content"])
-            validated_data["title"] = self._synced_title(validated_data["content"], instance.title)
+        if "title" in validated_data:
+            title = (validated_data.get("title") or "").strip()
+            validated_data["title"] = title or instance.title or "Untitled Proposal"
+        return super().update(instance, validated_data)
+
+
+class EstimateSerializer(serializers.ModelSerializer):
+    client_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Estimate
+        fields = [
+            "id",
+            "client",
+            "client_name",
+            "title",
+            "status",
+            "content",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_client_name(self, obj):
+        if obj.client_id:
+            return obj.client.name
+        return (obj.content or {}).get("bill_to", "")
+
+    def _synced_title(self, content, fallback):
+        quote = (content or {}).get("quote_number", "").strip()
+        bill_to = (content or {}).get("bill_to", "").strip()
+        if quote and bill_to:
+            return f"{quote} — {bill_to}"
+        return quote or bill_to or fallback
+
+    def create(self, validated_data):
+        content = merged_estimate_content(validated_data.get("content"))
+        validated_data["content"] = content
+        validated_data["title"] = self._synced_title(content, validated_data.get("title") or "Untitled Estimate")
+        client_id = content.get("client_id")
+        if client_id and not validated_data.get("client"):
+            validated_data["client_id"] = client_id
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if "content" in validated_data:
+            content = merged_estimate_content(validated_data["content"])
+            validated_data["content"] = content
+            validated_data["title"] = self._synced_title(content, instance.title)
+            if "client" not in validated_data:
+                validated_data["client_id"] = content.get("client_id") or None
         return super().update(instance, validated_data)
 
 
@@ -74,7 +150,8 @@ class InvoiceLineItemSerializer(serializers.ModelSerializer):
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    client_name = serializers.CharField(source="client.name", read_only=True)
+    client_name = serializers.SerializerMethodField()
+    title = serializers.SerializerMethodField()
     line_items = InvoiceLineItemSerializer(many=True, required=False)
 
     class Meta:
@@ -84,28 +161,88 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "client",
             "client_name",
             "proposal",
+            "title",
             "invoice_number",
             "amount",
             "status",
             "due_date",
+            "content",
             "line_items",
             "created_at",
+            "updated_at",
         ]
 
-    def create(self, validated):
-        line_items = validated.pop("line_items", [])
-        invoice = Invoice.objects.create(**validated)
-        for item in line_items:
-            InvoiceLineItem.objects.create(invoice=invoice, **item)
-        return invoice
+    def get_client_name(self, obj):
+        if obj.client_id:
+            return obj.client.name
+        return (obj.content or {}).get("bill_to", "")
 
-    def update(self, instance, validated):
-        line_items = validated.pop("line_items", None)
-        for attr, value in validated.items():
-            setattr(instance, attr, value)
-        instance.save()
-        if line_items is not None:
-            instance.line_items.all().delete()
-            for item in line_items:
-                InvoiceLineItem.objects.create(invoice=instance, **item)
-        return instance
+    def get_title(self, obj):
+        content_title = ((obj.content or {}).get("title") or "").strip()
+        if content_title:
+            return content_title
+        return obj.invoice_number or f"Invoice #{obj.pk}"
+
+    def to_representation(self, instance):
+        """Hydrate builder `content.items` from legacy InvoiceLineItem rows when
+        content was never migrated (migration 0008 left content empty)."""
+        data = super().to_representation(instance)
+        content = data.get("content") or {}
+        items = content.get("items") or []
+        has_real_items = any(
+            (it.get("description") or "").strip() or float(it.get("rate") or 0)
+            for it in items
+        )
+        if not has_real_items and getattr(instance, "line_items", None) is not None:
+            legacy = list(instance.line_items.all())
+            if legacy:
+                content = {**content}
+                content["items"] = [
+                    {
+                        "description": row.description or "",
+                        "details": "",
+                        "qty": float(row.quantity),
+                        "rate": float(row.unit_price),
+                    }
+                    for row in legacy
+                ]
+                if not (content.get("invoice_number") or "").strip():
+                    content["invoice_number"] = instance.invoice_number or ""
+                data["content"] = content
+        return data
+
+    def _apply_content(self, validated_data):
+        from decimal import Decimal
+
+        from .invoice_content import merged_content, subtotal
+        from .invoice_pdf import ensure_invoice_number
+
+        content = merged_content(validated_data.get("content"))
+        validated_data["content"] = content
+        validated_data["invoice_number"] = ensure_invoice_number(
+            content.get("invoice_number") or validated_data.get("invoice_number") or ""
+        )
+        content["invoice_number"] = validated_data["invoice_number"]
+        if not (content.get("title") or "").strip():
+            content["title"] = "Invoice"
+        validated_data["content"] = content
+        validated_data["amount"] = Decimal(str(subtotal(content.get("items") or [])))
+        due = content.get("due_date") or None
+        validated_data["due_date"] = due or None
+        client_id = content.get("client_id")
+        if client_id and not validated_data.get("client"):
+            validated_data["client_id"] = client_id
+        return validated_data
+
+    def create(self, validated_data):
+        validated_data.pop("line_items", None)
+        validated_data = self._apply_content(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("line_items", None)
+        if "content" in validated_data:
+            validated_data = self._apply_content(validated_data)
+            if "client" not in validated_data:
+                validated_data["client_id"] = (validated_data["content"] or {}).get("client_id") or None
+        return super().update(instance, validated_data)

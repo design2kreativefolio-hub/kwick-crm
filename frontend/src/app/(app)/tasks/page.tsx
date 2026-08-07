@@ -205,7 +205,14 @@ export default function TasksPage() {
   };
 
   const deleteTask = async (task: Task) => {
-    if (!(await confirm(`Delete "${task.title}"?`, { danger: true, confirmLabel: "Delete" }))) return;
+    if (
+      !(await confirm(`Are you sure you want to delete "${task.title}"? This cannot be undone.`, {
+        title: "Delete Task",
+        danger: true,
+        confirmLabel: "Delete",
+      }))
+    )
+      return;
     setBusyId(task.id);
     try {
       await api(`/api/tasks/${task.id}`, { method: "DELETE" });

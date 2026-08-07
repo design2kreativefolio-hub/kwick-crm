@@ -142,10 +142,21 @@ def render_proposal_pdf(proposal, request) -> str:
     from django.core.files.storage import default_storage
     from weasyprint import HTML
 
+    from common.duplicate import slug_filename
+
     html = render_to_string("sales/proposal_pdf.html", build_context(proposal))
     pdf_bytes = HTML(string=html).write_pdf()
 
-    key = f"proposal-exports/{proposal.pk}/proposal.pdf"
+    raw_name = (proposal.title or "").strip() or f"proposal-{proposal.pk}"
+    slug = slug_filename(raw_name, fallback=f"proposal-{proposal.pk}")
+    key = f"proposal-exports/{proposal.pk}/{slug}.pdf"
+    folder = f"proposal-exports/{proposal.pk}/"
+    try:
+        _dirs, files = default_storage.listdir(folder)
+        for name in files:
+            default_storage.delete(f"{folder}{name}")
+    except Exception:
+        pass
     if default_storage.exists(key):
         default_storage.delete(key)
     saved_path = default_storage.save(key, ContentFile(pdf_bytes))

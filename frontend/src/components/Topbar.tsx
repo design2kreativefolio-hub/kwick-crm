@@ -34,7 +34,7 @@ export function Topbar({
 }) {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { notifUnread: unread, chatUnread } = useLiveUpdates();
+  const { notifUnread: unread } = useLiveUpdates();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -198,9 +198,8 @@ export function Topbar({
             <i className="bi bi-bell-fill" style={{ fontSize: 17 }} />
             {unread > 0 && <span style={dot}>{unread > 9 ? "9+" : unread}</span>}
           </Link>
-          <Link href="/chat" className="icon-btn-anim" style={circleBtn} aria-label="Chat">
-            <i className="bi bi-chat-dots-fill" style={{ fontSize: 17 }} />
-            {chatUnread > 0 && <span style={dot}>{chatUnread > 9 ? "9+" : chatUnread}</span>}
+          <Link href="/support" className="icon-btn-anim" style={circleBtn} aria-label="Support">
+            <i className="bi bi-headset" style={{ fontSize: 17 }} />
           </Link>
 
           <div ref={menuRef} style={{ position: "relative", marginLeft: 6 }}>

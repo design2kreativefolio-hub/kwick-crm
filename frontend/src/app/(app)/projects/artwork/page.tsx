@@ -35,7 +35,6 @@ const emptyForm = {
 
 export default function ArtworkGeneratorPage() {
   const { user } = useAuth();
-  const isSuperadmin = user?.role === "superadmin";
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -153,7 +152,7 @@ export default function ArtworkGeneratorPage() {
         category_code: form.country,
         client: form.companyName,
       };
-      if (isSuperadmin && form.designer) payload.designer = Number(form.designer);
+      if (form.designer) payload.designer = Number(form.designer);
       if (useCustomId && customArtworkId.trim()) payload.artwork_id = customArtworkId.trim();
 
       const created = await api<Artwork>("/api/projects/artworks", {
@@ -205,7 +204,7 @@ export default function ArtworkGeneratorPage() {
         brand: editForm.brand,
         category_code: editForm.category_code,
       };
-      if (isSuperadmin) payload.designer = editForm.designer ? Number(editForm.designer) : null;
+      payload.designer = editForm.designer ? Number(editForm.designer) : null;
       const updated = await api<Artwork>(`/api/projects/artworks/${editingArtwork.id}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
@@ -220,12 +219,19 @@ export default function ArtworkGeneratorPage() {
     }
   };
 
-  const deleteArtwork = async (id: number) => {
-    if (!(await confirm("Delete this artwork ID?", { danger: true, confirmLabel: "Delete" }))) return;
-    setBusyId(id);
+  const deleteArtwork = async (a: Artwork) => {
+    if (
+      !(await confirm(`Are you sure you want to delete "${a.artwork_id}"? This cannot be undone.`, {
+        title: "Delete Artwork",
+        danger: true,
+        confirmLabel: "Delete",
+      }))
+    )
+      return;
+    setBusyId(a.id);
     try {
-      await api(`/api/projects/artworks/${id}`, { method: "DELETE" });
-      setArtworks((prev) => prev.filter((a) => a.id !== id));
+      await api(`/api/projects/artworks/${a.id}`, { method: "DELETE" });
+      setArtworks((prev) => prev.filter((x) => x.id !== a.id));
       showToast("Artwork deleted.");
     } catch (err: any) {
       showToast(err instanceof ApiError ? "Couldn't delete that artwork." : err.message, "error");
@@ -282,19 +288,17 @@ export default function ArtworkGeneratorPage() {
               />
             </div>
           </div>
-          {isSuperadmin && (
-            <div style={fieldGrid}>
-              <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Designer</label>
-                <Select
-                  value={form.designer}
-                  onChange={(v) => setForm((f) => ({ ...f, designer: v }))}
-                  options={[{ value: "", label: "Me" }, ...directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email }))]}
-                  ariaLabel="Designer"
-                />
-              </div>
+          <div style={fieldGrid}>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Designer</label>
+              <Select
+                value={form.designer}
+                onChange={(v) => setForm((f) => ({ ...f, designer: v }))}
+                options={[{ value: "", label: "Me" }, ...directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email }))]}
+                ariaLabel="Designer"
+              />
             </div>
-          )}
+          </div>
 
           <div>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
@@ -350,30 +354,28 @@ export default function ArtworkGeneratorPage() {
         </div>
       )}
 
-      {isSuperadmin && (
-        <div className="card">
-          <span className="card-title">Quick add — Country Code</span>
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <input
-              className="input"
-              placeholder="Code, e.g. UAE"
-              value={newCountryCode}
-              onChange={(e) => setNewCountryCode(e.target.value)}
-              style={{ maxWidth: 160 }}
-            />
-            <input
-              className="input"
-              placeholder="Label (optional), e.g. United Arab Emirates"
-              value={newCountryLabel}
-              onChange={(e) => setNewCountryLabel(e.target.value)}
-              style={{ flex: 1, minWidth: 200 }}
-            />
-            <button className="btn btn-sm" disabled={addingCountry || !newCountryCode.trim()} onClick={addCountry}>
-              {addingCountry ? "…" : "Add"}
-            </button>
-          </div>
+      <div className="card">
+        <span className="card-title">Quick add — Country Code</span>
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <input
+            className="input"
+            placeholder="Code, e.g. UAE"
+            value={newCountryCode}
+            onChange={(e) => setNewCountryCode(e.target.value)}
+            style={{ maxWidth: 160 }}
+          />
+          <input
+            className="input"
+            placeholder="Label (optional), e.g. United Arab Emirates"
+            value={newCountryLabel}
+            onChange={(e) => setNewCountryLabel(e.target.value)}
+            style={{ flex: 1, minWidth: 200 }}
+          />
+          <button className="btn btn-sm" disabled={addingCountry || !newCountryCode.trim()} onClick={addCountry}>
+            {addingCountry ? "…" : "Add"}
+          </button>
         </div>
-      )}
+      </div>
 
       <div className="card">
         <span className="card-title">
@@ -415,7 +417,7 @@ export default function ArtworkGeneratorPage() {
                             className="btn btn-ghost btn-sm"
                             style={{ color: "var(--danger)" }}
                             disabled={busyId === a.id}
-                            onClick={() => deleteArtwork(a.id)}
+                            onClick={() => deleteArtwork(a)}
                             aria-label="Delete artwork"
                           >
                             <i className="bi bi-trash-fill" />
@@ -496,17 +498,21 @@ export default function ArtworkGeneratorPage() {
                     ariaLabel="Country code"
                   />
                 </div>
-                {isSuperadmin && (
-                  <div>
-                    <label className="field-label" style={{ marginTop: 0 }}>Designer</label>
-                    <Select
-                      value={editForm.designer}
-                      onChange={(v) => setEditForm((f) => ({ ...f, designer: v }))}
-                      options={[{ value: "", label: "—" }, ...directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email }))]}
-                      ariaLabel="Designer"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Designer</label>
+                  <Select
+                    value={editForm.designer}
+                    onChange={(v) => setEditForm((f) => ({ ...f, designer: v }))}
+                    options={[
+                      { value: "", label: "—" },
+                      ...(user
+                        ? [{ value: String(user.id), label: user.full_name || user.email || "Me" }]
+                        : []),
+                      ...directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email })),
+                    ]}
+                    ariaLabel="Designer"
+                  />
+                </div>
 
                 {editError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{editError}</p>}
                 <div style={{ display: "flex", gap: 10 }}>

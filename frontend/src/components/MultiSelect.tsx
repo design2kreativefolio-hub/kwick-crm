@@ -54,7 +54,13 @@ export function MultiSelect({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    const onScroll = () => setOpen(false);
+    const onScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      if (panelRef.current && target && (target === panelRef.current || panelRef.current.contains(target))) {
+        return;
+      }
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onClick);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);

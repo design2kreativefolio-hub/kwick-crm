@@ -1,0 +1,85 @@
+/* Live preview — mirrors backend/hr/templates/hr/letter_pdf.html
+   Paginated by Paged.js (see LetterPreview.tsx). */
+
+@page {
+  size: A4;
+  margin: 22mm 16mm 32mm 16mm;
+  @bottom-center {
+    content: "";
+    background-image: url("/hr/footer.png");
+    background-repeat: no-repeat;
+    background-position: center bottom;
+    background-size: contain;
+    width: 100%;
+    height: 72px;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { background: #e7e8f0; margin: 0; }
+body {
+  font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+  color: #2a2f45;
+  font-size: 12pt;
+  line-height: 1.55;
+}
+.watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 320px;
+  height: 320px;
+  margin-top: -160px;
+  margin-left: -160px;
+  opacity: 0.07;
+  z-index: 0;
+  pointer-events: none;
+}
+.sheet { position: relative; z-index: 1; }
+.header { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
+.header td { vertical-align: top; padding: 0; }
+.header-left { width: 55%; }
+.header-right { text-align: right; }
+.brand-logo { height: 58px; display: inline-block; }
+.doc-title { font-size: 12pt; font-weight: 800; color: #1c1e54; margin: 0 0 6px; }
+.meta { font-size: 12pt; color: #5b6178; margin: 0 0 4px; }
+.company {
+  font-size: 12pt; font-weight: 700; color: #1c1e54;
+  text-transform: uppercase; letter-spacing: 0.3px; margin: 0 0 4px;
+}
+p { margin: 0 0 12px; }
+.salutation { margin-top: 8px; font-weight: 600; }
+.signoff { margin-top: 28px; }
+.sign-block { margin-top: 36px; }
+.sign-line {
+  margin-top: 40px; border-top: 1px solid #c5c8d4; width: 220px;
+  padding-top: 6px; font-size: 12pt; color: #5b6178;
+}
+ul.check { margin: 8px 0 14px; padding-left: 18px; }
+ul.check li { margin-bottom: 6px; }
+h3.section { font-size: 12pt; color: #1c1e54; margin: 16px 0 8px; }
+table.pay, table.offer { width: 100%; border-collapse: collapse; margin: 14px 0 18px; }
+table.pay th, table.offer th, table.pay td, table.offer td {
+  border: 1px solid #d7dae3; padding: 8px 10px; font-size: 12pt; text-align: left;
+}
+table.pay th, table.offer th { background: #1c1e54; color: #fff; font-weight: 600; }
+table.pay td.num, table.offer td.num { text-align: right; white-space: nowrap; }
+.ack { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e4e6ec; font-size: 12pt; }
+.powered-by {
+  margin-top: 28px;
+  padding-top: 10px;
+  border-top: 1px solid #e4e6ec;
+  text-align: left;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #8a8f9e;
+}
+
+/* Paged.js screen chrome — separate A4 pages in the iframe */
+.pagedjs_pages { padding: 20px 0; }
+.pagedjs_page {
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(20, 20, 60, 0.18);
+  margin: 0 auto 28px;
+}

@@ -37,7 +37,8 @@ export const NAV: NavGroup[] = [
       },
       { label: "Tasks", href: "/tasks", icon: "bi-check-square-fill" },
       { label: "To-Do", href: "/todo", icon: "bi-ui-checks-grid" },
-      { label: "Kanban", href: "/kanban", icon: "bi-kanban-fill" },
+      // Hidden for now — re-enable when ready:
+      // { label: "Kanban", href: "/kanban", icon: "bi-kanban-fill" },
       { label: "Calendar", href: "/calendar", icon: "bi-calendar3-fill" },
     ],
   },
@@ -54,7 +55,15 @@ export const NAV: NavGroup[] = [
           { label: "Invoices", href: "/sales/invoices", icon: "bi-receipt" },
         ],
       },
-      { label: "HR", href: "/hr", icon: "bi-people-fill", module: "hr" },
+      {
+        label: "HR",
+        icon: "bi-people-fill",
+        module: "hr",
+        children: [
+          { label: "Documents", href: "/hr/documents", icon: "bi-folder2-open" },
+          { label: "Staffs", href: "/hr/staff", icon: "bi-people-fill" },
+        ],
+      },
       { label: "Renewals", href: "/renewals", icon: "bi-calendar-check-fill", module: "renewals" },
       { label: "Reports", href: "/reports", icon: "bi-bar-chart-line-fill", module: "reports" },
     ],
@@ -64,6 +73,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: "Chat", href: "/chat", icon: "bi-chat-dots-fill" },
       { label: "Reminders", href: "/reminders", icon: "bi-bell-fill" },
+      { label: "Support", href: "/support", icon: "bi-headset" },
     ],
   },
   {

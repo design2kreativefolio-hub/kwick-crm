@@ -28,6 +28,7 @@ export type PricingRow = { category: string; details: string; frequency: string 
 export type SocialPlatformBlock = {
   platform: SocialPlatform;
   enabled: boolean;
+  page_break_before: boolean;
   description: string;
   image_urls: string[];
   key_problems: string;
@@ -36,6 +37,7 @@ export type SocialPlatformBlock = {
 
 export type PricingItem = {
   enabled: boolean;
+  page_break_before: boolean;
   service_name: string;
   ad_budget_label: string;
   ad_budget: string;
@@ -55,17 +57,23 @@ export type ProposalContent = {
     client_email: string;
     client_phone: string;
   };
-  about_kreativefolio: { enabled: boolean; content: string };
-  about_client: { enabled: boolean; content: string; image_urls: string[] };
-  traffic: { enabled: boolean; image_urls: string[] };
-  technical_seo: { enabled: boolean; content: string };
-  keyword_strategy: { enabled: boolean; image_urls: string[] };
-  onpage_seo: { enabled: boolean; content: string; image_urls: string[] };
-  geo: { enabled: boolean; description: string; recommendations: string; approach: string };
-  social_medias: { enabled: boolean; platforms: SocialPlatformBlock[] };
-  what_we_can_do: { enabled: boolean; rows: WhatWeCanDoRow[] };
+  about_kreativefolio: { enabled: boolean; page_break_before: boolean; content: string };
+  about_client: { enabled: boolean; page_break_before: boolean; content: string; image_urls: string[] };
+  traffic: { enabled: boolean; page_break_before: boolean; image_urls: string[] };
+  technical_seo: { enabled: boolean; page_break_before: boolean; content: string };
+  keyword_strategy: { enabled: boolean; page_break_before: boolean; image_urls: string[] };
+  onpage_seo: { enabled: boolean; page_break_before: boolean; content: string; image_urls: string[] };
+  geo: {
+    enabled: boolean;
+    page_break_before: boolean;
+    description: string;
+    recommendations: string;
+    approach: string;
+  };
+  social_medias: { enabled: boolean; page_break_before: boolean; platforms: SocialPlatformBlock[] };
+  what_we_can_do: { enabled: boolean; page_break_before: boolean; rows: WhatWeCanDoRow[] };
   pricing: PricingItem[];
-  terms: { enabled: boolean; duration: string; payment_percent: string };
+  terms: { enabled: boolean; page_break_before: boolean; duration: string; payment_percent: string };
   full_page_image: { enabled: boolean; image_url: string };
 };
 
@@ -105,17 +113,17 @@ export function defaultContent(): ProposalContent {
       client_email: "",
       client_phone: "",
     },
-    about_kreativefolio: { enabled: true, content: DEFAULT_ABOUT_KREATIVEFOLIO },
-    about_client: { enabled: true, content: "", image_urls: [] },
-    traffic: { enabled: true, image_urls: [] },
-    technical_seo: { enabled: true, content: "" },
-    keyword_strategy: { enabled: true, image_urls: [] },
-    onpage_seo: { enabled: true, content: "", image_urls: [] },
-    geo: { enabled: true, description: "", recommendations: "", approach: "" },
-    social_medias: { enabled: true, platforms: [] },
-    what_we_can_do: { enabled: true, rows: [] },
+    about_kreativefolio: { enabled: true, page_break_before: false, content: DEFAULT_ABOUT_KREATIVEFOLIO },
+    about_client: { enabled: true, page_break_before: false, content: "", image_urls: [] },
+    traffic: { enabled: true, page_break_before: false, image_urls: [] },
+    technical_seo: { enabled: true, page_break_before: false, content: "" },
+    keyword_strategy: { enabled: true, page_break_before: false, image_urls: [] },
+    onpage_seo: { enabled: true, page_break_before: false, content: "", image_urls: [] },
+    geo: { enabled: true, page_break_before: false, description: "", recommendations: "", approach: "" },
+    social_medias: { enabled: true, page_break_before: false, platforms: [] },
+    what_we_can_do: { enabled: true, page_break_before: false, rows: [] },
     pricing: [],
-    terms: { enabled: true, duration: "6 months", payment_percent: "100" },
+    terms: { enabled: true, page_break_before: false, duration: "6 months", payment_percent: "100" },
     full_page_image: { enabled: true, image_url: "" },
   };
 }
@@ -123,6 +131,7 @@ export function defaultContent(): ProposalContent {
 export function defaultPricingItem(): PricingItem {
   return {
     enabled: true,
+    page_break_before: false,
     service_name: "Service",
     ad_budget_label: "Ad Budget",
     ad_budget: "",
@@ -133,7 +142,15 @@ export function defaultPricingItem(): PricingItem {
 }
 
 export function defaultSocialPlatform(platform: SocialPlatform): SocialPlatformBlock {
-  return { platform, enabled: true, description: "", image_urls: [], key_problems: "", strategy_rows: [] };
+  return {
+    platform,
+    enabled: true,
+    page_break_before: false,
+    description: "",
+    image_urls: [],
+    key_problems: "",
+    strategy_rows: [],
+  };
 }
 
 export function termsHtml(terms: { duration: string; payment_percent: string }): string {

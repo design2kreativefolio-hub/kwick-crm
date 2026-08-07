@@ -1,8 +1,10 @@
 from datetime import date, timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -251,8 +253,8 @@ class GlobalSearchView(APIView):
                 }
             )
 
-        projects = Project.objects.all() if mgr else Project.objects.filter(members=request.user)
-        for p in projects.filter(name__icontains=q).distinct()[:5]:
+        # Projects are shared company-wide — same list for every active user.
+        for p in Project.objects.filter(name__icontains=q).distinct()[:5]:
             results.append(
                 {
                     "type": "project",
@@ -413,3 +415,83 @@ class TodayTasksView(APIView):
                 for t in qs
             ]
         )
+
+
+SUPPORT_EMAIL = "design@kreativefolio.com"
+SUPPORT_WHATSAPP = "+971505211969"
+MAX_SUPPORT_IMAGES = 5
+MAX_SUPPORT_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+class SupportContactView(APIView):
+    """POST /api/dashboard/support — email a grievance to design@kreativefolio.com
+    with optional image attachments from the logged-in user."""
+
+    permission_classes = [IsActive]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        return Response(
+            {
+                "support_email": SUPPORT_EMAIL,
+                "whatsapp": SUPPORT_WHATSAPP,
+                "whatsapp_display": "+971 50 521 1969",
+            }
+        )
+
+    def post(self, request):
+        from django.core.mail import EmailMessage
+
+        name = (request.data.get("name") or request.user.full_name or "").strip()
+        email = (request.data.get("email") or request.user.email or "").strip()
+        message = (request.data.get("message") or "").strip()
+        if not message:
+            return Response({"detail": "Please describe your issue."}, status=400)
+        if not email:
+            return Response({"detail": "Email is required."}, status=400)
+
+        files = request.FILES.getlist("images") or request.FILES.getlist("images[]")
+        if len(files) > MAX_SUPPORT_IMAGES:
+            return Response(
+                {"detail": f"You can attach up to {MAX_SUPPORT_IMAGES} images."},
+                status=400,
+            )
+        for f in files:
+            if f.size > MAX_SUPPORT_IMAGE_BYTES:
+                return Response(
+                    {"detail": f"{f.name} is too large (max 5 MB per image)."},
+                    status=400,
+                )
+            content_type = (getattr(f, "content_type", "") or "").lower()
+            if content_type and not content_type.startswith("image/"):
+                return Response({"detail": "Only image attachments are allowed."}, status=400)
+
+        body = (
+            f"Support request from Kwick\n"
+            f"{'=' * 40}\n"
+            f"Name: {name or '—'}\n"
+            f"Email: {email}\n"
+            f"User ID: {request.user.pk}\n"
+            f"Role: {getattr(request.user, 'role', '')}\n"
+            f"{'=' * 40}\n\n"
+            f"{message}\n"
+        )
+        mail = EmailMessage(
+            subject=f"[Kwick Support] {name or email}",
+            body=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[SUPPORT_EMAIL],
+            reply_to=[email],
+        )
+        for f in files:
+            mail.attach(f.name, f.read(), f.content_type or "application/octet-stream")
+
+        try:
+            mail.send(fail_silently=False)
+        except Exception:
+            return Response(
+                {"detail": "Couldn't send your message right now. Please email or WhatsApp us directly."},
+                status=502,
+            )
+        return Response({"detail": "Support request sent.", "support_email": SUPPORT_EMAIL})
+

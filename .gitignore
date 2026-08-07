@@ -38,5 +38,8 @@ vapid_public.pem
 .DS_Store
 Thumbs.db
 
+# ---- Local scratch / letter source dumps ----
+.tmp-letters/
+
 # ---- Docker / build artifacts ----
 *.pid

@@ -22,11 +22,12 @@ from notifications.services import (
     users_with_module_access,
 )
 
-from .models import EmployeeCollateral, EmployeeRecord, Leave, LeaveBalance, Ticket
+from .models import EmployeeCollateral, EmployeeRecord, HrLetter, Leave, LeaveBalance, Ticket
 from .pdf import generate_collateral_pdf
 from .serializers import (
     EmployeeCollateralSerializer,
     EmployeeRecordSerializer,
+    HrLetterSerializer,
     LeaveBalanceSerializer,
     LeaveSerializer,
     StaffCreateSerializer,
@@ -446,3 +447,97 @@ class TicketViewSet(viewsets.ModelViewSet):
         if ticket.status == Ticket.Status.RESOLVED:
             stop_recurring_reminder(object_ref=f"ticket:{ticket.id}")
         return Response(TicketSerializer(ticket).data)
+
+
+class HrLetterViewSet(viewsets.ModelViewSet):
+    """HR Documents builder — create/edit letters, export PDF, assign to staff
+    (except offer letters)."""
+
+    serializer_class = HrLetterSerializer
+    permission_classes = [HasModuleAccess]
+    required_module = Module.HR
+    filterset_fields = ["doc_type", "status", "staff"]
+    search_fields = ["title"]
+
+    def get_queryset(self):
+        return HrLetter.objects.select_related("staff", "created_by")
+
+    def perform_create(self, serializer):
+        letter = serializer.save(created_by=self.request.user)
+        self._maybe_notify(letter, before_staff_id=None)
+
+    def perform_update(self, serializer):
+        before = serializer.instance.staff_id
+        letter = serializer.save()
+        self._maybe_notify(letter, before_staff_id=before)
+
+    def _maybe_notify(self, letter, before_staff_id):
+        if letter.doc_type == HrLetter.DocType.OFFER or not letter.staff_id:
+            return
+        if letter.staff_id == before_staff_id:
+            return
+        notify_user(
+            user=letter.staff,
+            source="document",
+            title=f"New document: {letter.get_doc_type_display()}",
+            body="A letter has been prepared for you. Open Profile → Documents to download.",
+            object_ref=f"hr_letter:{letter.id}",
+        )
+
+    @action(detail=True, methods=["post"])
+    def duplicate(self, request, pk=None):
+        """POST /api/hr/letters/{id}/duplicate — clone as draft named `title_duplicate`."""
+        from common.duplicate import deep_copy_json, duplicate_label
+
+        src = self.get_object()
+        base = (src.title or src.get_doc_type_display()).strip()
+        title = duplicate_label(
+            base,
+            exists=lambda t: HrLetter.objects.filter(title=t).exists(),
+        )
+        letter = HrLetter.objects.create(
+            doc_type=src.doc_type,
+            title=title,
+            staff=src.staff,
+            content=deep_copy_json(src.content),
+            status=HrLetter.Status.DRAFT,
+            file_url="",
+            created_by=request.user,
+        )
+        return Response(HrLetterSerializer(letter).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def pdf(self, request, pk=None):
+        from django.utils import timezone
+
+        from .letter_pdf import render_letter_pdf
+
+        letter = self.get_object()
+        url = render_letter_pdf(letter, request)
+        letter.file_url = url
+        letter.status = HrLetter.Status.ISSUED
+        letter.save(update_fields=["file_url", "status", "updated_at"])
+        if letter.staff_id and letter.doc_type != HrLetter.DocType.OFFER:
+            notify_user(
+                user=letter.staff,
+                source="document",
+                title=f"Document ready: {letter.get_doc_type_display()}",
+                body="Your letter PDF is ready to download from Profile → Documents.",
+                object_ref=f"hr_letter:{letter.id}:pdf:{timezone.now().timestamp()}",
+            )
+        return Response({"file_url": url, **HrLetterSerializer(letter).data})
+
+
+class MyHrLettersView(APIView):
+    """Employee: letters assigned to them (issued PDFs)."""
+
+    permission_classes = [IsActive]
+
+    def get(self, request):
+        qs = (
+            HrLetter.objects.filter(staff=request.user, status=HrLetter.Status.ISSUED)
+            .exclude(doc_type=HrLetter.DocType.OFFER)
+            .exclude(file_url="")
+            .order_by("-updated_at")
+        )
+        return Response(HrLetterSerializer(qs, many=True).data)

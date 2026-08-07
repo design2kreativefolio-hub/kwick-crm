@@ -4,7 +4,7 @@
 
 @page {
   size: A4;
-  margin: 100px 42px 95px 42px;
+  margin: 100px 42px 112px 42px;
 }
 /* Header/footer as margin-box background images (not position:running() +
    element()) — that mechanism is documented to spawn a spurious blank page
@@ -27,7 +27,7 @@
     background-position: center;
     background-size: contain;
     width: 100%;
-    height: 46px;
+    height: 60px;
   }
 }
 @page cover {
@@ -36,6 +36,7 @@
   @bottom-center { content: normal; }
 }
 @page fullbleed {
+  size: A4;
   margin: 0;
   @top-center { content: normal; }
   @bottom-center { content: normal; }
@@ -54,10 +55,21 @@ h2 { font-size: 20px; border-bottom: 2px solid #e4c9ae; padding-bottom: 8px; mar
 h3 { font-size: 14.5px; margin-top: 18px; }
 p { margin: 0 0 10px; }
 ul, ol { margin: 0 0 10px; padding-left: 22px; }
-img.section-image { max-width: 100%; border-radius: 6px; margin: 10px 0; }
-img.section-image-full { width: 100%; border-radius: 6px; margin: 10px 0; }
+img.section-image {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 10px auto;
+}
+img.section-image-full {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+  margin: 10px auto;
+}
 
 .doc-section { margin-top: 10px; }
+.page-break-before { break-before: page; page-break-before: always; }
 
 .cover-page {
   page: cover; position: relative; width: 100%; min-height: 297mm;
@@ -77,14 +89,26 @@ img.section-image-full { width: 100%; border-radius: 6px; margin: 10px 0; }
 table.doc-table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 11px; }
 table.doc-table th, table.doc-table td { border: 1px solid #1b2559; padding: 7px 10px; text-align: left; vertical-align: top; }
 table.doc-table th { background: #1b2559; color: #fff; font-size: 11px; }
+/* Keep Enter / bullet line breaks from the editor (HTML collapses them otherwise). */
+table.doc-table td { white-space: pre-line; }
 
 .platform-block, .pricing-block { margin-bottom: 20px; }
 .platform-block h3, .pricing-block h3 { text-transform: capitalize; }
 .field-form { border: 1px solid #d8d4cb; background: #faf8f4; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; }
 .field-form .label { font-weight: 700; color: #1b2559; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 3px; }
 
-.fullbleed-page { page: fullbleed; width: 100%; height: 297mm; }
-.fullbleed-page img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fullbleed-page {
+  page: fullbleed;
+  break-before: page;
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  margin: 0;
+  padding: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
 
 /* Visible page separation on screen — each page is a distinct white sheet
    with a gap and shadow between it and the next, so it's obvious where one

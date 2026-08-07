@@ -25,6 +25,7 @@ import {
 } from "@/lib/proposalContent";
 import { api, ApiError, unwrapList } from "@/lib/api";
 import { useToast } from "@/lib/toast";
+import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 type Client = { id: number; name: string; contact_email: string; contact_phone: string };
 
@@ -44,6 +45,8 @@ function SectionCard({
   onToggleCollapsed,
   children,
   toggleDisabled,
+  pageBreakBefore,
+  onPageBreakChange,
 }: {
   label: string;
   icon: string;
@@ -53,6 +56,8 @@ function SectionCard({
   onToggleCollapsed: () => void;
   children: React.ReactNode;
   toggleDisabled?: boolean;
+  pageBreakBefore?: boolean;
+  onPageBreakChange?: (value: boolean) => void;
 }) {
   return (
     <div className={`section-card${enabled ? "" : " section-disabled"}`}>
@@ -72,7 +77,24 @@ function SectionCard({
         )}
         <i className={`bi ${collapsed ? "bi-chevron-down" : "bi-chevron-up"}`} style={{ color: "var(--text-muted)", fontSize: 12 }} />
       </div>
-      {!collapsed && <div className="section-card-body">{children}</div>}
+      {!collapsed && (
+        <div className="section-card-body">
+          {onPageBreakChange && (
+            <label
+              style={pageBreakLabel}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={!!pageBreakBefore}
+                onChange={(e) => onPageBreakChange(e.target.checked)}
+              />
+              Start on new page
+            </label>
+          )}
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -84,6 +106,7 @@ export default function ProposalBuilderPage() {
 
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState<ProposalContent | null>(null);
+  const [docName, setDocName] = useState("");
   const [status, setStatus] = useState("draft");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "docx" | null>(null);
@@ -91,6 +114,10 @@ export default function ProposalBuilderPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(
     () => new Set(SECTION_META.filter((s) => s.key !== "home").map((s) => String(s.key)))
   );
+
+  const formState = useMemo(() => ({ content, docName, status }), [content, docName, status]);
+  const { dirty, markClean } = useDirtySnapshot(formState, !loading && !!content);
+  const { ConfirmDialog } = useUnsavedChanges(dirty);
 
   useEffect(() => {
     api<Client[] | { results: Client[] }>("/api/sales/clients")
@@ -100,9 +127,11 @@ export default function ProposalBuilderPage() {
 
   useEffect(() => {
     setLoading(true);
-    api<{ content: ProposalContent; status: string }>(`/api/sales/proposals/${id}`)
+    api<{ content: ProposalContent; status: string; title: string }>(`/api/sales/proposals/${id}`)
       .then((p) => {
-        setContent(mergedContent(p.content));
+        const merged = mergedContent(p.content);
+        setContent(merged);
+        setDocName(p.title || merged.home.title || "Untitled Proposal");
         setStatus(p.status);
       })
       .catch(() => showToast("Couldn't load proposal.", "error"))
@@ -141,7 +170,20 @@ export default function ProposalBuilderPage() {
     if (!content) return false;
     setSaving(true);
     try {
-      await api(`/api/sales/proposals/${id}`, { method: "PATCH", body: JSON.stringify({ content, status }) });
+      const updated = await api<{ title: string }>(`/api/sales/proposals/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          content,
+          status,
+          title: docName.trim() || content.home.title || "Untitled Proposal",
+        }),
+      });
+      setDocName(updated.title || docName);
+      markClean({
+        content,
+        docName: updated.title || docName,
+        status,
+      });
       showToast("Proposal saved.");
       return true;
     } catch (err: any) {
@@ -206,12 +248,38 @@ export default function ProposalBuilderPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {ConfirmDialog}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
         <div>
           <BackLink href="/sales/proposals" label="Back to Proposals" />
-          <h1 style={{ margin: "8px 0 0", fontSize: 22 }}>{home.title || "Untitled Proposal"}</h1>
+          <input
+            className="input"
+            value={docName}
+            onChange={(e) => setDocName(e.target.value)}
+            aria-label="Proposal name"
+            placeholder="Untitled Proposal"
+            style={{
+              marginTop: 8,
+              fontSize: 22,
+              fontWeight: 700,
+              color: "var(--navy)",
+              border: "1px solid transparent",
+              background: "transparent",
+              padding: "4px 8px",
+              marginLeft: -8,
+              width: "min(100%, 520px)",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "var(--border)";
+              e.currentTarget.style.background = "#fff";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = "transparent";
+              e.currentTarget.style.background = "transparent";
+            }}
+          />
           <p className="muted" style={{ marginTop: 4 }}>
-            Build each section, then export.
+            Rename above for the list and PDF filename. Cover title is set in Home Page.
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -252,8 +320,11 @@ export default function ProposalBuilderPage() {
               </div>
             </div>
             <div>
-              <label className="field-label">Title</label>
+              <label className="field-label">Cover title</label>
               <input className="input" value={home.title} onChange={(e) => updateSection("home", { title: e.target.value })} />
+              <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Shown on the proposal cover inside the document.
+              </p>
             </div>
             <div>
               <label className="field-label">Pick a client</label>
@@ -286,6 +357,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("about_kreativefolio")}
             collapsed={collapsed.has("about_kreativefolio")}
             onToggleCollapsed={() => toggleCollapsed("about_kreativefolio")}
+            pageBreakBefore={content.about_kreativefolio.page_break_before}
+            onPageBreakChange={(v) => updateSection("about_kreativefolio", { page_break_before: v })}
           >
             <RichTextEditor
               value={content.about_kreativefolio.content}
@@ -301,6 +374,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("about_client")}
             collapsed={collapsed.has("about_client")}
             onToggleCollapsed={() => toggleCollapsed("about_client")}
+            pageBreakBefore={content.about_client.page_break_before}
+            onPageBreakChange={(v) => updateSection("about_client", { page_break_before: v })}
           >
             <RichTextEditor value={content.about_client.content} onChange={(html) => updateSection("about_client", { content: html })} />
             <ImageGalleryField
@@ -319,6 +394,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("traffic")}
             collapsed={collapsed.has("traffic")}
             onToggleCollapsed={() => toggleCollapsed("traffic")}
+            pageBreakBefore={content.traffic.page_break_before}
+            onPageBreakChange={(v) => updateSection("traffic", { page_break_before: v })}
           >
             <ImageGalleryField
               proposalId={Number(id)}
@@ -336,6 +413,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("technical_seo")}
             collapsed={collapsed.has("technical_seo")}
             onToggleCollapsed={() => toggleCollapsed("technical_seo")}
+            pageBreakBefore={content.technical_seo.page_break_before}
+            onPageBreakChange={(v) => updateSection("technical_seo", { page_break_before: v })}
           >
             <RichTextEditor value={content.technical_seo.content} onChange={(html) => updateSection("technical_seo", { content: html })} />
           </SectionCard>
@@ -348,6 +427,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("keyword_strategy")}
             collapsed={collapsed.has("keyword_strategy")}
             onToggleCollapsed={() => toggleCollapsed("keyword_strategy")}
+            pageBreakBefore={content.keyword_strategy.page_break_before}
+            onPageBreakChange={(v) => updateSection("keyword_strategy", { page_break_before: v })}
           >
             <ImageGalleryField
               proposalId={Number(id)}
@@ -365,6 +446,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("onpage_seo")}
             collapsed={collapsed.has("onpage_seo")}
             onToggleCollapsed={() => toggleCollapsed("onpage_seo")}
+            pageBreakBefore={content.onpage_seo.page_break_before}
+            onPageBreakChange={(v) => updateSection("onpage_seo", { page_break_before: v })}
           >
             <RichTextEditor value={content.onpage_seo.content} onChange={(html) => updateSection("onpage_seo", { content: html })} />
             <ImageGalleryField
@@ -383,6 +466,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("geo")}
             collapsed={collapsed.has("geo")}
             onToggleCollapsed={() => toggleCollapsed("geo")}
+            pageBreakBefore={content.geo.page_break_before}
+            onPageBreakChange={(v) => updateSection("geo", { page_break_before: v })}
           >
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Description</label>
@@ -412,6 +497,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("social_medias")}
             collapsed={collapsed.has("social_medias")}
             onToggleCollapsed={() => toggleCollapsed("social_medias")}
+            pageBreakBefore={content.social_medias.page_break_before}
+            onPageBreakChange={(v) => updateSection("social_medias", { page_break_before: v })}
           >
             {availablePlatforms.length > 0 && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -439,6 +526,14 @@ export default function ProposalBuilderPage() {
                       <i className="bi bi-trash-fill" />
                     </button>
                   </div>
+                  <label style={pageBreakLabel}>
+                    <input
+                      type="checkbox"
+                      checked={!!p.page_break_before}
+                      onChange={(e) => updatePlatform(p.platform, { page_break_before: e.target.checked })}
+                    />
+                    Start on new page
+                  </label>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div>
                       <label className="field-label" style={{ marginTop: 0 }}>Description</label>
@@ -488,6 +583,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("what_we_can_do")}
             collapsed={collapsed.has("what_we_can_do")}
             onToggleCollapsed={() => toggleCollapsed("what_we_can_do")}
+            pageBreakBefore={content.what_we_can_do.page_break_before}
+            onPageBreakChange={(v) => updateSection("what_we_can_do", { page_break_before: v })}
           >
             <EditableTable
               columns={[
@@ -530,6 +627,14 @@ export default function ProposalBuilderPage() {
                     <i className="bi bi-trash-fill" />
                   </button>
                 </div>
+                <label style={pageBreakLabel}>
+                  <input
+                    type="checkbox"
+                    checked={!!item.page_break_before}
+                    onChange={(e) => updatePricing(idx, { page_break_before: e.target.checked })}
+                  />
+                  Start on new page
+                </label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={fieldGrid}>
                     <div>
@@ -580,6 +685,8 @@ export default function ProposalBuilderPage() {
             onToggle={() => toggleSection("terms")}
             collapsed={collapsed.has("terms")}
             onToggleCollapsed={() => toggleCollapsed("terms")}
+            pageBreakBefore={content.terms.page_break_before}
+            onPageBreakChange={(v) => updateSection("terms", { page_break_before: v })}
           >
             <div style={fieldGrid}>
               <div>
@@ -633,4 +740,15 @@ const fieldGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: 14,
+};
+
+const pageBreakLabel: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 13,
+  color: "var(--text-muted)",
+  cursor: "pointer",
+  userSelect: "none",
+  marginBottom: 4,
 };

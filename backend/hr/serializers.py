@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from accounts.models import Role, StaffProfile, UserStatus
 
-from .models import EmployeeCollateral, EmployeeRecord, Leave, LeaveBalance, Ticket
+from .models import EmployeeCollateral, EmployeeRecord, HrLetter, Leave, LeaveBalance, Ticket
 
 User = get_user_model()
 
@@ -265,3 +265,87 @@ class TicketSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["raised_by", "status", "created_at"]
+
+
+class HrLetterSerializer(serializers.ModelSerializer):
+    staff_name = serializers.SerializerMethodField()
+    doc_type_label = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HrLetter
+        fields = [
+            "id",
+            "doc_type",
+            "doc_type_label",
+            "title",
+            "staff",
+            "staff_name",
+            "content",
+            "status",
+            "file_url",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["created_by", "file_url", "created_at", "updated_at"]
+
+    def get_staff_name(self, obj):
+        if not obj.staff_id:
+            return (obj.content or {}).get("employee_name", "") or ""
+        return obj.staff.full_name or obj.staff.email
+
+    def get_doc_type_label(self, obj):
+        from .letter_content import DOC_TYPE_LABELS
+
+        return DOC_TYPE_LABELS.get(obj.doc_type, obj.doc_type)
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return ""
+        return obj.created_by.full_name or obj.created_by.email
+
+    def _apply_content(self, validated_data, instance=None):
+        from .letter_content import letter_title, merged_content
+
+        doc_type = validated_data.get("doc_type") or (instance.doc_type if instance else None)
+        if not doc_type:
+            raise serializers.ValidationError({"doc_type": "Required."})
+        content = merged_content(doc_type, validated_data.get("content") if "content" in validated_data else (instance.content if instance else None))
+        if "content" in validated_data or instance is None:
+            validated_data["content"] = content
+
+        # Document name is user-editable. Default only when creating / clearing.
+        if "title" in validated_data:
+            title = (validated_data.get("title") or "").strip()
+            validated_data["title"] = title or letter_title(doc_type, content)
+        elif instance is not None and (instance.title or "").strip():
+            validated_data["title"] = instance.title
+        else:
+            validated_data["title"] = letter_title(doc_type, content)
+
+        staff = validated_data.get("staff", serializers.empty)
+        if staff is serializers.empty and instance:
+            staff = instance.staff
+        if doc_type == "offer_letter":
+            validated_data["staff"] = None
+        elif staff is None or staff is serializers.empty:
+            # keep existing on partial update without staff key
+            if "staff" in validated_data:
+                validated_data["staff"] = None
+        return validated_data
+
+    def create(self, validated_data):
+        validated_data = self._apply_content(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if (
+            "content" in validated_data
+            or "doc_type" in validated_data
+            or "staff" in validated_data
+            or "title" in validated_data
+        ):
+            validated_data = self._apply_content(validated_data, instance=instance)
+        return super().update(instance, validated_data)

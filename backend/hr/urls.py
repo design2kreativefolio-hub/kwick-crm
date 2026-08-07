@@ -7,9 +7,11 @@ from .views import (
     EmployeeCollateralView,
     EmployeeRecordDetailView,
     EmployeeRecordUploadView,
+    HrLetterViewSet,
     LeaveBalanceView,
     LeaveViewSet,
     MyCollateralsView,
+    MyHrLettersView,
     StaffAvatarUploadView,
     StaffViewSet,
     TicketViewSet,
@@ -19,9 +21,11 @@ router = DefaultRouter(trailing_slash=False)  # frontend calls without trailing 
 router.register("staff", StaffViewSet, basename="staff")
 router.register("leaves", LeaveViewSet, basename="leaves")
 router.register("tickets", TicketViewSet, basename="tickets")
+router.register("letters", HrLetterViewSet, basename="letters")
 
 urlpatterns = [
     path("employee-collaterals/mine", MyCollateralsView.as_view(), name="collaterals-mine"),
+    path("letters/mine", MyHrLettersView.as_view(), name="letters-mine"),
     path("employee-collaterals/upload", EmployeeCollateralUploadView.as_view(), name="collaterals-upload"),
     # <int:pk> before <str:doc_type> so numeric ids route to delete, not the
     # generate-by-slug view (Django tries urlpatterns in order).

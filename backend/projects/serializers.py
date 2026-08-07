@@ -7,6 +7,7 @@ from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Pro
 
 class ProjectSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
+    member_names = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
@@ -21,18 +22,22 @@ class ProjectSerializer(serializers.ModelSerializer):
             "end_date",
             "delivery_date",
             "members",
+            "member_names",
             "created_by",
             "created_by_name",
             "created_at",
         ]
         # created_by is set server-side only (perform_create) — never
         # accepted from the client, so it can't be spoofed.
-        read_only_fields = ["created_by"]
+        read_only_fields = ["created_by", "member_names"]
 
     def get_created_by_name(self, obj):
         if not obj.created_by:
             return ""
         return obj.created_by.full_name or obj.created_by.email
+
+    def get_member_names(self, obj):
+        return [{"id": u.id, "name": u.full_name or u.email} for u in obj.members.all()]
 
 
 class ArtworkSerializer(serializers.ModelSerializer):

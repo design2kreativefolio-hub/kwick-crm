@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
@@ -31,27 +31,9 @@ type StaffDetail = {
     home_country_address: string;
     home_country_number: string;
   };
-  collaterals: {
-    id: number;
-    doc_type: string;
-    file_url: string;
-    generated_at: string | null;
-  }[];
-  records: {
-    id: number;
-    title: string;
-    file_url: string;
-    created_at: string;
-  }[];
 };
 
 type Grant = { id: number; module: Module };
-
-const DOC_TYPES: { key: string; label: string }[] = [
-  { key: "experience_letter", label: "Experience Letter" },
-  { key: "relieving_letter", label: "Relieving Letter" },
-  { key: "salary_certificate", label: "Salary Certificate" },
-];
 
 const MODULES: { key: Module; label: string }[] = [
   { key: "hr", label: "HR" },
@@ -80,7 +62,6 @@ const emptyForm = {
 export default function StaffEditPage() {
   const params = useParams();
   const id = params.id as string;
-  const router = useRouter();
   const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -93,15 +74,8 @@ export default function StaffEditPage() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
-  const [busyDoc, setBusyDoc] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
-  const uploadDocType = useRef<string>("");
-
-  const [recordTitle, setRecordTitle] = useState("");
-  const [addingRecord, setAddingRecord] = useState(false);
-  const recordFileRef = useRef<HTMLInputElement>(null);
 
   const [grants, setGrants] = useState<Grant[]>([]);
   const [grantBusy, setGrantBusy] = useState<Module | null>(null);
@@ -223,46 +197,6 @@ export default function StaffEditPage() {
     }
   };
 
-  const generateDoc = async (docType: string) => {
-    setBusyDoc(`generate-${docType}`);
-    try {
-      await api(`/api/hr/employee-collaterals/${docType}`, {
-        method: "POST",
-        body: JSON.stringify({ staff: id }),
-      });
-      showToast("Document generated.");
-      load();
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't generate document." : err.message, "error");
-    } finally {
-      setBusyDoc(null);
-    }
-  };
-
-  const pickUpload = (docType: string) => {
-    uploadDocType.current = docType;
-    fileRef.current?.click();
-  };
-
-  const uploadDoc = async (file: File) => {
-    const docType = uploadDocType.current;
-    setBusyDoc(`upload-${docType}`);
-    try {
-      const body = new FormData();
-      body.append("staff", id);
-      body.append("doc_type", docType);
-      body.append("file", file);
-      await api("/api/hr/employee-collaterals/upload", { method: "POST", body });
-      showToast("Document uploaded.");
-      load();
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't upload document." : err.message, "error");
-    } finally {
-      setBusyDoc(null);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  };
-
   const uploadAvatar = async (file: File) => {
     setUploadingAvatar(true);
     try {
@@ -279,55 +213,6 @@ export default function StaffEditPage() {
     }
   };
 
-  const removeDoc = async (collateralId: number) => {
-    setBusyDoc(`remove-${collateralId}`);
-    try {
-      await api(`/api/hr/employee-collaterals/${collateralId}`, { method: "DELETE" });
-      showToast("Document removed.");
-      load();
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't remove document." : err.message, "error");
-    } finally {
-      setBusyDoc(null);
-    }
-  };
-
-  const uploadRecord = async (file: File) => {
-    if (!recordTitle.trim()) {
-      showToast("Enter a document name first.", "error");
-      return;
-    }
-    setAddingRecord(true);
-    try {
-      const body = new FormData();
-      body.append("staff", id);
-      body.append("title", recordTitle.trim());
-      body.append("file", file);
-      await api("/api/hr/employee-records", { method: "POST", body });
-      setRecordTitle("");
-      showToast("Record added.");
-      load();
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't add record." : err.message, "error");
-    } finally {
-      setAddingRecord(false);
-      if (recordFileRef.current) recordFileRef.current.value = "";
-    }
-  };
-
-  const removeRecord = async (recordId: number) => {
-    setBusyDoc(`remove-record-${recordId}`);
-    try {
-      await api(`/api/hr/employee-records/${recordId}`, { method: "DELETE" });
-      showToast("Record removed.");
-      load();
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't remove record." : err.message, "error");
-    } finally {
-      setBusyDoc(null);
-    }
-  };
-
   if (loading) return <p className="muted">Loading…</p>;
   if (!data) return <p className="muted">Staff not found.</p>;
 
@@ -335,13 +220,18 @@ export default function StaffEditPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div>
-        <BackLink href={`/hr/staff/${id}`} label={`Back to ${data.staff.full_name || "Staff"}`} />
-        <h1 style={{ margin: "8px 0 0", fontSize: 22 }}>Edit Staff</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <BackLink href={`/hr/staff/${id}`} label={`Back to ${data.staff.full_name || "Staff"}`} />
+          <h1 style={{ margin: "8px 0 0", fontSize: 22 }}>Edit Staff</h1>
+        </div>
+        <button className="btn" form="staff-edit-form" disabled={saving}>
+          {saving ? "Saving…" : "Save changes"}
+        </button>
       </div>
 
       <div className="staff-edit-grid" style={twoCol}>
-        <form className="card" onSubmit={save}>
+        <form id="staff-edit-form" className="card" onSubmit={save}>
           <span className="card-title">Details</span>
           <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "14px 0" }}>
             <div style={avatarPreviewBox} onClick={() => avatarRef.current?.click()}>
@@ -465,9 +355,6 @@ export default function StaffEditPage() {
           />
 
           {error && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 12 }}>{error}</p>}
-          <button className="btn" style={{ marginTop: 14 }} disabled={saving}>
-            {saving ? "Saving…" : "Save changes"}
-          </button>
         </form>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -532,119 +419,6 @@ export default function StaffEditPage() {
               </div>
             </div>
           )}
-
-          <div className="card">
-            <span className="card-title">Documents</span>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/pdf,image/*"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadDoc(file);
-              }}
-            />
-            {DOC_TYPES.map((d) => {
-              const issued = data.collaterals.filter((c) => c.doc_type === d.key);
-              return (
-                <div key={d.key} style={docBlock}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{d.label}</div>
-                  {issued.map((c) => (
-                    <div key={c.id} style={docRow}>
-                      <a href={c.file_url} target="_blank" rel="noreferrer" className="muted" style={{ fontSize: 12, color: "var(--gold)" }}>
-                        <i className="bi bi-download" />{" "}
-                        {c.generated_at ? new Date(c.generated_at).toLocaleDateString() : "Download"}
-                      </a>
-                      <button
-                        className="icon-btn-anim"
-                        style={removeBtn}
-                        disabled={busyDoc === `remove-${c.id}`}
-                        onClick={() => removeDoc(c.id)}
-                        aria-label="Remove"
-                        title="Remove"
-                      >
-                        <i className="bi bi-trash-fill" style={{ fontSize: 12, color: "var(--danger)" }} />
-                      </button>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      disabled={busyDoc === `generate-${d.key}`}
-                      onClick={() => generateDoc(d.key)}
-                    >
-                      {busyDoc === `generate-${d.key}` ? "…" : "Generate"}
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      disabled={busyDoc === `upload-${d.key}`}
-                      onClick={() => pickUpload(d.key)}
-                    >
-                      <i className="bi bi-upload" /> {busyDoc === `upload-${d.key}` ? "…" : "Upload"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="card">
-            <span className="card-title">Employee Records</span>
-            <p className="muted" style={{ fontSize: 12.5, marginTop: -8, marginBottom: 12 }}>
-              Attach any document — passport copy, visa page, and so on — with a name of your choosing.
-            </p>
-            <input
-              ref={recordFileRef}
-              type="file"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadRecord(file);
-              }}
-            />
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <input
-                className="input"
-                placeholder="Document name (e.g. Passport copy)"
-                value={recordTitle}
-                onChange={(e) => setRecordTitle(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={addingRecord}
-                onClick={() => recordFileRef.current?.click()}
-              >
-                <i className="bi bi-upload" /> {addingRecord ? "Uploading…" : "Add"}
-              </button>
-            </div>
-            {data.records.length === 0 && <p className="muted">No records yet.</p>}
-            {data.records.map((r) => (
-              <div key={r.id} style={docRow}>
-                <a
-                  href={r.file_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="muted"
-                  style={{ fontSize: 12.5, color: "var(--gold)" }}
-                >
-                  <i className="bi bi-file-earmark-text-fill" /> {r.title}
-                </a>
-                <button
-                  className="icon-btn-anim"
-                  style={removeBtn}
-                  disabled={busyDoc === `remove-record-${r.id}`}
-                  onClick={() => removeRecord(r.id)}
-                  aria-label="Remove"
-                  title="Remove"
-                >
-                  <i className="bi bi-trash-fill" style={{ fontSize: 12, color: "var(--danger)" }} />
-                </button>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
       {ConfirmDialog}
@@ -661,27 +435,6 @@ const fieldGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: 14,
-};
-const docBlock: React.CSSProperties = {
-  padding: "12px 0",
-  borderBottom: "1px solid var(--border)",
-};
-const docRow: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  padding: "4px 0",
-};
-const removeBtn: React.CSSProperties = {
-  width: 26,
-  height: 26,
-  minWidth: 26,
-  borderRadius: "50%",
-  display: "grid",
-  placeItems: "center",
-  background: "var(--bg)",
-  border: "none",
 };
 const avatarPreviewBox: React.CSSProperties = {
   position: "relative",

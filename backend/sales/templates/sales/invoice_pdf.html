@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 24mm 16mm 18mm 16mm;
+    @bottom-center {
+      content: counter(page);
+      font-size: 8px;
+      color: #8a8f9e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: #2a2f45;
+    font-size: 11px;
+    line-height: 1.45;
+    margin: 0;
+  }
+  table.layout { width: 100%; border-collapse: collapse; }
+  table.layout td { vertical-align: top; padding: 0; }
+  .brand-logo { height: 42px; display: block; margin-bottom: 8px; }
+  .brand-name {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: #1c1e54;
+    margin: 0 0 6px;
+  }
+  .brand-meta { font-size: 9.5px; color: #5b6178; line-height: 1.5; margin: 0; }
+  .doc-side { text-align: right; }
+  .doc-label {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #1c1e54;
+    margin: 0;
+    line-height: 1;
+  }
+  .doc-number { margin-top: 8px; font-size: 12px; color: #2a2f45; }
+  .section-gap { height: 26px; }
+  .bill-to-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #5b6178;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin: 0 0 4px;
+  }
+  .bill-to-name { font-size: 13px; font-weight: 600; color: #2a2f45; margin: 0; }
+  .bill-to-email { font-size: 11px; color: #5b6178; margin: 3px 0 0; }
+  .dates { text-align: right; font-size: 11.5px; color: #2a2f45; }
+  .dates .row { margin-top: 4px; }
+  .dates .label { color: #5b6178; }
+
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  table.items thead th {
+    background: #1c1e54;
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 10px;
+  }
+  table.items thead th.num { text-align: right; }
+  table.items thead th.idx { width: 28px; text-align: center; }
+  table.items tbody td {
+    border-bottom: 1px solid #e4e6ec;
+    padding: 10px;
+    vertical-align: top;
+    font-size: 11px;
+  }
+  table.items tbody td.num { text-align: right; white-space: nowrap; }
+  table.items tbody td.idx { text-align: center; color: #5b6178; }
+  .item-desc { font-weight: 600; color: #2a2f45; }
+  .item-details { margin: 6px 0 0; padding-left: 16px; color: #5b6178; font-size: 10.5px; }
+  .item-details li { margin-bottom: 2px; }
+
+  table.totals { width: 240px; margin-left: auto; margin-bottom: 22px; border-collapse: collapse; }
+  table.totals td { padding: 6px 10px; font-size: 11.5px; }
+  table.totals td.r { text-align: right; }
+  table.totals tr.total td { background: #eceef2; font-weight: 700; font-size: 13px; padding: 8px 10px; }
+
+  .bottom-grid { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .bottom-grid td { vertical-align: top; padding: 0; width: 50%; }
+  .footer-block h3 { font-size: 11px; font-weight: 700; color: #2a2f45; margin: 0 0 8px; }
+  .pay-row { font-size: 10.5px; color: #5b6178; margin: 0 0 4px; }
+  .pay-row strong { color: #2a2f45; font-weight: 600; }
+  .notes-text { margin: 0; font-size: 10.5px; color: #5b6178; line-height: 1.55; }
+  .disclaimer {
+    margin-top: 22px;
+    text-align: center;
+    font-size: 10px;
+    color: #8a8f9e;
+  }
+  .powered-by {
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid #e4e6ec;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: #1c1e54;
+  }
+</style>
+</head>
+<body>
+  <table class="layout">
+    <tr>
+      <td style="width: 62%;">
+        <img class="brand-logo" src="{{ logo_data_uri }}" alt="Kreativefolio" />
+        <p class="brand-name">Kreativefolio</p>
+        <p class="brand-meta">
+          Office No: M12, Arabilla Building - Block D, Hor Al Anz East - Deira Dubai 123357, U.A.E.<br />
+          Phone: 971-46657618<br />
+          Email: info@kreativefolio.com<br />
+          Website: www.kreativefolio.com
+        </p>
+      </td>
+      <td class="doc-side">
+        <p class="doc-label">INVOICE</p>
+        <p class="doc-number"># {{ invoice_number }}</p>
+      </td>
+    </tr>
+  </table>
+
+  <div class="section-gap"></div>
+
+  <table class="layout">
+    <tr>
+      <td>
+        <p class="bill-to-label">Bill To</p>
+        <p class="bill-to-name">{{ bill_to }}</p>
+        {% if bill_to_email %}<p class="bill-to-email">{{ bill_to_email }}</p>{% endif %}
+      </td>
+      <td class="dates">
+        <div class="row"><span class="label">Invoice Date :</span> {{ date_display }}</div>
+        <div class="row"><span class="label">Due Date :</span> {{ due_display }}</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="section-gap"></div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th class="idx">#</th>
+        <th>Item &amp; Description</th>
+        <th class="num">Qty</th>
+        <th class="num">Rate</th>
+        <th class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="idx">{{ item.index }}</td>
+        <td>
+          <div class="item-desc">{{ item.description }}</div>
+          {% if item.details_lines %}
+          <ul class="item-details">
+            {% for line in item.details_lines %}<li>{{ line }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+        </td>
+        <td class="num">{{ item.qty_display }}</td>
+        <td class="num">{{ item.rate_display }}</td>
+        <td class="num">{{ item.amount_display }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="text-align:center;color:#8a8f9e;">No items</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr>
+      <td>Sub Total</td>
+      <td class="r">{{ subtotal_display }}</td>
+    </tr>
+    <tr class="total">
+      <td>Total</td>
+      <td class="r">{{ total_display }}</td>
+    </tr>
+  </table>
+
+  <table class="bottom-grid">
+    <tr>
+      <td>
+        <div class="footer-block">
+          <h3>Payment Details</h3>
+          <p class="pay-row"><strong>Payment Method:</strong> {{ payment.payment_method|default:"—" }}</p>
+          <p class="pay-row"><strong>Bank Name:</strong> {{ payment.bank_name|default:"—" }}</p>
+          <p class="pay-row"><strong>Account Name:</strong> {{ payment.account_name|default:"—" }}</p>
+          <p class="pay-row"><strong>IBAN / Account Number:</strong> {{ payment.iban|default:"—" }}</p>
+          <p class="pay-row"><strong>Paid Amount:</strong> {{ payment.paid_amount|default:"—" }}</p>
+        </div>
+        {% if notes %}
+        <div class="footer-block" style="margin-top: 16px;">
+          <h3>Notes</h3>
+          <p class="notes-text">{{ notes }}</p>
+        </div>
+        {% endif %}
+      </td>
+      <td></td>
+    </tr>
+  </table>
+
+  <p class="disclaimer">This is a system-generated invoice and does not require a signature.</p>
+  <div class="powered-by">Powered By Kwick</div>
+</body>
+</html>

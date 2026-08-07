@@ -6,19 +6,6 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
-type Collateral = {
-  id: number;
-  doc_type: string;
-  file_url: string;
-  generated_at: string | null;
-};
-
-const DOC_LABELS: Record<string, string> = {
-  experience_letter: "Experience Letter",
-  relieving_letter: "Relieving Letter",
-  salary_certificate: "Salary Certificate",
-};
-
 function dateLabel(iso: string | null | undefined) {
   if (!iso) return "Not set";
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -47,8 +34,9 @@ export function EditProfileTab() {
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [savingPw, setSavingPw] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
-
-  const [collaterals, setCollaterals] = useState<Collateral[]>([]);
+  const [letters, setLetters] = useState<
+    { id: number; doc_type_label: string; title: string; file_url: string; status: string; updated_at: string }[]
+  >([]);
 
   useEffect(() => {
     if (user) {
@@ -62,8 +50,8 @@ export function EditProfileTab() {
 
   useEffect(() => {
     if (user?.role === "employee") {
-      api<Collateral[]>("/api/hr/employee-collaterals/mine")
-        .then(setCollaterals)
+      api<typeof letters>("/api/hr/letters/mine")
+        .then(setLetters)
         .catch(() => {});
     }
   }, [user?.role]);
@@ -153,23 +141,27 @@ export function EditProfileTab() {
         {!isSuperadmin && (
           <div className="card">
             <span className="card-title">My Documents</span>
-            {collaterals.length === 0 && <p className="muted">No documents issued yet.</p>}
-            {collaterals.length > 0 && (
+            {letters.length === 0 && <p className="muted">No documents assigned to you yet.</p>}
+            {letters.length > 0 && (
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {collaterals.map((c) => (
-                  <li key={c.id} style={docRow}>
+                {letters.map((l) => (
+                  <li key={l.id} style={docRow}>
                     <span style={docIcon}>
                       <i className="bi bi-file-earmark-text-fill" />
                     </span>
                     <span style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{DOC_LABELS[c.doc_type] ?? c.doc_type}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{l.doc_type_label || l.title}</div>
                       <div className="muted" style={{ fontSize: 11.5 }}>
-                        {c.generated_at ? new Date(c.generated_at).toLocaleDateString() : "—"}
+                        {new Date(l.updated_at).toLocaleDateString()} · {l.status}
                       </div>
                     </span>
-                    <a href={c.file_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
-                      <i className="bi bi-download" /> Download
-                    </a>
+                    {l.file_url ? (
+                      <a href={l.file_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                        <i className="bi bi-download" /> PDF
+                      </a>
+                    ) : (
+                      <span className="muted" style={{ fontSize: 12 }}>Pending export</span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -269,7 +261,6 @@ const disabledInput: React.CSSProperties = {
   cursor: "not-allowed",
   background: "var(--bg)",
 };
-
 const docRow: React.CSSProperties = {
   display: "flex",
   alignItems: "center",

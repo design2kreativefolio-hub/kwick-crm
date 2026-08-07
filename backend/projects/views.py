@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
-from common.permissions import IsActive, IsSuperadminOrReadOnly, is_superadmin
+from common.permissions import IsActive, IsSuperadminOrReadOnly
 from common.services import log_activity
 from notifications.services import notify_user
 from sales.models import Client
@@ -22,9 +22,9 @@ from .services import build_artwork_id
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
-    """Manager creates; manager + employee can both edit afterward (spec
-    follow-up) — employees see/edit only the projects they're assigned to,
-    managers see/edit everything."""
+    """Projects are company-wide: every active user can see, create, edit,
+    and delete. `members` is who is assigned (notifications + personal
+    dashboard), not who can view."""
 
     serializer_class = ProjectSerializer
     permission_classes = [IsActive]
@@ -32,15 +32,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     search_fields = ["name"]
 
     def get_queryset(self):
-        qs = Project.objects.prefetch_related("members")
-        if is_superadmin(self.request.user):
-            return qs
-        return qs.filter(members=self.request.user)
-
-    def create(self, request, *args, **kwargs):
-        if not is_superadmin(request.user):
-            return Response({"detail": "Superadmin role required."}, status=status.HTTP_403_FORBIDDEN)
-        return super().create(request, *args, **kwargs)
+        return Project.objects.prefetch_related("members")
 
     def _notify_new_members(self, project, before_ids):
         after_ids = set(project.members.values_list("id", flat=True))
@@ -106,7 +98,7 @@ class ArtworkViewSet(viewsets.ModelViewSet):
 class CategoryCodeViewSet(viewsets.ModelViewSet):
     queryset = CategoryCode.objects.all()
     serializer_class = CategoryCodeSerializer
-    permission_classes = [IsSuperadminOrReadOnly]
+    permission_classes = [IsActive]
 
 
 class ArtworkTypeViewSet(viewsets.ModelViewSet):

@@ -1,0 +1,113 @@
+/* Mirrors backend/sales/templates/sales/estimate_pdf.html for the live preview. */
+
+@page { size: A4; margin: 24mm 16mm 20mm 16mm; }
+
+* { box-sizing: border-box; }
+body {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  color: #2a2f45;
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  background: #fff;
+}
+table.layout { width: 100%; border-collapse: collapse; }
+table.layout td { vertical-align: top; padding: 0; }
+.brand-logo { height: 42px; display: block; margin-bottom: 8px; }
+.brand-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #1c1e54;
+  margin: 0 0 6px;
+}
+.brand-meta { font-size: 9.5px; color: #5b6178; line-height: 1.5; margin: 0; }
+.quote-side { text-align: right; }
+.quote-label {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #1c1e54;
+  margin: 0;
+  line-height: 1;
+}
+.quote-number { margin-top: 8px; font-size: 12px; color: #2a2f45; }
+.section-gap { height: 26px; }
+.bill-to-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5b6178;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 0 0 4px;
+}
+.bill-to-name { font-size: 13px; font-weight: 600; color: #2a2f45; margin: 0; }
+.dates { text-align: right; font-size: 11.5px; color: #2a2f45; }
+.dates .expiry { margin-top: 4px; }
+.dates .expiry span { color: #5b6178; }
+
+table.items { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+table.items thead th {
+  background: #1c1e54;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+}
+table.items thead th.num { text-align: right; }
+table.items thead th.idx { width: 28px; text-align: center; }
+table.items tbody td {
+  border-bottom: 1px solid #e4e6ec;
+  padding: 10px;
+  vertical-align: top;
+  font-size: 11px;
+}
+table.items tbody td.num { text-align: right; white-space: nowrap; }
+table.items tbody td.idx { text-align: center; color: #5b6178; }
+.item-desc { font-weight: 600; color: #2a2f45; }
+.item-details { margin: 6px 0 0; padding-left: 16px; color: #5b6178; font-size: 10.5px; }
+.item-details li { margin-bottom: 2px; }
+
+table.totals { width: 240px; margin-left: auto; margin-bottom: 28px; border-collapse: collapse; }
+table.totals td { padding: 6px 10px; font-size: 11.5px; }
+table.totals td.r { text-align: right; }
+table.totals tr.total td { background: #eceef2; font-weight: 700; font-size: 13px; padding: 8px 10px; }
+
+.footer-block { margin-top: 8px; }
+.footer-block h3 { font-size: 11px; font-weight: 700; color: #2a2f45; margin: 0 0 6px; }
+.footer-block p, .footer-block ol {
+  margin: 0;
+  font-size: 10.5px;
+  color: #5b6178;
+  line-height: 1.55;
+}
+.footer-block ol { padding-left: 18px; }
+.footer-block li { margin-bottom: 3px; }
+
+.powered-by {
+  margin-top: 28px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e6ec;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: #1c1e54;
+}
+
+html, body { background: #e7e8f0; }
+.estimate-sheet {
+  background: #fff;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 20px auto;
+  padding: 24mm 16mm 20mm;
+  box-shadow: 0 6px 24px rgba(20, 20, 60, 0.18);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.estimate-sheet-body { flex: 1; }
+.estimate-sheet .powered-by { margin-top: auto; }

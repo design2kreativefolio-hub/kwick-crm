@@ -26,6 +26,7 @@ type Project = {
   end_date: string | null;
   delivery_date: string | null;
   members: number[];
+  member_names: { id: number; name: string }[];
   created_by: number | null;
   created_by_name: string;
   created_at: string;
@@ -86,7 +87,6 @@ function isOverdue(iso: string | null, status: ProjectStatus) {
 
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const isSuperadmin = user?.role === "superadmin";
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -209,13 +209,20 @@ export default function ProjectsPage() {
     }
   };
 
-  const deleteProject = async (id: number) => {
-    if (!(await confirm("Delete this project?", { danger: true, confirmLabel: "Delete" }))) return;
-    setBusyId(id);
+  const deleteProject = async (p: { id: number; name: string }) => {
+    if (
+      !(await confirm(`Are you sure you want to delete "${p.name}"? This cannot be undone.`, {
+        title: "Delete Project",
+        danger: true,
+        confirmLabel: "Delete",
+      }))
+    )
+      return;
+    setBusyId(p.id);
     try {
-      await api(`/api/projects/${id}`, { method: "DELETE" });
+      await api(`/api/projects/${p.id}`, { method: "DELETE" });
       showToast("Project deleted.");
-      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setProjects((prev) => prev.filter((x) => x.id !== p.id));
     } catch (err: any) {
       showToast(err instanceof ApiError ? "Couldn't delete project." : err.message, "error");
     } finally {
@@ -229,14 +236,12 @@ export default function ProjectsPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Projects</h1>
         </div>
-        {isSuperadmin && (
-          <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
-            <i className="bi bi-plus-lg" /> Add Project
-          </button>
-        )}
+        <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
+          <i className="bi bi-plus-lg" /> Add Project
+        </button>
       </div>
 
-      {showForm && isSuperadmin && (
+      {showForm && (
         <form className="card" onSubmit={addProject}>
           <span className="card-title">New Project</span>
           <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
@@ -326,7 +331,7 @@ export default function ProjectsPage() {
       <div className="card">
         <span className="card-title">
           <i className="bi bi-kanban-fill" style={{ color: "var(--gold)" }} />
-          {isSuperadmin ? "All Projects" : "My Projects"}
+          All Projects
         </span>
         {loading && <p className="muted">Loading…</p>}
         {!loading && projects.length === 0 && <p className="muted">No projects yet.</p>}
@@ -346,7 +351,12 @@ export default function ProjectsPage() {
               </thead>
               <tbody>
                 {projects.map((p) => {
-                  const assignee = p.members[0] ? directoryById.get(p.members[0]) : undefined;
+                  const named = p.member_names?.[0];
+                  const fromDir = p.members[0] ? directoryById.get(p.members[0]) : undefined;
+                  const assigneeLabel =
+                    named?.name ||
+                    (fromDir ? fromDir.full_name || fromDir.email : null) ||
+                    (user && p.members[0] === user.id ? user.full_name || user.email : null);
                   const overdue = isOverdue(p.delivery_date, p.status);
                   return (
                     <tr key={p.id}>
@@ -356,7 +366,7 @@ export default function ProjectsPage() {
                         </Link>
                       </td>
                       <td>{p.client || "—"}</td>
-                      <td>{assignee ? assignee.full_name || assignee.email : "—"}</td>
+                      <td>{assigneeLabel || "—"}</td>
                       <td>
                         <span className={`badge ${PRIORITY_BADGE[p.priority]}`}>{PRIORITY_LABEL[p.priority]}</span>
                       </td>
@@ -371,17 +381,15 @@ export default function ProjectsPage() {
                           <button className="btn btn-ghost btn-sm" onClick={() => openEdit(p)}>
                             <i className="bi bi-pencil-fill" /> Edit
                           </button>
-                          {isSuperadmin && (
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              style={{ color: "var(--danger)" }}
-                              disabled={busyId === p.id}
-                              onClick={() => deleteProject(p.id)}
-                              aria-label="Delete project"
-                            >
-                              <i className="bi bi-trash-fill" />
-                            </button>
-                          )}
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: "var(--danger)" }}
+                            disabled={busyId === p.id}
+                            onClick={() => deleteProject(p)}
+                            aria-label="Delete project"
+                          >
+                            <i className="bi bi-trash-fill" />
+                          </button>
                         </div>
                       </td>
                     </tr>

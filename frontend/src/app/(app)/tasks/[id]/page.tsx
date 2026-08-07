@@ -112,7 +112,11 @@ export default function TaskDetailPage() {
 
   const remove = async () => {
     if (!task) return;
-    const ok = await confirm(`Delete "${task.title}"?`, { danger: true, confirmLabel: "Delete" });
+    const ok = await confirm(`Are you sure you want to delete "${task.title}"? This cannot be undone.`, {
+      title: "Delete Task",
+      danger: true,
+      confirmLabel: "Delete",
+    });
     if (!ok) return;
     setBusy(true);
     try {

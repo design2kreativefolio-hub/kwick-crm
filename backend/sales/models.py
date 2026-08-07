@@ -42,6 +42,15 @@ class Client(TimeStampedModel):
     # glance (spec follow-up).
     accent_color = models.CharField(max_length=7, blank=True, default="")
     logo_url = models.URLField(blank=True, default="")
+    # Sales CRM extras (directory / client detail page).
+    website = models.CharField(max_length=300, blank=True, default="")
+    address = models.TextField(blank=True, default="")
+    trade_license_url = models.URLField(blank=True, default="")
+    vat_registration_url = models.URLField(blank=True, default="")
+    # [{ "name": "...", "phone": "..." }, ...]
+    executives = models.JSONField(default=list, blank=True)
+    # [{ "name": "...", "field_type": "text"|"attachment", "value": "..." }, ...]
+    additional_fields = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["name"]
@@ -79,24 +88,53 @@ class Proposal(TimeStampedModel):
         return f"{self.title} ({self.status})"
 
 
+class Estimate(TimeStampedModel):
+    """A quoted estimate / QUOTE document (Sales > Create Estimate). Line items,
+    bill-to, dates, notes and terms live in `content` (see estimate_content.py).
+    Brand header (logo, company, QUOTE label) is fixed in the PDF template."""
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        SENT = "sent", "Sent"
+        ACCEPTED = "accepted", "Accepted"
+        REJECTED = "rejected", "Rejected"
+
+    client = models.ForeignKey(
+        Client, on_delete=models.SET_NULL, null=True, blank=True, related_name="estimates"
+    )
+    title = models.CharField(max_length=200, blank=True, default="Untitled Estimate")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    content = models.JSONField(default=dict, blank=True)
+
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+
 class Invoice(TimeStampedModel):
+    """Sales invoice document. Line items, bill-to, payment details and notes
+    live in `content` (see invoice_content.py). Brand header + INVOICE label
+    are fixed in the PDF template (same look as estimates)."""
+
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         SENT = "sent", "Sent"
         PAID = "paid", "Paid"
         OVERDUE = "overdue", "Overdue"
 
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="invoices")
+    client = models.ForeignKey(
+        Client, on_delete=models.SET_NULL, null=True, blank=True, related_name="invoices"
+    )
     proposal = models.ForeignKey(
         Proposal, on_delete=models.SET_NULL, null=True, blank=True, related_name="invoices"
     )
-    invoice_number = models.CharField(max_length=50, unique=True)
+    invoice_number = models.CharField(max_length=50, unique=True, blank=True, default="")
     amount = models.DecimalField(**MONEY)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     due_date = models.DateField(null=True, blank=True)
+    content = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
-        return self.invoice_number
+        return self.invoice_number or f"Invoice #{self.pk}"
 
 
 class InvoiceLineItem(TimeStampedModel):

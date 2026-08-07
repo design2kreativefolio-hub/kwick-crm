@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 16mm 32mm 16mm;
+    @bottom-center {
+      content: "";
+      background-image: url('{{ footer_data_uri }}');
+      background-repeat: no-repeat;
+      background-position: center bottom;
+      background-size: contain;
+      width: 100%;
+      height: 72px;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+    color: #2a2f45;
+    font-size: 12pt;
+    line-height: 1.55;
+    margin: 0;
+    position: relative;
+  }
+  .watermark {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 320px;
+    height: 320px;
+    margin-top: -160px;
+    margin-left: -160px;
+    opacity: 0.07;
+    z-index: 0;
+  }
+  .sheet { position: relative; z-index: 1; }
+  .header {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 28px;
+  }
+  .header td { vertical-align: top; padding: 0; }
+  .header-left { width: 55%; }
+  .header-right { text-align: right; }
+  .brand-logo { height: 58px; display: inline-block; }
+  .doc-title {
+    font-size: 12pt;
+    font-weight: 800;
+    color: #1c1e54;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
+  }
+  .meta { font-size: 12pt; color: #5b6178; margin: 0; }
+  .company {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #1c1e54;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin: 0 0 4px;
+  }
+  p { margin: 0 0 12px; }
+  .salutation { margin-top: 8px; font-weight: 600; }
+  .signoff { margin-top: 28px; }
+  .sign-block { margin-top: 36px; }
+  .sign-line { margin-top: 40px; border-top: 1px solid #c5c8d4; width: 220px; padding-top: 6px; font-size: 12pt; color: #5b6178; }
+  ul.check { margin: 8px 0 14px; padding-left: 18px; }
+  ul.check li { margin-bottom: 6px; }
+  h3.section {
+    font-size: 12pt;
+    color: #1c1e54;
+    margin: 16px 0 8px;
+  }
+  table.pay, table.offer {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 18px;
+  }
+  table.pay th, table.offer th, table.pay td, table.offer td {
+    border: 1px solid #d7dae3;
+    padding: 8px 10px;
+    font-size: 12pt;
+    text-align: left;
+  }
+  table.pay th, table.offer th {
+    background: #1c1e54;
+    color: #fff;
+    font-weight: 600;
+  }
+  table.pay td.num, table.offer td.num { text-align: right; white-space: nowrap; }
+  .ack {
+    margin-top: 28px;
+    padding-top: 14px;
+    border-top: 1px solid #e4e6ec;
+    font-size: 12pt;
+  }
+  .powered-by {
+    margin-top: 28px;
+    padding-top: 10px;
+    border-top: 1px solid #e4e6ec;
+    text-align: left;
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #8a8f9e;
+  }
+</style>
+</head>
+<body>
+  <img class="watermark" src="{{ watermark_data_uri }}" alt="" />
+  <div class="sheet">
+    <table class="header">
+      <tr>
+        <td class="header-left">
+          <p class="doc-title">{{ doc_label }}</p>
+          <p class="company">{{ company_name }}</p>
+          <p class="meta">Date: {{ date_display }}</p>
+        </td>
+        <td class="header-right">
+          <img class="brand-logo" src="{{ logo_data_uri }}" alt="Kreativefolio" />
+        </td>
+      </tr>
+    </table>
+
+    {% if doc_type == "experience_letter" %}
+      <p class="salutation">To Whom It May Concern,</p>
+      <p>
+        <strong>{{ c.employee_name|default:"—" }}</strong> was employed with
+        <strong>{{ c.job_title|default:"—" }}</strong>
+        from <strong>{{ start_date_display }}</strong> to <strong>{{ end_date_display }}</strong>.
+      </p>
+      <p>During {{ c.pronoun|default:"their" }} tenure, {{ c.employee_name|default:"the employee" }} {{ c.achievements }}</p>
+      <p>{{ c.employee_name|default:"The employee" }} {{ c.closing }}</p>
+      <p>We wish them all the best in their future endeavours.</p>
+      {% if c.contact_info %}<p>{{ c.contact_info }}</p>{% endif %}
+      <div class="sign-block">
+        <p><strong>{{ company_name }}</strong></p>
+        <div class="sign-line">Authorized Signatory</div>
+      </div>
+
+    {% elif doc_type == "handover_letter" %}
+      <p class="salutation">Dear {{ c.employee_name|default:"—" }},</p>
+      <p>
+        As your employment with {{ company_short }} is coming to an end
+        {% if c.last_working_day %}(last working day: <strong>{{ last_working_day_display }}</strong>){% endif %},
+        we kindly request that you complete the formal handover of your responsibilities, files, and company property.
+        This process is crucial for ensuring a smooth transition and continued workflow within the company.
+      </p>
+      <p>
+        Please review and complete the necessary details as per the checklist below. Kindly return the signed copy of
+        this letter, along with the required information, by the end of your last working day.
+      </p>
+      <h3 class="section">Handover Checklist</h3>
+      <p><strong>1. Handover of Responsibilities</strong></p>
+      <p>{{ c.responsibilities|linebreaksbr }}</p>
+      <p><strong>2. Key Contacts and Critical Information</strong></p>
+      <p>{{ c.key_contacts|linebreaksbr }}</p>
+      <p><strong>3. Documentation and File Handover</strong></p>
+      <p>{{ c.documentation_notes|linebreaksbr }}</p>
+      <p><strong>4. Company Property</strong></p>
+      <p>{{ c.property_notes|linebreaksbr }}</p>
+      <p><strong>5. System Access and Credentials</strong></p>
+      <p>{{ c.system_access_notes|linebreaksbr }}</p>
+      <p><strong>6. Accounts and Financial Handover (If Applicable)</strong></p>
+      <p>{{ c.accounts_notes|linebreaksbr }}</p>
+      <div class="ack">
+        <p><strong>Acknowledgement</strong></p>
+        <p>
+          I, <strong>{{ c.employee_name|default:"—" }}</strong>, confirm that I have completed the above-mentioned
+          handover checklist and returned all company property. I understand that any delay or failure to complete
+          the handover process may result in delays in the processing of my final pay check or other administrative actions.
+        </p>
+        <p>
+          I also acknowledge that I remain bound by the confidentiality agreements and other terms outlined in my
+          employment contract. I can be contacted at:
+        </p>
+        <p>Phone Number: {{ c.phone|default:"______________________" }}</p>
+        <p>Email Address: {{ c.email|default:"______________________" }}</p>
+      </div>
+      <div class="sign-block">
+        <div class="sign-line">Authorised Signatory</div>
+      </div>
+
+    {% elif doc_type == "relieving_letter" %}
+      <p class="salutation">Dear {{ c.employee_name|default:"—" }},</p>
+      <p>
+        We refer to your resignation dated <strong>{{ resignation_date_display }}</strong>, and we hereby accept your
+        resignation from the position of <strong>{{ c.job_title|default:"—" }}</strong>
+        {% if c.department %} in the <strong>{{ c.department }}</strong> department{% endif %}.
+        Your last working day is <strong>{{ last_working_date_display }}</strong>.
+      </p>
+      <p>{{ c.body_extra }}</p>
+      <p>
+        We appreciate your contributions during your tenure and wish you success in your future endeavours.
+        Should you require any further assistance, please feel free to reach out.
+      </p>
+      <p>Wishing you the best in your professional journey.</p>
+      <div class="sign-block">
+        <p><strong>{{ company_name }}</strong></p>
+        <div class="sign-line">Authorized Signatory</div>
+      </div>
+
+    {% elif doc_type == "probation_confirmation" %}
+      <p class="salutation">Dear {{ c.employee_name|default:"—" }},</p>
+      <p>
+        We are pleased to inform you that you have successfully completed the probationary period of
+        <strong>{{ c.probation_months|default:"6" }} months</strong> as
+        <strong>{{ c.job_title|default:"—" }}</strong> with {{ company_name }}. Congratulations on reaching this
+        significant milestone.
+      </p>
+      <p>Throughout your probationary period, you have consistently demonstrated {{ c.strengths }}</p>
+      <p>
+        Effective <strong>{{ effective_date_display }}</strong>, your employment status with {{ company_name }} will
+        transition from probationary to permanent. This change in status does not alter the terms and conditions of
+        your employment, as outlined in your initial offer letter and the Employment Contract.
+      </p>
+      <p>
+        As a permanent employee, you will continue to be eligible for the benefits mentioned in the Employment Contract,
+        and your salary will remain unchanged.
+      </p>
+      <p>
+        We appreciate your hard work and dedication during your probationary period, and we look forward to your
+        continued growth and success within our organization.
+      </p>
+      <p>Once again, congratulations on completing your probationary period, and welcome to the team as a permanent member.</p>
+      <div class="sign-block">
+        <p><strong>{{ company_name }}</strong></p>
+        <div class="sign-line">Authorized Signatory</div>
+      </div>
+      <div class="ack">
+        <p>Signature &amp; Date of the Candidate</p>
+        <p>Name: {{ c.employee_name|default:"—" }}</p>
+        <p>Date: _______________________</p>
+      </div>
+
+    {% elif doc_type == "warning_letter" %}
+      <p class="meta">Employee Name: <strong>{{ c.employee_name|default:"—" }}</strong></p>
+      <p class="meta">Employee Position: <strong>{{ c.job_title|default:"—" }}</strong></p>
+      <p class="salutation">Dear {{ c.employee_name|default:"—" }},</p>
+      <p><strong>{{ c.subject|default:"Formal Warning" }}</strong></p>
+      <p>{{ c.incident_summary|linebreaksbr }}</p>
+      <p>{{ c.details|linebreaksbr }}</p>
+      <p>
+        At {{ company_name }}, we expect you to adhere to company policies and maintain a professional standard of
+        conduct. We urge you to take this matter seriously and implement immediate corrective measures to avoid further
+        consequences.
+      </p>
+      <p>
+        We expect strict compliance with all company policies and procedures moving forward. Any further violation of
+        this nature may result in more severe disciplinary action, up to and including termination of employment.
+      </p>
+      <p>
+        Please provide a written response within <strong>{{ c.response_hours|default:"48" }} hours</strong> of receiving
+        this letter, including the root cause of the issue and the corrective actions you will take to prevent such
+        occurrences in the future.
+      </p>
+      <div class="sign-block">
+        <p><strong>{{ company_name }}</strong></p>
+        <div class="sign-line">Authorized Signatory</div>
+      </div>
+      <div class="ack">
+        <p><strong>Acknowledgment</strong></p>
+        <p>
+          I, {{ c.acknowledgment_name|default:c.employee_name }}, acknowledge the receipt of this warning
+          letter and understand the concerns raised.
+        </p>
+        <p>Signature: _______________________ &nbsp;&nbsp; Date: _______________________</p>
+      </div>
+
+    {% elif doc_type == "increment_letter" %}
+      <p class="meta">Employee Name: <strong>{{ c.employee_name|default:"—" }}</strong></p>
+      <p class="meta">Designation: <strong>{{ c.job_title|default:"—" }}</strong></p>
+      <p class="salutation">Dear {{ c.employee_name|default:"—" }},</p>
+      <p>
+        We are pleased to inform you of your salary increase effective <strong>{{ effective_date_display }}</strong>.
+        Your current salary of AED <strong>{{ c.current_salary|default:"—" }}</strong> will be increased to AED
+        <strong>{{ c.new_salary|default:"—" }}</strong>.
+      </p>
+      <p>
+        Your compensation details are strictly confidential, and you may discuss them only with authorized personnel
+        from HR in case of any clarification.
+      </p>
+      <div class="sign-block">
+        <p><strong>{{ company_short }}</strong></p>
+        <div class="sign-line">Authorized signature</div>
+      </div>
+
+    {% elif doc_type == "payslip_letter" %}
+      <p class="meta">Payslip for the period of: <strong>{{ c.period|default:"—" }}</strong></p>
+      <table class="pay">
+        <tr><th>Employee ID</th><td>{{ c.employee_id|default:"—" }}</td><th>Employee Name</th><td>{{ c.employee_name|default:"—" }}</td></tr>
+        <tr><th>Date of joining</th><td>{{ date_of_joining_display }}</td><th>Designation</th><td>{{ c.job_title|default:"—" }}</td></tr>
+        <tr><th>Bank Name</th><td>{{ c.bank_name|default:"—" }}</td><th>Bank A/C No</th><td>{{ c.bank_account|default:"—" }}</td></tr>
+        <tr><th>Payment Mode</th><td>{{ c.payment_mode|default:"—" }}</td><th>Days worked / Absent</th><td>{{ c.days_worked|default:"—" }} / {{ c.absent_days|default:"0" }}</td></tr>
+      </table>
+      <table class="pay">
+        <thead>
+          <tr><th>Earnings</th><th class="num">Amount (AED)</th><th>Deduction</th><th class="num">Amount (AED)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Basic</td><td class="num">{{ c.basic|default:"—" }}</td><td>Absent deductions</td><td class="num">{{ c.absent_deductions|default:"—" }}</td></tr>
+          <tr><td>Housing Allowance</td><td class="num">{{ c.housing_allowance|default:"—" }}</td><td>Other Deduction</td><td class="num">{{ c.other_deductions|default:"—" }}</td></tr>
+          <tr><td>Leave Salary</td><td class="num">{{ c.leave_salary|default:"—" }}</td><td></td><td class="num"></td></tr>
+          <tr><td>Other Earnings</td><td class="num">{{ c.other_earnings|default:"—" }}</td><td></td><td class="num"></td></tr>
+          <tr><th>Total</th><th class="num">{{ earnings_total }}</th><th>Total</th><th class="num">{{ deductions_total }}</th></tr>
+          <tr><th colspan="2">Net payable</th><th colspan="2" class="num">{{ net_pay }}</th></tr>
+        </tbody>
+      </table>
+      <p>Net Payable in Words: <strong>{{ c.net_in_words|default:"—" }}</strong></p>
+      <div class="sign-block">
+        <table class="header"><tr>
+          <td><div class="sign-line">Authorized Signatory</div></td>
+          <td style="text-align:right;"><div class="sign-line" style="margin-left:auto;">Employee Signature</div></td>
+        </tr></table>
+      </div>
+
+    {% elif doc_type == "offer_letter" %}
+      <p class="meta">Employee Name: <strong>{{ c.employee_name|default:"—" }}</strong></p>
+      <p class="meta">Designation: <strong>{{ c.job_title|default:"—" }}</strong> at {{ company_name }}</p>
+      <p>
+        This letter serves as your official appointment, effective from the date of your reporting to duty at our
+        {{ company_short }}
+        {% if c.reporting_date %}(<strong>{{ reporting_date_display }}</strong>){% endif %},
+        and this offer remains valid
+        {% if c.valid_until %}until <strong>{{ valid_until_display }}</strong>{% else %}until that date{% endif %}
+        unless extended or communicated otherwise in writing.
+      </p>
+      <p><strong>Below are the terms of offer:</strong></p>
+      <p><strong>Compensation:</strong> Your Gross Monthly Compensation is as follows:</p>
+      <table class="offer">
+        <thead><tr><th>Components</th><th class="num">Amount</th><th>In words</th></tr></thead>
+        <tbody>
+          <tr><td>Basic Salary</td><td class="num">AED {{ c.basic_salary|default:"—" }}</td><td>{{ c.basic_salary_words|default:"—" }}</td></tr>
+          <tr><td>HRA</td><td class="num">AED {{ c.hra|default:"—" }}</td><td>{{ c.hra_words|default:"—" }}</td></tr>
+          <tr><td>Other Allowance</td><td class="num">AED {{ c.other_allowance|default:"—" }}</td><td>{{ c.other_allowance_words|default:"—" }}</td></tr>
+          <tr><th>Total</th><th class="num">AED {{ c.total_salary|default:"—" }}</th><th>{{ c.total_salary_words|default:"—" }}</th></tr>
+        </tbody>
+      </table>
+      <p><strong>Benefits:</strong> As an employee of {{ company_name }}, you will be eligible for our comprehensive benefits package, which includes:</p>
+      <ul class="check">
+        <li>The company's medical insurance benefits will be allocated solely to the employee.</li>
+        <li>The company will sponsor the necessary visa for the employee to legally work in UAE.</li>
+        <li>You shall be entitled to thirty (30) calendar days paid annual leave on a yearly basis.</li>
+        <li>The company will initially provide one round-trip economy class air ticket between Dubai to your home country in two years.</li>
+        {% if c.include_commission %}<li>Commission: As per the company incentive schemes, applicable upon completion of the probationary period. (exclusive to Business Development Executives)</li>{% endif %}
+        {% if c.include_telephone %}<li>Telephone Allowance: The company will provide a telephone allowance (exclusive to Business Development Executives).</li>{% endif %}
+      </ul>
+      <p><strong>Working Hours:</strong> The hours of work will be a minimum of 48 hours a week. At times, work demands may necessitate additional working hours.</p>
+      <p>
+        <strong>Probationary Period:</strong> You will be under probation for a period of
+        {{ c.probation_months|default:"6" }} months from the date of joining. During this probationary period, the
+        company reserves the right to terminate your services at its discretion, without assigning any reason and
+        without providing any notice or notice pay. Upon completion of the probationary period, your performance will
+        be assessed, and you may be considered, at the company's sole discretion, for confirmation of employment.
+      </p>
+      <p>
+        <strong>Notice Period / Termination:</strong> In the event of resignation, you are required to provide
+        {{ c.notice_period|default:"two months' notice" }}.
+      </p>
+      <p>
+        Your compensation details are strictly confidential, and you may discuss it only with the authorized personnel
+        of HR in case of any clarification.
+      </p>
+      <p>
+        It is our hope that your acceptance of this offer will be just the beginning of a mutually rewarding relationship.
+        As a token of your acceptance of this offer of Employment, please sign a copy of this letter and return the same
+        to our HR Department.
+      </p>
+      <p>We look forward to welcoming you on board at Kreativefolio.</p>
+      <p class="signoff">Yours sincerely,</p>
+      <div class="sign-block">
+        <p><strong>{{ company_name }}</strong></p>
+        <div class="sign-line">Authorized Signatory</div>
+      </div>
+      <div class="ack">
+        <p>I accept the position on the terms and conditions of the employment offered.</p>
+        <p>(Signature of the Candidate) &nbsp;&nbsp; Date: _______________________</p>
+      </div>
+    {% endif %}
+
+    <div class="powered-by">Powered By Kwick</div>
+  </div>
+</body>
+</html>
