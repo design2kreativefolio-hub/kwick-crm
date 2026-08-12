@@ -217,8 +217,13 @@ export default function TodoPage() {
                       </div>
                     ) : (
                       <>
-                        <div style={{ fontSize: 14, textDecoration: t.done ? "line-through" : "none", color: t.done ? "var(--text-muted)" : "var(--text)" }}>
-                          {t.text}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ fontSize: 14, textDecoration: t.done ? "line-through" : "none", color: t.done ? "var(--text-muted)" : "var(--text)" }}>
+                            {t.text}
+                          </div>
+                          <span className={`badge ${t.done ? "badge-success" : "badge-info"}`}>
+                            {t.done ? "Completed" : "To do"}
+                          </span>
                         </div>
                         <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
                           {new Date(t.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
@@ -289,8 +294,9 @@ const rowIconBtn: React.CSSProperties = {
   borderRadius: "50%",
   display: "grid",
   placeItems: "center",
-  background: "var(--bg)",
-  border: "none",
+  background: "var(--panel-muted)",
+  border: "1px solid var(--border)",
+  color: "var(--text-muted)",
 };
 const tickBtn: React.CSSProperties = {
   width: 26,
@@ -299,13 +305,14 @@ const tickBtn: React.CSSProperties = {
   borderRadius: "50%",
   display: "grid",
   placeItems: "center",
-  background: "var(--bg)",
-  color: "var(--border)",
-  border: "none",
+  background: "var(--panel-muted)",
+  color: "var(--text-muted)",
+  border: "1.5px solid var(--text-muted)",
   fontSize: 14,
   marginTop: 2,
 };
 const tickBtnDone: React.CSSProperties = {
   background: "var(--success-soft)",
   color: "var(--success)",
+  borderColor: "var(--success)",
 };

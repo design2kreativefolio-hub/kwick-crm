@@ -1,15 +1,18 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { Combobox } from "@/components/Combobox";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
+import { Modal } from "@/components/Modal";
+import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
+import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
+import { STATUS_BADGE } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
 type ProjectStatus = "assigned" | "started" | "waiting_approval" | "completed";
@@ -40,13 +43,6 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
   started: "Started",
   waiting_approval: "Waiting for approval",
   completed: "Completed",
-};
-// Four visually distinct tones so a glance at the table tells the story.
-const STATUS_BADGE: Record<ProjectStatus, string> = {
-  assigned: "badge-muted",
-  started: "badge-purple",
-  waiting_approval: "badge-warning",
-  completed: "badge-success",
 };
 const STATUS_OPTIONS = (Object.keys(STATUS_LABEL) as ProjectStatus[]).map((s) => ({
   value: s,
@@ -133,17 +129,27 @@ export default function ProjectsPage() {
   }, [directory]);
 
   const assigneeOptions = useMemo(
-    () => [{ value: "", label: "Unassigned" }, ...directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email }))],
-    [directory]
+    () => assigneeSelectOptions(user, directory),
+    [user, directory]
   );
 
   const clientNames = useMemo(() => clients.map((c) => c.name), [clients]);
+
+  const openCreate = () => {
+    setForm({
+      ...emptyForm,
+      assignee: user?.id ? String(user.id) : "",
+    });
+    setError(null);
+    setShowForm(true);
+  };
 
   const addProject = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setCreating(true);
     try {
+      const assigneeId = form.assignee || (user?.id ? String(user.id) : "");
       await api<Project>("/api/projects", {
         method: "POST",
         body: JSON.stringify({
@@ -153,7 +159,7 @@ export default function ProjectsPage() {
           status: form.status,
           priority: form.priority,
           delivery_date: form.delivery_date || null,
-          members: form.assignee ? [Number(form.assignee)] : [],
+          members: assigneeId ? [Number(assigneeId)] : [],
         }),
       });
       setForm(emptyForm);
@@ -173,7 +179,7 @@ export default function ProjectsPage() {
       name: p.name,
       description: p.description || "",
       client: p.client || "",
-      assignee: p.members[0] ? String(p.members[0]) : "",
+      assignee: p.members[0] ? String(p.members[0]) : user?.id ? String(user.id) : "",
       status: p.status,
       priority: p.priority,
       delivery_date: p.delivery_date || "",
@@ -196,7 +202,11 @@ export default function ProjectsPage() {
           status: editForm.status,
           priority: editForm.priority,
           delivery_date: editForm.delivery_date || null,
-          members: editForm.assignee ? [Number(editForm.assignee)] : [],
+          members: editForm.assignee
+            ? [Number(editForm.assignee)]
+            : user?.id
+              ? [user.id]
+              : [],
         }),
       });
       showToast("Project updated.");
@@ -232,19 +242,37 @@ export default function ProjectsPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <Reveal index={0}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>Projects</h1>
+          <h1 style={{ margin: 0, fontSize: 22 }}>Mini-Projects</h1>
         </div>
-        <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
+        <button className="btn btn-accent" onClick={openCreate}>
           <i className="bi bi-plus-lg" /> Add Project
         </button>
       </div>
+      </Reveal>
 
-      {showForm && (
-        <form className="card" onSubmit={addProject}>
-          <span className="card-title">New Project</span>
-          <div style={{ display: "grid", gap: 14, marginTop: 14 }}>
+      <Modal
+        open={showForm}
+        onClose={() => !creating && setShowForm(false)}
+        wide
+      >
+        <form onSubmit={addProject}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="card-title" style={{ margin: 0 }}>New Project</span>
+            <button
+              type="button"
+              className="icon-btn-anim"
+              style={closeBtn}
+              onClick={() => setShowForm(false)}
+              aria-label="Close"
+              disabled={creating}
+            >
+              <i className="bi bi-x-lg" style={{ fontSize: 13 }} />
+            </button>
+          </div>
+          <div className="kwick-form-wide" style={{ marginTop: 16 }}>
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Project name</label>
               <input
@@ -255,30 +283,27 @@ export default function ProjectsPage() {
                 required
               />
             </div>
-            <div>
+            <div className="kwick-form-wide__desc">
               <label className="field-label" style={{ marginTop: 0 }}>Description</label>
               <textarea
                 className="input"
-                rows={3}
+                rows={6}
                 placeholder="What's this project about?"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 style={{ resize: "vertical" }}
               />
             </div>
-            <div style={fieldGrid}>
+            <div className="kwick-form-wide__row kwick-form-wide__row--5">
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Client</label>
                 <Combobox
                   value={form.client}
                   onChange={(v) => setForm((f) => ({ ...f, client: v }))}
                   options={clientNames}
-                  placeholder="Pick an existing client or type one"
+                  placeholder="Pick or type a client"
                   ariaLabel="Client"
                 />
-                <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                  Typing a new name here won&apos;t add it to the Clients page — add it there if you want it saved.
-                </p>
               </div>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
@@ -314,24 +339,26 @@ export default function ProjectsPage() {
                   onChange={(v) => setForm((f) => ({ ...f, delivery_date: v }))}
                   ariaLabel="Delivery date"
                 />
-                <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                  Shows on the assigned employee&apos;s Calendar and nags them daily as it nears/passes, until marked Completed.
-                </p>
               </div>
             </div>
-
             {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
-            <button className="btn" style={{ width: "fit-content" }} disabled={creating}>
-              {creating ? "Adding…" : "Add project"}
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn" disabled={creating}>
+                {creating ? "Adding…" : "Add project"}
+              </button>
+              <button type="button" className="btn btn-ghost" disabled={creating} onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
+            </div>
           </div>
         </form>
-      )}
+      </Modal>
 
+      <Reveal index={1}>
       <div className="card">
         <span className="card-title">
           <i className="bi bi-kanban-fill" style={{ color: "var(--gold)" }} />
-          All Projects
+          All Mini-Projects
         </span>
         {loading && <p className="muted">Loading…</p>}
         {!loading && projects.length === 0 && <p className="muted">No projects yet.</p>}
@@ -400,141 +427,112 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+      </Reveal>
 
-      <AnimatePresence>
-        {editingProject && (
-          <motion.div
-            style={modalOverlay}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={() => setEditingProject(null)}
-          >
-            <motion.form
-              className="card"
-              style={modalCard}
-              onClick={(e) => e.stopPropagation()}
-              onSubmit={saveEdit}
-              initial={{ opacity: 0, y: 12, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
+      <Modal
+        open={!!editingProject}
+        onClose={() => !saving && setEditingProject(null)}
+        wide
+      >
+        <form onSubmit={saveEdit}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="card-title" style={{ margin: 0 }}>Edit Project</span>
+            <button
+              type="button"
+              className="icon-btn-anim"
+              style={closeBtn}
+              onClick={() => setEditingProject(null)}
+              aria-label="Close"
+              disabled={saving}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span className="card-title" style={{ margin: 0 }}>Edit Project</span>
-                <button type="button" className="icon-btn-anim" style={closeBtn} onClick={() => setEditingProject(null)} aria-label="Close">
-                  <i className="bi bi-x-lg" style={{ fontSize: 13 }} />
-                </button>
+              <i className="bi bi-x-lg" style={{ fontSize: 13 }} />
+            </button>
+          </div>
+          <div className="kwick-form-wide" style={{ marginTop: 16 }}>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Project name</label>
+              <input
+                className="input"
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="kwick-form-wide__desc">
+              <label className="field-label" style={{ marginTop: 0 }}>Description</label>
+              <textarea
+                className="input"
+                rows={6}
+                placeholder="What's this project about?"
+                value={editForm.description}
+                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                style={{ resize: "vertical" }}
+              />
+            </div>
+            <div className="kwick-form-wide__row kwick-form-wide__row--5">
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Client</label>
+                <Combobox
+                  value={editForm.client}
+                  onChange={(v) => setEditForm((f) => ({ ...f, client: v }))}
+                  options={clientNames}
+                  placeholder="Pick or type a client"
+                  ariaLabel="Client"
+                />
               </div>
-              <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Project name</label>
-                  <input
-                    className="input"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Description</label>
-                  <textarea
-                    className="input"
-                    rows={3}
-                    placeholder="What's this project about?"
-                    value={editForm.description}
-                    onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                    style={{ resize: "vertical" }}
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Client</label>
-                  <Combobox
-                    value={editForm.client}
-                    onChange={(v) => setEditForm((f) => ({ ...f, client: v }))}
-                    options={clientNames}
-                    placeholder="Pick an existing client or type one"
-                    ariaLabel="Client"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
-                  <Select
-                    value={editForm.assignee}
-                    onChange={(v) => setEditForm((f) => ({ ...f, assignee: v }))}
-                    options={assigneeOptions}
-                    ariaLabel="Assign to"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Status</label>
-                  <Select
-                    value={editForm.status}
-                    onChange={(v) => setEditForm((f) => ({ ...f, status: v as ProjectStatus }))}
-                    options={STATUS_OPTIONS}
-                    ariaLabel="Status"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Priority</label>
-                  <Select
-                    value={editForm.priority}
-                    onChange={(v) => setEditForm((f) => ({ ...f, priority: v as ProjectPriority }))}
-                    options={PRIORITY_OPTIONS}
-                    ariaLabel="Priority"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Delivery date</label>
-                  <DatePicker
-                    value={editForm.delivery_date}
-                    onChange={(v) => setEditForm((f) => ({ ...f, delivery_date: v }))}
-                    ariaLabel="Delivery date"
-                  />
-                </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
+                <Select
+                  value={editForm.assignee}
+                  onChange={(v) => setEditForm((f) => ({ ...f, assignee: v }))}
+                  options={assigneeOptions}
+                  ariaLabel="Assign to"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Status</label>
+                <Select
+                  value={editForm.status}
+                  onChange={(v) => setEditForm((f) => ({ ...f, status: v as ProjectStatus }))}
+                  options={STATUS_OPTIONS}
+                  ariaLabel="Status"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Priority</label>
+                <Select
+                  value={editForm.priority}
+                  onChange={(v) => setEditForm((f) => ({ ...f, priority: v as ProjectPriority }))}
+                  options={PRIORITY_OPTIONS}
+                  ariaLabel="Priority"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Delivery date</label>
+                <DatePicker
+                  value={editForm.delivery_date}
+                  onChange={(v) => setEditForm((f) => ({ ...f, delivery_date: v }))}
+                  ariaLabel="Delivery date"
+                />
+              </div>
+            </div>
+            {editError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{editError}</p>}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn" disabled={saving}>
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setEditingProject(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </form>
+      </Modal>
 
-                {editError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{editError}</p>}
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button className="btn" disabled={saving}>
-                    {saving ? "Saving…" : "Save changes"}
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => setEditingProject(null)}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </motion.form>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {ConfirmDialog}
     </div>
   );
 }
-
-const fieldGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 14,
-};
-
-const modalOverlay: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(16, 19, 63, 0.35)",
-  display: "grid",
-  placeItems: "center",
-  zIndex: 50,
-  padding: 16,
-};
-
-const modalCard: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 440,
-  maxHeight: "90vh",
-  overflowY: "auto",
-};
 
 const closeBtn: React.CSSProperties = {
   width: 28,

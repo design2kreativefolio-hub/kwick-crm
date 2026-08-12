@@ -6,6 +6,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { api, tokens, unwrapList } from "./api";
 import { useAuth } from "./auth";
 import { DEFAULT_SOURCE_META, SOURCE_META } from "./notifications";
+import { showDesktopNotification } from "./systemNotify";
 import { useToast } from "./toast";
 
 type LiveUpdatesContextValue = {
@@ -101,15 +102,26 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
       }
       if ("kind" in payload && payload.kind === "chat_message") {
         setChatUnread((n) => n + 1);
-        showToast(`${payload.sender_name}: ${payload.preview}`, "info", () =>
-          router.push(`/chat?conversation=${payload.conversation_id}`)
-        );
+        const chatUrl = `/chat?conversation=${payload.conversation_id}`;
+        showToast(`${payload.sender_name}: ${payload.preview}`, "info", () => router.push(chatUrl));
         playPop();
+        showDesktopNotification({
+          title: payload.sender_name || "New message",
+          body: payload.preview || "New chat message",
+          url: chatUrl,
+          tag: `chat-${payload.conversation_id}`,
+        });
       } else if ("title" in payload) {
         setNotifUnread((n) => n + 1);
         const href = (SOURCE_META[payload.source] ?? DEFAULT_SOURCE_META).href || "/reminders";
         showToast(payload.title, "info", () => router.push(href));
         playPop();
+        showDesktopNotification({
+          title: payload.title,
+          body: payload.body || "",
+          url: href,
+          tag: payload.id ? `kwick-${payload.id}` : `kwick-${payload.source}`,
+        });
       }
     };
     socketRef.current = socket;

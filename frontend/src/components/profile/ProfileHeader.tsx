@@ -103,7 +103,7 @@ export function ProfileHeader({
 
 const banner: React.CSSProperties = {
   height: 130,
-  background: "linear-gradient(135deg, var(--navy) 0%, var(--navy-soft) 100%)",
+  background: "linear-gradient(135deg, var(--brand-fill-soft) 0%, var(--brand-fill) 100%)",
 };
 const avatarSlot: React.CSSProperties = {
   position: "relative",
@@ -114,12 +114,13 @@ const avatarWrap: React.CSSProperties = {
   width: 96,
   height: 96,
   borderRadius: "50%",
-  background: "var(--navy)",
+  background: "var(--brand-fill)",
   border: "4px solid var(--surface)",
   boxShadow: "var(--shadow)",
   display: "grid",
   placeItems: "center",
   overflow: "hidden",
+  color: "var(--on-brand)",
 };
 const cameraBtn: React.CSSProperties = {
   position: "absolute",

@@ -34,17 +34,14 @@ def scan_renewals():
         # Don't re-notify for a window we've already covered.
         if renewal.last_notified_window == days_left:
             continue
-        subject = (
-            renewal.client.name
-            if renewal.subject_type == Renewal.SubjectType.CLIENT and renewal.client
-            else (renewal.staff.full_name if renewal.staff else "—")
-        )
+        subject = renewal.display_subject()
+        type_label = renewal.display_type()
         for manager in managers:
             notify_user(
                 user=manager,
                 source="renewal",
-                title=f"{renewal.get_renewal_type_display()} renewal in {days_left} day(s)",
-                body=f"{subject}: {renewal.get_renewal_type_display()} due {renewal.due_date}.",
+                title=f"{type_label} renewal in {days_left} day(s)",
+                body=f"{subject}: {type_label} due {renewal.due_date}.",
                 object_ref=f"renewal:{renewal.id}:{days_left}",
             )
         renewal.last_notified_window = days_left

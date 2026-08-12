@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { ClientFormFields } from "@/components/sales/ClientFormFields";
 import { api, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { SalesClient, clientPayload, emptyClientForm } from "@/lib/salesClient";
 import { useToast } from "@/lib/toast";
 
@@ -16,7 +16,7 @@ export default function NewSalesClientPage() {
   const { showToast } = useToast();
   const router = useRouter();
   const isSuperadmin = user?.role === "superadmin";
-  const hasAccess = isSuperadmin || (user?.module_access ?? []).includes("sales");
+  const hasAccess = isSuperadmin || hasModuleAccess(user?.module_access, "sales_clients");
 
   const [form, setForm] = useState(emptyClientForm);
   const [saving, setSaving] = useState(false);

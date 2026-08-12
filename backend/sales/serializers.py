@@ -123,7 +123,9 @@ class EstimateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         content = merged_estimate_content(validated_data.get("content"))
         validated_data["content"] = content
-        validated_data["title"] = self._synced_title(content, validated_data.get("title") or "Untitled Estimate")
+        # List/PDF filename title is independent of quote_number; default from quote only when none supplied.
+        supplied = (validated_data.get("title") or "").strip()
+        validated_data["title"] = supplied or self._synced_title(content, "Untitled Estimate")
         client_id = content.get("client_id")
         if client_id and not validated_data.get("client"):
             validated_data["client_id"] = client_id
@@ -133,9 +135,11 @@ class EstimateSerializer(serializers.ModelSerializer):
         if "content" in validated_data:
             content = merged_estimate_content(validated_data["content"])
             validated_data["content"] = content
-            validated_data["title"] = self._synced_title(content, instance.title)
             if "client" not in validated_data:
                 validated_data["client_id"] = content.get("client_id") or None
+        if "title" in validated_data:
+            title = (validated_data.get("title") or "").strip()
+            validated_data["title"] = title or instance.title or "Untitled Estimate"
         return super().update(instance, validated_data)
 
 

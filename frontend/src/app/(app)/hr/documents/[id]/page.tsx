@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 
 import { BackLink } from "@/components/BackLink";
 import { DatePicker } from "@/components/DatePicker";
+import { DocNameField } from "@/components/DocNameField";
 import { Select } from "@/components/Select";
 import { LetterPreview } from "@/components/hr/LetterPreview";
 import { api, ApiError, unwrapList } from "@/lib/api";
@@ -14,6 +15,7 @@ import {
   isAssignable,
   mergedLetterContent,
 } from "@/lib/hrLetterContent";
+import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -43,6 +45,7 @@ export default function HrLetterBuilderPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const formState = useMemo(
     () => ({ content, docName, staffId }),
@@ -144,6 +147,37 @@ export default function HrLetterBuilderPage() {
     }
   };
 
+  const sendToEmail = async () => {
+    if (!letter || !content) return;
+    const ok = await save();
+    if (!ok) return;
+    setSending(true);
+    try {
+      const res = await api<{ file_url: string }>(`/api/hr/letters/${id}/pdf`, { method: "POST" });
+      let to = String((content as any).email || "");
+      if (!to && staffId) {
+        to = staff.find((s) => String(s.id) === staffId)?.email || "";
+      }
+      const subject = docName || letter.doc_type_label || "Document";
+      await sendDocumentViaEmail({
+        pdfUrl: res.file_url,
+        to,
+        subject,
+        body: `Please find the attached document.\n\nAttach the downloaded PDF if it is not already attached, then send.`,
+        filename: `${subject.replace(/[^\w\-]+/g, "_")}.pdf`,
+      });
+      showToast(
+        to
+          ? "Email draft opened. Attach the downloaded PDF before sending."
+          : "PDF downloaded. Assign an employee or add an email, or pick one in your mail app."
+      );
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't prepare email." : err.message, "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading || !letter || !content) return <p className="muted">Loading document…</p>;
 
   const assignable = isAssignable(letter.doc_type);
@@ -154,39 +188,19 @@ export default function HrLetterBuilderPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
         <div>
           <BackLink href="/hr/documents" label="Back to Documents" />
-          <input
-            className="input"
+          <DocNameField
             value={docName}
-            onChange={(e) => setDocName(e.target.value)}
-            aria-label="Document name"
+            onChange={setDocName}
+            ariaLabel="Document name"
             placeholder={letter.doc_type_label}
-            style={{
-              marginTop: 8,
-              fontSize: 22,
-              fontWeight: 700,
-              color: "var(--navy)",
-              border: "1px solid transparent",
-              background: "transparent",
-              padding: "4px 8px",
-              marginLeft: -8,
-              width: "min(100%, 520px)",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--border)";
-              e.currentTarget.style.background = "#fff";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "transparent";
-              e.currentTarget.style.background = "transparent";
-            }}
           />
-          <p className="muted" style={{ marginTop: 4 }}>
-            {letter.doc_type_label} — rename above for the list and PDF filename. The letter itself keeps the type heading.
-          </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn btn-ghost" disabled={saving} onClick={save}>
             {saving ? "Saving…" : "Save"}
+          </button>
+          <button className="btn btn-ghost" disabled={sending || exporting} onClick={sendToEmail}>
+            <i className="bi bi-envelope" /> {sending ? "Preparing…" : "Send to"}
           </button>
           <button className="btn btn-accent" disabled={exporting} onClick={exportPdf}>
             <i className="bi bi-file-earmark-pdf-fill" /> {exporting ? "Exporting…" : "Export PDF"}
@@ -206,15 +220,8 @@ export default function HrLetterBuilderPage() {
                 <div>
                   <label className="field-label" style={{ marginTop: 0 }}>Assign to employee</label>
                   <Select value={staffId} onChange={pickStaff} options={staffOptions} ariaLabel="Employee" />
-                  <p className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
-                    Assigned letters appear on the employee&apos;s Profile → Documents after export.
-                  </p>
                 </div>
-              ) : (
-                <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                  Offer letters are not assigned to staff — enter the candidate details below.
-                </p>
-              )}
+              ) : null}
               <div style={fieldGrid}>
                 <div>
                   <label className="field-label">Employee / candidate name</label>

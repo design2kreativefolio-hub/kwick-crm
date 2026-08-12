@@ -8,13 +8,14 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Module, Role
+from accounts.models import Module, Role, UserStatus
 from calendar_app.services import build_agenda
 from common.models import ActivityLog
 from common.permissions import IsActive, IsSuperadmin, has_module_access, is_superadmin
+from hr.models import HrLetter
 from projects.models import Project
 from renewals.models import Renewal
-from sales.models import Client, Invoice, Proposal
+from sales.models import Client, Estimate, Invoice, Proposal
 from tasks.models import Task
 from todos.models import TodoItem
 
@@ -72,9 +73,25 @@ class SummaryView(APIView):
         }
 
         if manager:
+            pending_users = (
+                User.objects.filter(role=Role.EMPLOYEE, status=UserStatus.AWAITING_APPROVAL)
+                .order_by("-created_at")[:10]
+            )
             all_tasks = Task.objects.all()
             data.update(
                 {
+                    "pending_approvals": User.objects.filter(
+                        role=Role.EMPLOYEE, status=UserStatus.AWAITING_APPROVAL
+                    ).count(),
+                    "pending_approval_users": [
+                        {
+                            "id": u.id,
+                            "full_name": u.full_name,
+                            "email": u.email,
+                            "created_at": u.created_at.isoformat(),
+                        }
+                        for u in pending_users
+                    ],
                     "company_total_tasks": all_tasks.count(),
                     "company_completed_this_month": all_tasks.filter(
                         status=Task.Status.COMPLETED, completed_at__date__gte=month_start
@@ -248,7 +265,7 @@ class GlobalSearchView(APIView):
                     "id": t.id,
                     "label": t.title,
                     "sublabel": "Task",
-                    "href": "/tasks",
+                    "href": f"/tasks/{t.id}",
                     "icon": "bi-check-square-fill",
                 }
             )
@@ -261,13 +278,32 @@ class GlobalSearchView(APIView):
                     "id": p.id,
                     "label": p.name,
                     "sublabel": "Project",
-                    "href": "/projects",
+                    "href": f"/projects/{p.id}",
                     "icon": "bi-folder-fill",
                 }
             )
 
+        # Clients without Sales access still show via Projects > Clients.
+        if not has_sales:
+            for c in Client.objects.filter(
+                Q(name__icontains=q)
+                | Q(company__icontains=q)
+                | Q(client_id__icontains=q)
+                | Q(poc_name__icontains=q)
+            )[:5]:
+                results.append(
+                    {
+                        "type": "project_client",
+                        "id": c.id,
+                        "label": c.name,
+                        "sublabel": c.company or c.client_id or "Client",
+                        "href": f"/projects/clients/{c.id}/calendar",
+                        "icon": "bi-person-lines-fill",
+                    }
+                )
+
         if has_hr:
-            staff = User.objects.filter(role=Role.EMPLOYEE).filter(
+            staff = User.objects.filter(role=Role.EMPLOYEE, purged_at__isnull=True).filter(
                 Q(full_name__icontains=q) | Q(email__icontains=q)
             )
             for s in staff[:5]:
@@ -282,46 +318,94 @@ class GlobalSearchView(APIView):
                     }
                 )
 
+            letters = HrLetter.objects.filter(
+                Q(title__icontains=q) | Q(doc_type__icontains=q)
+            )
+            for letter in letters[:5]:
+                label = (letter.title or "").strip() or letter.get_doc_type_display()
+                results.append(
+                    {
+                        "type": "hr_document",
+                        "id": letter.id,
+                        "label": label,
+                        "sublabel": letter.get_doc_type_display(),
+                        "href": f"/hr/documents/{letter.id}",
+                        "icon": "bi-folder2-open",
+                    }
+                )
+
         if has_sales:
-            clients = Client.objects.filter(Q(name__icontains=q) | Q(company__icontains=q))
+            clients = Client.objects.filter(
+                Q(name__icontains=q)
+                | Q(company__icontains=q)
+                | Q(client_id__icontains=q)
+                | Q(poc_name__icontains=q)
+                | Q(contact_email__icontains=q)
+                | Q(contact_phone__icontains=q)
+            )
             for c in clients[:5]:
                 results.append(
                     {
                         "type": "client",
                         "id": c.id,
                         "label": c.name,
-                        "sublabel": c.company or "Client",
-                        "href": "/sales/clients",
+                        "sublabel": c.company or c.client_id or "Client",
+                        "href": f"/sales/clients/{c.id}",
                         "icon": "bi-briefcase-fill",
                     }
                 )
 
             proposals = Proposal.objects.select_related("client").filter(
-                Q(title__icontains=q) | Q(client__name__icontains=q)
+                Q(title__icontains=q)
+                | Q(client__name__icontains=q)
+                | Q(client__company__icontains=q)
             )
             for p in proposals[:5]:
                 results.append(
                     {
                         "type": "proposal",
                         "id": p.id,
-                        "label": p.title,
-                        "sublabel": "Proposal",
-                        "href": "/sales/proposals",
+                        "label": p.title or f"Proposal #{p.id}",
+                        "sublabel": (p.client.name if p.client_id else None) or "Proposal",
+                        "href": f"/sales/proposals/{p.id}",
                         "icon": "bi-file-earmark-text-fill",
                     }
                 )
 
+            estimates = Estimate.objects.select_related("client").filter(
+                Q(title__icontains=q)
+                | Q(client__name__icontains=q)
+                | Q(client__company__icontains=q)
+                | Q(content__quote_number__icontains=q)
+            )
+            for e in estimates[:5]:
+                results.append(
+                    {
+                        "type": "estimate",
+                        "id": e.id,
+                        "label": e.title or f"Estimate #{e.id}",
+                        "sublabel": (e.client.name if e.client_id else None) or "Estimate",
+                        "href": f"/sales/estimates/{e.id}",
+                        "icon": "bi-file-earmark-ruled-fill",
+                    }
+                )
+
             invoices = Invoice.objects.select_related("client").filter(
-                Q(invoice_number__icontains=q) | Q(client__name__icontains=q)
+                Q(invoice_number__icontains=q)
+                | Q(content__title__icontains=q)
+                | Q(client__name__icontains=q)
+                | Q(client__company__icontains=q)
             )
             for inv in invoices[:5]:
+                content_title = ((inv.content or {}).get("title") or "").strip()
+                label = content_title or inv.invoice_number or f"Invoice #{inv.id}"
                 results.append(
                     {
                         "type": "invoice",
                         "id": inv.id,
-                        "label": inv.invoice_number,
-                        "sublabel": "Invoice",
-                        "href": "/sales/invoices",
+                        "label": label,
+                        "sublabel": inv.invoice_number or "Invoice",
+                        "href": f"/sales/invoices/{inv.id}",
                         "icon": "bi-receipt",
                     }
                 )
@@ -329,19 +413,19 @@ class GlobalSearchView(APIView):
         if has_renewals:
             renewals = Renewal.objects.select_related("client", "staff").filter(
                 Q(renewal_type__icontains=q)
+                | Q(renewal_type_detail__icontains=q)
                 | Q(notes__icontains=q)
+                | Q(subject_name__icontains=q)
                 | Q(client__name__icontains=q)
+                | Q(client__company__icontains=q)
                 | Q(staff__full_name__icontains=q)
             )
             for r in renewals[:5]:
-                subject = r.client.name if r.subject_type == "client" and r.client else (
-                    r.staff.full_name or r.staff.email if r.staff else "—"
-                )
                 results.append(
                     {
                         "type": "renewal",
                         "id": r.id,
-                        "label": f"{r.get_renewal_type_display()} — {subject}",
+                        "label": f"{r.display_type()} — {r.display_subject()}",
                         "sublabel": "Renewal",
                         "href": "/renewals",
                         "icon": "bi-calendar-check-fill",
@@ -361,7 +445,7 @@ class GlobalSearchView(APIView):
                 }
             )
 
-        return Response({"results": results[:20]})
+        return Response({"results": results[:30]})
 
 
 class ActivityLogListView(APIView):

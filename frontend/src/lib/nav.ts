@@ -4,7 +4,9 @@
 // access server-side; hiding here is cosmetic only. Icons are Bootstrap Icons
 // (`bi bi-*`), the same icon set the NiceAdmin reference template uses.
 
-export type Module = "hr" | "sales" | "renewals" | "reports";
+import { hasModuleAccess, type Module } from "@/lib/auth";
+
+export type { Module };
 
 export type NavItem = {
   label: string;
@@ -13,6 +15,8 @@ export type NavItem = {
   href?: string;
   icon: string;
   module?: Module;
+  /** Only the superadmin sees this item (e.g. Roles). */
+  superadminOnly?: boolean;
   children?: NavItem[];
 };
 
@@ -21,7 +25,12 @@ export type NavGroup = { heading: string; items: NavItem[] };
 export const NAV: NavGroup[] = [
   {
     heading: "Overview",
-    items: [{ label: "Dashboard", href: "/dashboard", icon: "bi-grid-1x2-fill" }],
+    items: [
+      { label: "Dashboard", href: "/dashboard", icon: "bi-grid-1x2-fill" },
+      // AI ASSISTANT (optional) — remove this line to hide from sidebar.
+      // Also remove: frontend/src/app/(app)/ai/, backend/ai/, api/ai include, INSTALLED_APPS "ai".
+      { label: "EDITH", href: "/ai", icon: "bi-stars" },
+    ],
   },
   {
     heading: "Work",
@@ -30,7 +39,7 @@ export const NAV: NavGroup[] = [
         label: "Projects",
         icon: "bi-folder-fill",
         children: [
-          { label: "Projects", href: "/projects", icon: "bi-kanban-fill" },
+          { label: "Mini-Projects", href: "/projects", icon: "bi-kanban-fill" },
           { label: "Artwork Generator", href: "/projects/artwork", icon: "bi-palette-fill" },
           { label: "Clients", href: "/projects/clients", icon: "bi-person-lines-fill" },
         ],
@@ -48,20 +57,19 @@ export const NAV: NavGroup[] = [
       {
         label: "Sales",
         icon: "bi-briefcase-fill",
-        module: "sales",
         children: [
-          { label: "Clients", href: "/sales/clients", icon: "bi-person-lines-fill" },
-          { label: "Proposals", href: "/sales/proposals", icon: "bi-file-earmark-text-fill" },
-          { label: "Invoices", href: "/sales/invoices", icon: "bi-receipt" },
+          { label: "Clients", href: "/sales/clients", icon: "bi-person-lines-fill", module: "sales_clients" },
+          { label: "Proposals", href: "/sales/proposals", icon: "bi-file-earmark-text-fill", module: "sales_proposals" },
+          { label: "Invoices", href: "/sales/invoices", icon: "bi-receipt", module: "sales_invoices" },
         ],
       },
       {
         label: "HR",
         icon: "bi-people-fill",
-        module: "hr",
         children: [
-          { label: "Documents", href: "/hr/documents", icon: "bi-folder2-open" },
-          { label: "Staffs", href: "/hr/staff", icon: "bi-people-fill" },
+          { label: "Documents", href: "/hr/documents", icon: "bi-folder2-open", module: "hr_documents" },
+          { label: "Staffs", href: "/hr/staff", icon: "bi-people-fill", module: "hr_staff" },
+          { label: "Roles", href: "/hr/roles", icon: "bi-shield-lock-fill", superadminOnly: true },
         ],
       },
       { label: "Renewals", href: "/renewals", icon: "bi-calendar-check-fill", module: "renewals" },
@@ -87,7 +95,8 @@ function visibleItem(
   role: "superadmin" | "employee",
   moduleAccess: Module[]
 ): NavItem | null {
-  if (item.module && role !== "superadmin" && !moduleAccess.includes(item.module)) return null;
+  if (item.superadminOnly && role !== "superadmin") return null;
+  if (item.module && role !== "superadmin" && !hasModuleAccess(moduleAccess, item.module)) return null;
   if (!item.children) return item;
   const children = item.children
     .map((c) => visibleItem(c, role, moduleAccess))

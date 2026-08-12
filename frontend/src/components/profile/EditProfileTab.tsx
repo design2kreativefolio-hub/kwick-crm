@@ -257,9 +257,11 @@ const fieldGrid: React.CSSProperties = {
   gap: 14,
 };
 const disabledInput: React.CSSProperties = {
-  opacity: 0.7,
+  opacity: 1,
   cursor: "not-allowed",
-  background: "var(--bg)",
+  background: "var(--panel-muted)",
+  color: "var(--text)",
+  WebkitTextFillColor: "var(--text)",
 };
 const docRow: React.CSSProperties = {
   display: "flex",

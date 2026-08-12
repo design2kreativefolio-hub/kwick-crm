@@ -6,6 +6,7 @@ import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { STATUS_COLOR } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
 type BoardStatus = "todo" | "doing" | "done";
@@ -28,9 +29,9 @@ type Column = { label: string; tasks: Task[] };
 type Board = Record<BoardStatus, Column>;
 
 const COLUMN_META: Record<BoardStatus, { dot: string }> = {
-  todo: { dot: "var(--danger)" },
-  doing: { dot: "#7C4FE0" },
-  done: { dot: "var(--success)" },
+  todo: { dot: STATUS_COLOR.todo },
+  doing: { dot: STATUS_COLOR.doing },
+  done: { dot: STATUS_COLOR.done },
 };
 
 const PRIORITY_BADGE: Record<string, string> = {

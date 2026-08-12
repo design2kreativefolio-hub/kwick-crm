@@ -72,6 +72,8 @@ INSTALLED_APPS = [
     "dashboard",
     "reports",
     "todos",
+    # OPTIONAL — AI Assistant (removable). See backend/ai/apps.py to remove.
+    "ai",
 ]
 
 MIDDLEWARE = [
@@ -218,24 +220,41 @@ EMAIL_BACKEND = (
     else "django.core.mail.backends.console.EmailBackend"
 )
 EMAIL_HOST = env("EMAIL_HOST", "")
-EMAIL_PORT = int(env("EMAIL_PORT", "587"))
+EMAIL_PORT = int(env("EMAIL_PORT", "465"))
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=True)
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "Kwick <no-reply@localhost>")
+# cPanel secure SMTP uses port 465 + SSL (not STARTTLS on 587).
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", default=True)
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=False)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "Kwick <admin@kwick.kreativefolio.com>")
 
 # ---------------------------------------------------------------------------
 # Web push (VAPID)
 # ---------------------------------------------------------------------------
 VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
-VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "mailto:admin@localhost")
+VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "mailto:admin@kwick.kreativefolio.com")
+
+# ---------------------------------------------------------------------------
+# AI Assistant (OPTIONAL — removable module `ai`)
+# Free CRM Q&A works with no key. Set AI_API_KEY for paid LLM chat.
+# ---------------------------------------------------------------------------
+AI_ENABLED = env_bool("AI_ENABLED", default=True)
+AI_API_KEY = env("AI_API_KEY", "") or ""
+AI_BASE_URL = env("AI_BASE_URL", "https://api.openai.com/v1")
+AI_MODEL = env("AI_MODEL", "gpt-4o-mini")
+
+# ElevenLabs TTS for EDITH (optional). Empty key → frontend uses browser speech.
+ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY", "") or ""
+ELEVENLABS_VOICE_ID = env("ELEVENLABS_VOICE_ID", "XB0fDUnXU5powFXDhCwa") or "XB0fDUnXU5powFXDhCwa"
+ELEVENLABS_MODEL_ID = env("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2") or "eleven_multilingual_v2"
 
 # ---------------------------------------------------------------------------
 # i18n / misc
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+# Company operates in UAE (UTC+4). Overridable via TIME_ZONE in .env.
+TIME_ZONE = env("TIME_ZONE", "Asia/Dubai")
 USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

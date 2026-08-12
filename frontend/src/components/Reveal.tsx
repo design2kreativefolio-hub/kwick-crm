@@ -1,9 +1,8 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
-// Staggered fade+slide-up for dashboard sections on load. `index` drives the
-// delay so sections cascade in rather than popping at once.
+/** Soft cascade on dashboard sections — kept light so it doesn't fight route motion. */
 export function Reveal({
   children,
   index = 0,
@@ -13,11 +12,17 @@ export function Reveal({
   index?: number;
   style?: React.CSSProperties;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: index * 0.07, ease: "easeOut" }}
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={
+        reduceMotion
+          ? { duration: 0 }
+          : { duration: 0.28, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] }
+      }
       style={style}
     >
       {children}

@@ -9,9 +9,10 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Modal } from "@/components/Modal";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { defaultEstimateContent } from "@/lib/estimateContent";
 import { defaultContent } from "@/lib/proposalContent";
+import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 
 type Client = { id: number; name: string };
@@ -52,17 +53,19 @@ export default function SalesProposalsPage() {
   const { confirm, ConfirmDialog } = useConfirm();
   const router = useRouter();
   const isSuperadmin = user?.role === "superadmin";
-  const hasAccess = isSuperadmin || (user?.module_access ?? []).includes("sales");
+  const hasAccess = isSuperadmin || hasModuleAccess(user?.module_access, "sales_proposals");
 
   const [clients, setClients] = useState<Client[]>([]);
   const [docs, setDocs] = useState<ListDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [exportingKey, setExportingKey] = useState<string | null>(null);
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasAccess) return;
@@ -81,6 +84,7 @@ export default function SalesProposalsPage() {
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
     if (clientFilter) params.set("client", clientFilter);
+    if (search.trim()) params.set("search", search.trim());
     const qs = params.toString();
     Promise.all([
       api<any[] | { results: any[] }>(`/api/sales/proposals${qs ? `?${qs}` : ""}`).then(unwrapList).catch(() => []),
@@ -101,7 +105,7 @@ export default function SalesProposalsPage() {
     if (!hasAccess) return;
     loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasAccess, statusFilter, clientFilter]);
+  }, [hasAccess, statusFilter, clientFilter, search]);
 
   const createProposal = async () => {
     setCreating(true);
@@ -206,6 +210,49 @@ export default function SalesProposalsPage() {
     }
   };
 
+  const sendToEmail = async (doc: ListDoc) => {
+    const key = `${doc.kind}-${doc.id}`;
+    setSendingKey(key);
+    try {
+      let to = "";
+      let subject = doc.title || (doc.kind === "proposal" ? "Proposal" : "Estimate");
+      if (doc.kind === "proposal") {
+        const detail = await api<{ content: any; title: string }>(`/api/sales/proposals/${doc.id}`);
+        to = detail.content?.home?.client_email || "";
+        subject = detail.title || subject;
+        const res = await api<{ file_url: string }>(`/api/sales/proposals/${doc.id}/pdf`, { method: "POST" });
+        await sendDocumentViaEmail({
+          pdfUrl: res.file_url,
+          to,
+          subject,
+          body: `Please find the attached proposal.\n\nAttach the downloaded PDF if it is not already attached, then send.`,
+          filename: `${subject.replace(/[^\w\-]+/g, "_")}.pdf`,
+        });
+      } else {
+        const detail = await api<{ content: any; title: string }>(`/api/sales/estimates/${doc.id}`);
+        to = detail.content?.bill_to_email || "";
+        subject = detail.title || subject;
+        const res = await api<{ file_url: string }>(`/api/sales/estimates/${doc.id}/pdf`, { method: "POST" });
+        await sendDocumentViaEmail({
+          pdfUrl: res.file_url,
+          to,
+          subject,
+          body: `Please find the attached estimate.\n\nAttach the downloaded PDF if it is not already attached, then send.`,
+          filename: `${subject.replace(/[^\w\-]+/g, "_")}.pdf`,
+        });
+      }
+      showToast(
+        to
+          ? "Email draft opened. Attach the downloaded PDF before sending."
+          : "PDF downloaded. Add a recipient email on the document, or pick one in your mail app."
+      );
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't prepare email." : err.message, "error");
+    } finally {
+      setSendingKey(null);
+    }
+  };
+
   if (!user) return null;
 
   if (!hasAccess) {
@@ -219,10 +266,7 @@ export default function SalesProposalsPage() {
         <span className="card-title" style={{ margin: 0 }}>
           Create
         </span>
-        <p className="muted" style={{ marginTop: 8, marginBottom: 18, fontSize: 13.5 }}>
-          Choose what you want to create.
-        </p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
           <button
             type="button"
             className="btn btn-ghost"
@@ -233,9 +277,6 @@ export default function SalesProposalsPage() {
             <i className="bi bi-receipt" style={{ fontSize: 18, color: "var(--gold)" }} />
             <span style={{ textAlign: "left" }}>
               <strong style={{ display: "block", fontSize: 14 }}>Create Estimate</strong>
-              <span className="muted" style={{ fontSize: 12.5 }}>
-                Quote with line items, bill-to, and PDF export
-              </span>
             </span>
           </button>
           <button
@@ -248,9 +289,6 @@ export default function SalesProposalsPage() {
             <i className="bi bi-file-earmark-richtext" style={{ fontSize: 18, color: "var(--gold)" }} />
             <span style={{ textAlign: "left" }}>
               <strong style={{ display: "block", fontSize: 14 }}>Create Proposal</strong>
-              <span className="muted" style={{ fontSize: 12.5 }}>
-                Full branded proposal with sections and exports
-              </span>
             </span>
           </button>
         </div>
@@ -258,13 +296,17 @@ export default function SalesProposalsPage() {
 
       <div>
         <h1 style={{ margin: 0, fontSize: 22 }}>Proposals</h1>
-        <p className="muted" style={{ marginTop: 4 }}>
-          Build branded proposals and estimates, then export them as PDF.
-        </p>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            className="input"
+            placeholder="Search by title or client…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ maxWidth: 280, minWidth: 200 }}
+          />
           <div style={{ width: 180 }}>
             <Select value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} ariaLabel="Filter by status" />
           </div>
@@ -349,6 +391,15 @@ export default function SalesProposalsPage() {
                           >
                             <i className="bi bi-file-earmark-pdf-fill" />
                             {exportingKey === key ? "…" : "PDF"}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            title="Open email draft with PDF"
+                            disabled={sendingKey === key}
+                            onClick={() => sendToEmail(d)}
+                          >
+                            <i className="bi bi-envelope" />
+                            {sendingKey === key ? "…" : "Send to"}
                           </button>
                           <button
                             className="btn btn-ghost btn-sm"

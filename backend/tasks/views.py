@@ -22,7 +22,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     search_fields = ["title", "description", "client_name"]
 
     def get_queryset(self):
-        qs = Task.objects.select_related("project", "assignee")
+        qs = Task.objects.select_related("project", "assignee", "content_item__client")
         if is_superadmin(self.request.user):
             return qs
         return qs.filter(assignee=self.request.user)
@@ -92,9 +92,11 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def my(self, request):
         """GET /api/tasks/my — the requesting user's own tasks (spec §8)."""
-        qs = Task.objects.filter(assignee=request.user).select_related("project")
+        qs = Task.objects.filter(assignee=request.user).select_related(
+            "project", "content_item__client"
+        )
         page = self.paginate_queryset(qs)
-        serializer = TaskSerializer(page if page is not None else qs, many=True)
+        serializer = TaskSerializer(page if page is not None else qs, many=True, context={"request": request})
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)

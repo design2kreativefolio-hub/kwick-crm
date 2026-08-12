@@ -1,13 +1,31 @@
 import { Sparkline } from "@/components/Sparkline";
 
-// A small semantic palette (not pure blue) so cards read as a hierarchy at a
-// glance — mint for positive/growth, amber for things needing attention,
-// purple for neutral secondary metrics, blue for primary/financial ones.
+// Semantic tones via CSS variables so dark mode can remap contrast safely.
 const TONES = {
-  mint: { bg: "#E6F6EE", iconBg: "#ffffff", icon: "#1E9E62", accent: "#1E9E62" },
-  amber: { bg: "#FDF1DF", iconBg: "#ffffff", icon: "#C9821B", accent: "#C9821B" },
-  purple: { bg: "#F0EBFB", iconBg: "#ffffff", icon: "#7C4FE0", accent: "#7C4FE0" },
-  blue: { bg: "var(--blue-100)", iconBg: "#ffffff", icon: "var(--navy)", accent: "var(--navy)" },
+  mint: {
+    bg: "var(--kpi-mint-bg)",
+    iconBg: "var(--kpi-icon-bg)",
+    icon: "var(--kpi-mint)",
+    accent: "var(--kpi-mint)",
+  },
+  amber: {
+    bg: "var(--kpi-amber-bg)",
+    iconBg: "var(--kpi-icon-bg)",
+    icon: "var(--kpi-amber)",
+    accent: "var(--kpi-amber)",
+  },
+  purple: {
+    bg: "var(--kpi-purple-bg)",
+    iconBg: "var(--kpi-icon-bg)",
+    icon: "var(--kpi-purple)",
+    accent: "var(--kpi-purple)",
+  },
+  blue: {
+    bg: "var(--kpi-blue-bg)",
+    iconBg: "var(--kpi-icon-bg)",
+    icon: "var(--kpi-blue)",
+    accent: "var(--kpi-blue)",
+  },
 } as const;
 
 export type KpiTone = keyof typeof TONES;
@@ -31,9 +49,9 @@ export function KpiCard({
 }) {
   const t = TONES[tone];
   return (
-    <div className="kpi-card" style={{ background: t.bg }}>
+    <div className="kpi-card" data-tone={tone} style={{ background: t.bg }}>
       <div className="kpi-card-top">
-        <span className="kpi-card-label" style={{ color: t.accent, opacity: 0.85 }}>
+        <span className="kpi-card-label" style={{ color: t.accent, opacity: 0.9 }}>
           {label}
         </span>
         <span className="kpi-card-icon-circle" style={{ background: t.iconBg, color: t.icon }}>

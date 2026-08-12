@@ -33,6 +33,16 @@ app.conf.beat_schedule = {
         "task": "projects.tasks.check_project_deliveries",
         "schedule": crontab(hour=8, minute=10),
     },
+    # Calendar reminders: day-of high priority + 1-hour-before alerts.
+    "calendar-reminder-alerts": {
+        "task": "calendar_app.tasks.send_calendar_reminder_alerts",
+        "schedule": crontab(minute="*/5"),
+    },
+    # EDITH chat history — drop threads inactive for 15+ days.
+    "purge-old-ai-conversations-daily": {
+        "task": "ai.tasks.purge_old_ai_conversations",
+        "schedule": crontab(hour=3, minute=15),
+    },
 }
 
 

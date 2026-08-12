@@ -4,10 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { EdithOrb } from "@/components/EdithOrb";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
 import { NavItem, visibleNav } from "@/lib/nav";
+import { useNotificationPermissionState } from "@/lib/pwa";
+import { useToast } from "@/lib/toast";
 
 type SearchResult = {
   type: string;
@@ -35,6 +39,8 @@ export function Topbar({
   const router = useRouter();
   const { user, logout } = useAuth();
   const { notifUnread: unread } = useLiveUpdates();
+  const { perm, enable, needsPrompt } = useNotificationPermissionState();
+  const { showToast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -80,7 +86,7 @@ export function Topbar({
     // their own and aren't navigable, only their children are.
     const flatten = (items: NavItem[]): NavItem[] =>
       items.flatMap((i) => (i.children ? flatten(i.children) : [i]));
-    const items = flatten(visibleNav(user.role).flatMap((g) => g.items));
+    const items = flatten(visibleNav(user.role, user.module_access || []).flatMap((g) => g.items));
     return items
       .filter((i) => i.href && normalize(i.label).includes(q))
       .map((i) => ({ type: "page", id: i.href as string, label: i.label, sublabel: "Page", href: i.href as string, icon: i.icon }));
@@ -96,16 +102,11 @@ export function Topbar({
   };
 
   return (
-    // Sticky wrapper spans the FULL strip (including what used to be a bare
-    // margin gap above the bar) so nothing can scroll through uncovered —
-    // that gap was letting scrolled content bleed above the floating bar.
-    // The wrapper itself carries the glass blur, so content sliding underneath
-    // reads as frosted rather than a hard cut or a visible seam.
-    <div style={stickyWrap}>
-      <header className="topbar-bar" style={bar}>
+    <div className="topbar-wrap">
+      <header className="topbar-bar">
         <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
           <button onClick={onToggleCollapsed} className="icon-btn-anim" style={circleBtn} aria-label="Toggle sidebar">
-            <i className={`bi ${collapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset"}`} />
+            <i className={`bi ${collapsed ? "bi-list" : "bi-x-lg"}`} />
           </button>
           <div ref={searchRef} className="topbar-search" style={{ position: "relative", width: 300, maxWidth: "36vw" }}>
             <div style={searchWrap}>
@@ -194,6 +195,48 @@ export function Topbar({
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span className="topbar-powered-by" style={poweredBy}>Powered by Kreativefolio</span>
+          <Link
+            href="/ai"
+            className="edith-topbar-btn"
+            aria-label="Open EDITH"
+            title="EDITH"
+          >
+            <EdithOrb size="xs" />
+            <span className="edith-topbar-btn__label">EDITH</span>
+          </Link>
+          <ThemeToggle />
+          {(needsPrompt || perm === "denied") && (
+            <button
+              type="button"
+              className="icon-btn-anim"
+              style={{
+                ...circleBtn,
+                width: "auto",
+                padding: "0 12px",
+                borderRadius: 999,
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                color: perm === "denied" ? "var(--danger)" : "var(--gold)",
+              }}
+              title={
+                perm === "denied"
+                  ? "Notifications blocked in browser settings"
+                  : "Allow desktop notifications for tasks, chat, and reminders"
+              }
+              onClick={async () => {
+                const result = await enable();
+                if (result === "granted") showToast("Desktop notifications enabled.");
+                else if (result === "denied")
+                  showToast("Notifications blocked — allow them in your browser site settings.", "error");
+              }}
+            >
+              <i className={`bi ${perm === "denied" ? "bi-bell-slash-fill" : "bi-bell"}`} style={{ fontSize: 15 }} />
+              <span style={{ whiteSpace: "nowrap" }}>
+                {perm === "denied" ? "Blocked" : "Allow alerts"}
+              </span>
+            </button>
+          )}
           <Link href="/reminders" className="icon-btn-anim" style={circleBtn} aria-label="Reminders">
             <i className="bi bi-bell-fill" style={{ fontSize: 17 }} />
             {unread > 0 && <span style={dot}>{unread > 9 ? "9+" : unread}</span>}
@@ -211,7 +254,7 @@ export function Topbar({
             >
               <span style={avatar}>{(user?.full_name || user?.email || "?")[0].toUpperCase()}</span>
               <span style={{ textAlign: "left", lineHeight: 1.2 }}>
-                <span style={{ display: "block", fontWeight: 600, fontSize: 13 }}>
+                <span style={{ display: "block", fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
                   {user?.full_name || user?.email}
                 </span>
                 <span className="muted" style={{ fontSize: 11.5, textTransform: "capitalize" }}>
@@ -225,6 +268,20 @@ export function Topbar({
                 <Link href="/profile" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                   <i className="bi bi-person-fill" /> Profile
                 </Link>
+                {perm !== "granted" && perm !== "unsupported" && (
+                  <button
+                    style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      const result = await enable();
+                      if (result === "granted") showToast("Desktop notifications enabled.");
+                      else if (result === "denied")
+                        showToast("Notifications blocked — allow them in your browser site settings.", "error");
+                    }}
+                  >
+                    <i className="bi bi-bell-fill" /> Enable notifications
+                  </button>
+                )}
                 {user?.role === "superadmin" && (
                   <Link href="/logs" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                     <i className="bi bi-clock-history" /> Logs
@@ -245,28 +302,6 @@ export function Topbar({
   );
 }
 
-const stickyWrap: React.CSSProperties = {
-  position: "sticky",
-  top: 0,
-  zIndex: 10,
-  padding: "16px 16px 0 16px",
-  background: "rgba(244, 245, 251, 0.55)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-};
-const bar: React.CSSProperties = {
-  height: "var(--topbar-height)",
-  background: "rgba(255, 255, 255, 0.78)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  borderRadius: "var(--radius)",
-  boxShadow: "var(--shadow)",
-  border: "1px solid rgba(255, 255, 255, 0.6)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "0 22px",
-};
 const searchWrap: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -387,8 +422,8 @@ const avatar: React.CSSProperties = {
   width: 36,
   height: 36,
   borderRadius: "50%",
-  background: "var(--navy)",
-  color: "#fff",
+  background: "var(--brand-fill)",
+  color: "var(--on-brand)",
   display: "grid",
   placeItems: "center",
   fontWeight: 700,

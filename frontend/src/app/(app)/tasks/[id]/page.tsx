@@ -9,6 +9,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { STATUS_BADGE } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
 type Task = {
@@ -21,6 +22,7 @@ type Task = {
   assignee: number | null;
   assignee_name: string;
   content_item: number | null;
+  content_client_id?: number | null;
   status: "todo" | "in_progress" | "completed";
   priority: "low" | "medium" | "high";
   due_date: string | null;
@@ -40,11 +42,6 @@ const PRIORITY_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
-const STATUS_BADGE: Record<string, string> = {
-  todo: "badge-muted",
-  in_progress: "badge-warning",
-  completed: "badge-success",
-};
 const PRIORITY_BADGE: Record<string, string> = {
   low: "badge-muted",
   medium: "badge-warning",
@@ -72,7 +69,6 @@ export default function TaskDetailPage() {
   const isSuperadmin = user?.role === "superadmin";
 
   const [task, setTask] = useState<Task | null>(null);
-  const [contentClientId, setContentClientId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -82,18 +78,34 @@ export default function TaskDetailPage() {
     setNotFound(false);
     api<Task>(`/api/tasks/${id}`)
       .then((t) => {
-        setTask(t);
+        // Calendar-synced tasks live on the client calendar — no separate overview page.
+        if (t.content_item && t.content_client_id) {
+          router.replace(
+            `/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`
+          );
+          return;
+        }
         if (t.content_item) {
           api<ContentItem>(`/api/projects/content-calendar/${t.content_item}`)
-            .then((ci) => setContentClientId(ci.client))
-            .catch(() => {});
+            .then((ci) => {
+              router.replace(`/projects/clients/${ci.client}/calendar?item=${t.content_item}`);
+            })
+            .catch(() => {
+              setTask(t);
+              setLoading(false);
+            });
+          return;
         }
+        setTask(t);
+        setLoading(false);
       })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        setNotFound(true);
+        setLoading(false);
+      });
   };
 
-  useEffect(load, [id]);
+  useEffect(load, [id, router]);
 
   const isSynced = !!task?.content_item;
 
@@ -196,9 +208,9 @@ export default function TaskDetailPage() {
                   This task comes from a client content calendar assignment — its status stays in sync
                   with the calendar either way.
                 </p>
-                {contentClientId && (
+                {task.content_client_id && (
                   <Link
-                    href={`/projects/clients/${contentClientId}/calendar`}
+                    href={`/projects/clients/${task.content_client_id}/calendar?item=${task.content_item}`}
                     className="btn btn-ghost btn-sm"
                     style={{ marginTop: 10 }}
                   >

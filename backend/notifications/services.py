@@ -19,15 +19,15 @@ def _superadmins():
 
 
 def users_with_module_access(module: str):
-    """Superadmin + every active employee granted `module` — the audience
-    for a module's own recurring reminders (e.g. HR leave/ticket alerts, once
-    an employee has been granted HR access)."""
+    """Superadmin + every active employee granted `module` (or a parent/child
+    grant that covers it) — audience for module reminders."""
     from django.db.models import Q
 
-    from accounts.models import Role, UserStatus, User
+    from accounts.models import Role, UserStatus, User, grant_keys_for
 
+    keys = grant_keys_for(module)
     return User.objects.filter(status=UserStatus.ACTIVE).filter(
-        Q(role=Role.SUPERADMIN) | Q(module_access__module=module)
+        Q(role=Role.SUPERADMIN) | Q(module_access__module__in=keys)
     ).distinct()
 
 

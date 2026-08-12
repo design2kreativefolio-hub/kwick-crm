@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 
 import { BackLink } from "@/components/BackLink";
 import { DatePicker } from "@/components/DatePicker";
+import { DocNameField } from "@/components/DocNameField";
 import { Select } from "@/components/Select";
 import { EditableTable } from "@/components/proposals/EditableTable";
 import { ImageGalleryField } from "@/components/proposals/ImageGalleryField";
@@ -24,6 +25,7 @@ import {
   mergedContent,
 } from "@/lib/proposalContent";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -110,6 +112,7 @@ export default function ProposalBuilderPage() {
   const [status, setStatus] = useState("draft");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState<"pdf" | "docx" | null>(null);
+  const [sending, setSending] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(
     () => new Set(SECTION_META.filter((s) => s.key !== "home").map((s) => String(s.key)))
@@ -208,6 +211,34 @@ export default function ProposalBuilderPage() {
     }
   };
 
+  const sendToEmail = async () => {
+    if (!content) return;
+    const ok = await save();
+    if (!ok) return;
+    setSending(true);
+    try {
+      const res = await api<{ file_url: string }>(`/api/sales/proposals/${id}/pdf`, { method: "POST" });
+      const to = content.home?.client_email || "";
+      const subject = docName || content.home?.client_name || "Proposal";
+      await sendDocumentViaEmail({
+        pdfUrl: res.file_url,
+        to,
+        subject,
+        body: `Please find the attached proposal.\n\nAttach the downloaded PDF if it is not already attached, then send.`,
+        filename: `${subject.replace(/[^\w\-]+/g, "_")}.pdf`,
+      });
+      showToast(
+        to
+          ? "Email draft opened. Attach the downloaded PDF before sending."
+          : "PDF downloaded. Add a client email on the Home page, or pick one in your mail app."
+      );
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't prepare email." : err.message, "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading || !content) {
     return <p className="muted">Loading…</p>;
   }
@@ -252,35 +283,12 @@ export default function ProposalBuilderPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
         <div>
           <BackLink href="/sales/proposals" label="Back to Proposals" />
-          <input
-            className="input"
+          <DocNameField
             value={docName}
-            onChange={(e) => setDocName(e.target.value)}
-            aria-label="Proposal name"
+            onChange={setDocName}
+            ariaLabel="Proposal name"
             placeholder="Untitled Proposal"
-            style={{
-              marginTop: 8,
-              fontSize: 22,
-              fontWeight: 700,
-              color: "var(--navy)",
-              border: "1px solid transparent",
-              background: "transparent",
-              padding: "4px 8px",
-              marginLeft: -8,
-              width: "min(100%, 520px)",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--border)";
-              e.currentTarget.style.background = "#fff";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "transparent";
-              e.currentTarget.style.background = "transparent";
-            }}
           />
-          <p className="muted" style={{ marginTop: 4 }}>
-            Rename above for the list and PDF filename. Cover title is set in Home Page.
-          </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ width: 150 }}>
@@ -288,6 +296,9 @@ export default function ProposalBuilderPage() {
           </div>
           <button className="btn btn-ghost" disabled={saving} onClick={save}>
             {saving ? "Saving…" : "Save"}
+          </button>
+          <button className="btn btn-ghost" disabled={sending || exporting !== null} onClick={sendToEmail}>
+            <i className="bi bi-envelope" /> {sending ? "Preparing…" : "Send to"}
           </button>
           <button className="btn btn-ghost" disabled={exporting !== null} onClick={() => exportAs("docx")}>
             <i className="bi bi-file-earmark-word-fill" /> {exporting === "docx" ? "Exporting…" : "Export Word"}

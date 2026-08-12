@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 
 import { BackLink } from "@/components/BackLink";
 import { DatePicker } from "@/components/DatePicker";
+import { DocNameField } from "@/components/DocNameField";
 import { Select } from "@/components/Select";
 import { EstimatePreview } from "@/components/estimates/EstimatePreview";
 import {
@@ -36,12 +37,13 @@ export default function EstimateBuilderPage() {
 
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState<EstimateContent | null>(null);
+  const [docName, setDocName] = useState("");
   const [status, setStatus] = useState("draft");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
 
-  const formState = useMemo(() => ({ content, status }), [content, status]);
+  const formState = useMemo(() => ({ content, docName, status }), [content, docName, status]);
   const { dirty, markClean } = useDirtySnapshot(formState, !loading && !!content);
   const { ConfirmDialog } = useUnsavedChanges(dirty);
 
@@ -53,9 +55,11 @@ export default function EstimateBuilderPage() {
 
   useEffect(() => {
     setLoading(true);
-    api<{ content: EstimateContent; status: string }>(`/api/sales/estimates/${id}`)
+    api<{ content: EstimateContent; status: string; title: string }>(`/api/sales/estimates/${id}`)
       .then((e) => {
-        setContent(mergedEstimateContent(e.content));
+        const merged = mergedEstimateContent(e.content);
+        setContent(merged);
+        setDocName(e.title || (merged.quote_number ? `Quote ${merged.quote_number}` : "Untitled Estimate"));
         setStatus(e.status);
       })
       .catch(() => showToast("Couldn't load estimate.", "error"))
@@ -104,15 +108,18 @@ export default function EstimateBuilderPage() {
     if (!content) return false;
     setSaving(true);
     try {
+      const nextName = docName.trim() || (content.quote_number ? `Quote ${content.quote_number}` : "Untitled Estimate");
       await api(`/api/sales/estimates/${id}`, {
         method: "PATCH",
         body: JSON.stringify({
           content,
           status,
           client: content.client_id,
+          title: nextName,
         }),
       });
-      markClean({ content, status });
+      setDocName(nextName);
+      markClean({ content, docName: nextName, status });
       showToast("Estimate saved.");
       return true;
     } catch (err: any) {
@@ -149,12 +156,12 @@ export default function EstimateBuilderPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
         <div>
           <BackLink href="/sales/proposals" label="Back to Proposals" />
-          <h1 style={{ margin: "8px 0 0", fontSize: 22 }}>
-            {content.quote_number ? `Quote ${content.quote_number}` : "New Estimate"}
-          </h1>
-          <p className="muted" style={{ marginTop: 4 }}>
-            Fill the quote details — logo, company info and QUOTE label are fixed in the template.
-          </p>
+          <DocNameField
+            value={docName}
+            onChange={setDocName}
+            ariaLabel="Estimate name"
+            placeholder="Untitled Estimate"
+          />
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ width: 150 }}>
@@ -256,7 +263,7 @@ export default function EstimateBuilderPage() {
                     />
                   </div>
                   <div>
-                    <label className="field-label">Details (one bullet per line)</label>
+                    <label className="field-label">Details</label>
                     <textarea
                       className="input"
                       rows={3}

@@ -1,10 +1,12 @@
 """
 Merged, read-aggregated agenda (spec §10). Pulls from Tasks, Daily Tracker,
-Renewals and Manual Reminders and tags each item with its `source`.
+Renewals, Manual Reminders, Todos and tags each item with its `source`.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from urllib.parse import urlparse
 
 from django.db.models import Q
+from django.utils import timezone
 
 from calendar_app.models import ManualReminder
 from common.permissions import is_superadmin
@@ -12,6 +14,7 @@ from daily_tracker.models import DailyTrackerEntry
 from projects.models import ContentCalendarItem, Project
 from renewals.models import Renewal
 from tasks.models import Task
+from todos.models import TodoItem
 
 
 def _iso(value):
@@ -20,19 +23,84 @@ def _iso(value):
     return value
 
 
+def detect_meeting_url(text: str) -> str:
+    """Return the first Teams / Google Meet URL found in free text, else ''."""
+    if not text:
+        return ""
+    for token in text.replace("\n", " ").split():
+        lower = token.lower().rstrip(".,);]")
+        if "teams.microsoft.com" in lower or "meet.google.com" in lower:
+            if lower.startswith("http"):
+                return token.rstrip(".,);]")
+            return f"https://{token.rstrip('.,);]')}"
+    return ""
+
+
+def is_meeting_link(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        host = urlparse(url).netloc.lower()
+    except Exception:
+        return False
+    return "teams.microsoft.com" in host or "meet.google.com" in host
+
+
+def next_occurrence(remind_at: datetime, recurrence: str) -> datetime | None:
+    if recurrence == ManualReminder.Recurrence.DAILY:
+        return remind_at + timedelta(days=1)
+    if recurrence == ManualReminder.Recurrence.WEEKLY:
+        return remind_at + timedelta(weeks=1)
+    if recurrence == ManualReminder.Recurrence.MONTHLY:
+        # Advance one calendar month without depending on python-dateutil.
+        year, month = remind_at.year, remind_at.month + 1
+        if month > 12:
+            year, month = year + 1, 1
+        day = min(remind_at.day, [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1])
+        return remind_at.replace(year=year, month=month, day=day)
+    return None
+
+
+def expand_reminder_dates(reminder: ManualReminder, dt_from: date, dt_to: date):
+    """Yield (datetime, done_for_occurrence) pairs that fall in [dt_from, dt_to]."""
+    cursor = reminder.remind_at
+    if timezone.is_naive(cursor):
+        cursor = timezone.make_aware(cursor)
+
+    # Walk forward from the stored remind_at until we pass the range end.
+    # Cap iterations so a bad recurrence can't spin forever.
+    for _ in range(400):
+        d = timezone.localtime(cursor).date()
+        if reminder.recurrence_end and d > reminder.recurrence_end:
+            break
+        if d > dt_to:
+            break
+        if d >= dt_from:
+            # Only the "current" stored occurrence can be marked done; past
+            # expanded instances of a series are treated as completed visually
+            # when the reminder itself is done and recurrence is none, or when
+            # this cursor matches the live remind_at and done=True.
+            same_as_live = timezone.localtime(cursor) == timezone.localtime(reminder.remind_at)
+            done = bool(reminder.done and (reminder.recurrence == ManualReminder.Recurrence.NONE or same_as_live))
+            yield cursor, done
+        nxt = next_occurrence(cursor, reminder.recurrence)
+        if nxt is None:
+            break
+        cursor = nxt
+
+
 def build_agenda(*, user, dt_from, dt_to, scope="self"):
-    """Return a flat, date-sorted list of agenda items. scope='all' is manager-only."""
+    """Return a flat, date-sorted list of agenda items.
+
+    Personal calendar always uses scope='self' (own tasks / reminders / todos).
+    scope='all' remains available for manager company views elsewhere.
+    """
     company = scope == "all" and is_superadmin(user)
     items = []
 
     # --- Tasks with a due_date ---
     task_qs = Task.objects.filter(due_date__range=(dt_from, dt_to)).select_related("assignee")
     if company:
-        # Company-wide view stays focused on real tasks — a task mirrored
-        # from a client's content calendar assignment (spec follow-up: the
-        # superadmin's calendar shouldn't show employees' per-client social
-        # media assignments) is surfaced on that client's own calendar
-        # instead, not here.
         task_qs = task_qs.filter(content_item__isnull=True)
     else:
         task_qs = task_qs.filter(assignee=user)
@@ -43,9 +111,37 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "id": t.id,
                 "title": t.title,
                 "date": _iso(t.due_date),
-                "meta": {"status": t.status, "assignee": t.assignee_id, "priority": t.priority},
+                "done": t.status == Task.Status.COMPLETED,
+                "meta": {
+                    "status": t.status,
+                    "assignee": t.assignee_id,
+                    "assignee_name": (t.assignee.full_name or t.assignee.email) if t.assignee else "",
+                    "priority": t.priority,
+                    "meeting_url": detect_meeting_url(t.description or ""),
+                },
             }
         )
+
+    # --- Personal to-dos (self scope only) ---
+    # Prefer due_date when set; otherwise fall back to created_at so items from
+    # the To-Do page still appear on the personal calendar.
+    if not company:
+        todo_qs = TodoItem.objects.filter(owner=user).filter(
+            Q(due_date__range=(dt_from, dt_to))
+            | Q(due_date__isnull=True, created_at__date__range=(dt_from, dt_to))
+        )
+        for td in todo_qs:
+            day = td.due_date or timezone.localtime(td.created_at).date()
+            items.append(
+                {
+                    "source": "todo",
+                    "id": td.id,
+                    "title": td.text,
+                    "date": _iso(day),
+                    "done": td.done,
+                    "meta": {"status": "done" if td.done else "todo"},
+                }
+            )
 
     # --- Daily tracker entries ---
     dt_qs = DailyTrackerEntry.objects.filter(date__range=(dt_from, dt_to)).select_related("user")
@@ -58,6 +154,7 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "id": e.id,
                 "title": e.task_name,
                 "date": _iso(e.date),
+                "done": False,
                 "meta": {"user": e.user_id},
             }
         )
@@ -73,29 +170,38 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "id": p.id,
                 "title": f"{p.name} — delivery",
                 "date": _iso(p.delivery_date),
+                "done": p.status == Project.Status.COMPLETED,
                 "meta": {"status": p.status, "client": p.client},
             }
         )
 
-    # --- Content calendar items (client social media calendar) — self scope
-    # only; the superadmin's company-wide calendar deliberately excludes
-    # these (spec follow-up), see that client's own calendar page instead. ---
+    # --- Content calendar items — self scope only ---
     if not company:
         content_qs = ContentCalendarItem.objects.filter(
             scheduled_date__range=(dt_from, dt_to), assignees=user
-        ).select_related("client")
+        ).select_related("client").prefetch_related("assignees")
         for ci in content_qs.distinct():
+            meeting = detect_meeting_url(ci.description or "")
             items.append(
                 {
                     "source": "content_calendar",
                     "id": ci.id,
                     "title": f"{ci.title} — {ci.client.name}",
                     "date": _iso(ci.scheduled_date),
-                    "meta": {"status": ci.status, "content_type": ci.content_type, "client": ci.client_id},
+                    "done": ci.status == "done",
+                    "meta": {
+                        "status": ci.status,
+                        "content_type": ci.content_type,
+                        "client": ci.client_id,
+                        "meeting_url": meeting,
+                        "assignees": [
+                            {"id": u.id, "name": u.full_name or u.email} for u in ci.assignees.all()
+                        ],
+                    },
                 }
             )
 
-    # --- Renewals (client + staff) — manager scope only ---
+    # --- Renewals — manager scope only ---
     if company:
         for r in Renewal.objects.filter(due_date__range=(dt_from, dt_to)):
             items.append(
@@ -104,26 +210,54 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                     "id": r.id,
                     "title": f"{r.get_renewal_type_display()} renewal",
                     "date": _iso(r.due_date),
+                    "done": r.status in ("renewed", "completed", "done"),
                     "meta": {"subject_type": r.subject_type, "status": r.status},
                 }
             )
 
-    # --- Manual reminders: own always; company-wide visible to everyone ---
-    rem_qs = ManualReminder.objects.filter(remind_at__date__range=(dt_from, dt_to)).select_related(
-        "owner"
+    # --- Manual reminders: owner or assignee (self); all in company scope ---
+    rem_qs = (
+        ManualReminder.objects.filter(
+            Q(remind_at__date__range=(dt_from, dt_to))
+            | (
+                ~Q(recurrence=ManualReminder.Recurrence.NONE)
+                & Q(remind_at__date__lte=dt_to)
+                & (Q(recurrence_end__isnull=True) | Q(recurrence_end__gte=dt_from))
+            )
+        )
+        .select_related("owner")
+        .prefetch_related("assignees")
     )
     if not company:
-        rem_qs = rem_qs.filter(Q(owner=user) | Q(visibility=ManualReminder.Visibility.COMPANY))
+        rem_qs = rem_qs.filter(
+            Q(owner=user)
+            | Q(assignees=user)
+            | Q(visibility=ManualReminder.Visibility.COMPANY)
+        ).distinct()
+
     for m in rem_qs:
-        items.append(
-            {
-                "source": "manual",
-                "id": m.id,
-                "title": m.title,
-                "date": _iso(m.remind_at),
-                "meta": {"visibility": m.visibility, "owner": m.owner_id},
-            }
-        )
+        meeting = m.meeting_url or detect_meeting_url(m.description or "")
+        assignee_list = [{"id": u.id, "name": u.full_name or u.email} for u in m.assignees.all()]
+        for when, done in expand_reminder_dates(m, dt_from, dt_to):
+            items.append(
+                {
+                    "source": "manual",
+                    "id": m.id,
+                    "title": m.title,
+                    "date": _iso(when),
+                    "done": done,
+                    "meta": {
+                        "visibility": m.visibility,
+                        "owner": m.owner_id,
+                        "owner_name": m.owner.full_name or m.owner.email,
+                        "description": m.description,
+                        "meeting_url": meeting,
+                        "recurrence": m.recurrence,
+                        "assignees": assignee_list,
+                        "time": timezone.localtime(when).strftime("%I:%M %p").lstrip("0"),
+                    },
+                }
+            )
 
     items.sort(key=lambda x: x["date"])
     return items

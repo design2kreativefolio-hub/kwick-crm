@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
@@ -11,7 +11,11 @@ import { Modal } from "@/components/Modal";
 import { MultiSelect } from "@/components/MultiSelect";
 import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
+import { assigneeSelectOptions } from "@/lib/assigneeOptions";
+import { useAuth } from "@/lib/auth";
+import { STATUS_BADGE, STATUS_COLOR } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
+import { useShellFillHeight } from "@/lib/useShellFillHeight";
 
 type Client = { id: number; client_id: string; name: string; poc_name: string; accent_color: string; logo_url: string };
 type Contact = { id: number; full_name: string; email: string };
@@ -26,7 +30,9 @@ type ContentItem = {
   status: string;
   assignees: number[];
   assignee_names: { id: number; name: string }[];
+  my_task_id: number | null;
   attachment_url: string;
+  attachment_urls: string[];
   created_by_name: string;
   created_at: string;
 };
@@ -47,11 +53,6 @@ const STATUSES = [
   { value: "in_progress", label: "In progress" },
   { value: "done", label: "Completed" },
 ];
-const STATUS_COLOR: Record<string, string> = {
-  planned: "#7C4FE0",
-  in_progress: "#C9821B",
-  done: "#1E9E62",
-};
 const DEFAULT_ACCENT = "#3673FC";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -77,21 +78,28 @@ const emptyForm = {
 
 export default function ClientCalendarPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const focusItemId = Number(searchParams.get("item") || "") || null;
   const clientId = params.id as string;
+  const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useShellFillHeight(rootRef);
 
   const [client, setClient] = useState<Client | null>(null);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [directory, setDirectory] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const deepLinkedItemRef = useRef<number | null>(null);
 
   const [anchor, setAnchor] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachments, setAttachments] = useState<File[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,9 +121,36 @@ export default function ClientCalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
+  // Deep-link from Tasks: land on the day for ?item= and open details once.
+  useEffect(() => {
+    if (!focusItemId || loading || !items.length) return;
+    if (deepLinkedItemRef.current === focusItemId) return;
+    const item = items.find((it) => it.id === focusItemId);
+    if (!item) return;
+    deepLinkedItemRef.current = focusItemId;
+    const dayIso = item.deadline || item.scheduled_date;
+    const [y, m, d] = dayIso.split("-").map(Number);
+    const day = new Date(y, m - 1, d);
+    setSelectedDate(day);
+    setAnchor(new Date(y, m - 1, 1));
+    setEditingId(item.id);
+    setForm({
+      content_type: item.content_type,
+      title: item.title,
+      description: item.description,
+      scheduled_date: dayIso,
+      deadline: dayIso,
+      status: item.status,
+      assignees: item.assignees,
+    });
+    setAttachments([]);
+    setError(null);
+    setModalOpen(true);
+  }, [focusItemId, loading, items]);
+
   const assigneeOptions = useMemo(
-    () => directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email })),
-    [directory]
+    () => assigneeSelectOptions(user, directory),
+    [user, directory]
   );
 
   const gridStart = useMemo(
@@ -160,7 +195,7 @@ export default function ClientCalendarPage() {
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
-    setAttachment(null);
+    setAttachments([]);
     setError(null);
   };
 
@@ -171,45 +206,54 @@ export default function ClientCalendarPage() {
 
   const openCreate = (date: Date) => {
     resetForm();
-    setForm((f) => ({ ...f, scheduled_date: toIso(date) }));
+    const day = toIso(date);
+    setForm((f) => ({
+      ...f,
+      // Calendar day = deadline (scheduled_date kept in sync for API/calendar).
+      scheduled_date: day,
+      deadline: day,
+      assignees: user?.id ? [user.id] : [],
+    }));
     setModalOpen(true);
   };
 
   const openEdit = (item: ContentItem) => {
     setEditingId(item.id);
+    const day = item.deadline || item.scheduled_date;
     setForm({
       content_type: item.content_type,
       title: item.title,
       description: item.description,
-      scheduled_date: item.scheduled_date,
-      deadline: item.deadline || "",
+      scheduled_date: day,
+      deadline: day,
       status: item.status,
       assignees: item.assignees,
     });
-    setAttachment(null);
+    setAttachments([]);
     setError(null);
     setModalOpen(true);
   };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.scheduled_date) {
-      setError("Title and scheduled date are required.");
+    if (!form.title.trim() || !form.deadline) {
+      setError("Title and deadline are required.");
       return;
     }
     setSaving(true);
     setError(null);
     try {
+      const day = form.deadline;
       const body = new FormData();
       body.append("client", clientId);
       body.append("content_type", form.content_type);
       body.append("title", form.title.trim());
       body.append("description", form.description);
-      body.append("scheduled_date", form.scheduled_date);
-      if (form.deadline) body.append("deadline", form.deadline);
+      body.append("scheduled_date", day);
+      body.append("deadline", day);
       body.append("status", form.status);
       form.assignees.forEach((a) => body.append("assignees", String(a)));
-      if (attachment) body.append("attachment", attachment);
+      attachments.forEach((f) => body.append("attachments", f));
 
       if (editingId) {
         await api(`/api/projects/content-calendar/${editingId}`, { method: "PATCH", body });
@@ -255,10 +299,43 @@ export default function ClientCalendarPage() {
 
   const today = new Date();
   const editingItem = editingId ? items.find((i) => i.id === editingId) : null;
+  const selectedItems = itemsByDate[toIso(selectedDate)] ?? [];
+
+  const detectMeeting = (text: string) => {
+    if (!text) return "";
+    for (const token of text.replace(/\n/g, " ").split(/\s+/)) {
+      const lower = token.toLowerCase().replace(/[.,);]+$/, "");
+      if (lower.includes("teams.microsoft.com") || lower.includes("meet.google.com")) {
+        return lower.startsWith("http") ? token.replace(/[.,);]+$/, "") : `https://${token.replace(/[.,);]+$/, "")}`;
+      }
+    }
+    return "";
+  };
+
+  const markDone = async (item: ContentItem) => {
+    try {
+      await api(`/api/projects/content-calendar/${item.id}`, {
+        method: "PATCH",
+        body: (() => {
+          const body = new FormData();
+          body.append("status", item.status === "done" ? "planned" : "done");
+          return body;
+        })(),
+      });
+      loadItems();
+    } catch {
+      showToast("Couldn't update status.", "error");
+    }
+  };
+
+  const statusLabel = (s: string) => STATUSES.find((x) => x.value === s)?.label || s;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div>
+    <div
+      ref={rootRef}
+      className="kwick-client-cal"
+    >
+      <div style={{ flexShrink: 0 }}>
         <BackLink href="/projects/clients" label="Back to Clients" />
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
           <span style={{ ...logoCircle, background: `${accent}22`, color: accent }}>
@@ -271,7 +348,7 @@ export default function ClientCalendarPage() {
           </span>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <h1 style={{ margin: 0, fontSize: 22 }}>{client?.name || "…"}</h1>
+              <h1 style={{ margin: 0, fontSize: 20 }}>{client?.name || "…"}</h1>
               {client && (
                 <span className="badge badge-muted" style={{ fontFamily: "monospace" }}>
                   {client.client_id}
@@ -285,101 +362,236 @@ export default function ClientCalendarPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, flexShrink: 0 }}>
         <KpiCard label="Total Items" value={counts.total} icon="bi-collection-fill" tone="blue" />
         <KpiCard label="Completed" value={counts.done} icon="bi-check-circle-fill" tone="mint" />
         <KpiCard label="In Progress" value={counts.in_progress} icon="bi-hourglass-split" tone="amber" />
         <KpiCard label="To Do" value={counts.planned} icon="bi-calendar-event" tone="purple" />
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ ...calHeader, background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)` }}>
-          <span style={{ fontSize: 17, fontWeight: 700 }}>
-            {anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-          </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="icon-btn-anim" style={navBtn} onClick={goPrev} aria-label="Previous month">
-              <i className="bi bi-chevron-left" />
-            </button>
-            <button className="icon-btn-anim" style={navBtn} onClick={goToday} aria-label="This month">
-              <i className="bi bi-calendar-event" />
-            </button>
-            <button className="icon-btn-anim" style={navBtn} onClick={goNext} aria-label="Next month">
-              <i className="bi bi-chevron-right" />
-            </button>
+      <div className="kwick-cal-layout">
+        <div className="card" style={{ padding: 0, overflow: "hidden", minWidth: 0, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+          <div style={{ ...calHeader, background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)` }}>
+            <span style={{ fontSize: 17, fontWeight: 700 }}>
+              {anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="icon-btn-anim" style={navBtn} onClick={goPrev} aria-label="Previous month">
+                <i className="bi bi-chevron-left" />
+              </button>
+              <button className="icon-btn-anim" style={navBtn} onClick={goToday} aria-label="This month">
+                <i className="bi bi-calendar-event" />
+              </button>
+              <button className="icon-btn-anim" style={navBtn} onClick={goNext} aria-label="Next month">
+                <i className="bi bi-chevron-right" />
+              </button>
+            </div>
           </div>
-        </div>
-        <div style={weekHeaderRow}>
-          {WEEKDAYS.map((d) => (
-            <div key={d} style={weekHeaderCell}>{d}</div>
-          ))}
-        </div>
-        {loading ? (
-          <p className="muted" style={{ padding: 20 }}>Loading…</p>
-        ) : (
-          <div style={monthGrid}>
-            {monthDays.map((d) => {
-              const iso = toIso(d);
-              const dayItems = itemsByDate[iso] ?? [];
-              const inMonth = d.getMonth() === anchor.getMonth();
-              const isToday = iso === toIso(today);
-              return (
-                <div
-                  key={iso}
-                  onClick={() => openCreate(d)}
-                  style={{
-                    ...dayCell,
-                    opacity: inMonth ? 1 : 0.4,
-                    background: isToday ? "var(--success-soft)" : "transparent",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 12, fontWeight: isToday ? 700 : 500 }}>{d.getDate()}</span>
-                    <button
-                      type="button"
-                      className="icon-btn-anim"
-                      style={{ ...addDayBtn, background: `${accent}22`, color: accent }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openCreate(d);
-                      }}
-                      aria-label="Add content item"
-                      title="Add content item"
-                    >
-                      <i className="bi bi-plus-lg" style={{ fontSize: 10.5 }} />
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
-                    {dayItems.slice(0, 3).map((it) => (
+          <div style={weekHeaderRow}>
+            {WEEKDAYS.map((d) => (
+              <div key={d} style={weekHeaderCell}>{d}</div>
+            ))}
+          </div>
+          {loading ? (
+            <p className="muted" style={{ padding: 20 }}>Loading…</p>
+          ) : (
+            <div
+              style={{
+                ...monthGrid,
+                flex: 1,
+                minHeight: 0,
+                gridTemplateRows: `repeat(${Math.ceil(monthDays.length / 7)}, minmax(0, 1fr))`,
+              }}
+            >
+              {monthDays.map((d) => {
+                const iso = toIso(d);
+                const dayItems = itemsByDate[iso] ?? [];
+                const inMonth = d.getMonth() === anchor.getMonth();
+                const isToday = iso === toIso(today);
+                const isSelected = iso === toIso(selectedDate);
+                return (
+                  <div
+                    key={iso}
+                    onClick={() => setSelectedDate(d)}
+                    style={{
+                      ...dayCell,
+                      opacity: inMonth ? 1 : 0.4,
+                      background: isSelected ? `${accent}14` : isToday ? "var(--success-soft)" : "transparent",
+                      boxShadow: isSelected ? `inset 0 0 0 2px ${accent}` : undefined,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 12, fontWeight: isToday || isSelected ? 700 : 500 }}>{d.getDate()}</span>
                       <button
-                        key={it.id}
                         type="button"
+                        className="icon-btn-anim"
+                        style={{ ...addDayBtn, background: `${accent}22`, color: accent }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          openEdit(it);
+                          setSelectedDate(d);
+                          openCreate(d);
                         }}
-                        style={{
-                          ...itemChip,
-                          background: `${STATUS_COLOR[it.status] ?? "var(--gold)"}1f`,
-                          color: STATUS_COLOR[it.status] ?? "var(--gold)",
-                        }}
-                        title={it.title}
+                        aria-label="Add content item"
+                        title="Add content item"
                       >
-                        {it.title}
+                        <i className="bi bi-plus-lg" style={{ fontSize: 10.5 }} />
                       </button>
-                    ))}
-                    {dayItems.length > 3 && (
-                      <span className="muted" style={{ fontSize: 10 }}>+{dayItems.length - 3} more</span>
-                    )}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
+                      {dayItems.slice(0, 3).map((it) => (
+                        <button
+                          key={it.id}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDate(d);
+                            openEdit(it);
+                          }}
+                          style={{
+                            ...itemChip,
+                            background: `${STATUS_COLOR[it.status] ?? "var(--gold)"}1f`,
+                            color: STATUS_COLOR[it.status] ?? "var(--gold)",
+                            textDecoration: it.status === "done" ? "line-through" : undefined,
+                            opacity: it.status === "done" ? 0.65 : 1,
+                            border: "none",
+                            width: "100%",
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                          title={it.title}
+                        >
+                          {it.title}
+                        </button>
+                      ))}
+                      {dayItems.length > 3 && (
+                        <span className="muted" style={{ fontSize: 10 }}>+{dayItems.length - 3} more</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card" style={sidePanel}>
+          <div style={{ marginBottom: 14 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--navy)" }}>
+                {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              </h2>
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+              Content scheduled for this day
+            </p>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto", minHeight: 0 }}>
+            {selectedItems.length === 0 && (
+              <p className="muted" style={{ fontSize: 13 }}>No content on this day.</p>
+            )}
+            {selectedItems.map((it) => {
+              const color = STATUS_COLOR[it.status] ?? accent;
+              const meeting = detectMeeting(it.description || "");
+              const done = it.status === "done";
+              return (
+                <div
+                  key={it.id}
+                  style={{
+                    ...contentCard,
+                    opacity: done ? 0.72 : 1,
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <span style={{ ...typeIcon, background: `${color}18`, color }}>
+                      <i className="bi bi-image" />
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(it)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            textAlign: "left",
+                            fontWeight: 650,
+                            fontSize: 13.5,
+                            color: "var(--navy)",
+                            cursor: "pointer",
+                            textDecoration: done ? "line-through" : undefined,
+                            flex: 1,
+                          }}
+                          title="Edit content"
+                        >
+                          {it.title}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: "2px 8px", fontSize: 11 }}
+                          onClick={() => markDone(it)}
+                          title={done ? "Mark as to do" : "Mark completed"}
+                        >
+                          <i className={`bi ${done ? "bi-arrow-counterclockwise" : "bi-check2"}`} />
+                        </button>
+                      </div>
+                      <div className="muted" style={{ fontSize: 11.5, marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span>
+                          {CONTENT_TYPES.find((c) => c.value === it.content_type)?.label || it.content_type}
+                        </span>
+                        <span className={`badge ${STATUS_BADGE[it.status] ?? "badge-muted"}`}>
+                          {statusLabel(it.status)}
+                        </span>
+                      </div>
+                      {it.assignee_names?.length > 0 && (
+                        <div style={{ display: "flex", marginTop: 8 }}>
+                          {it.assignee_names.slice(0, 5).map((a, i) => (
+                            <span
+                              key={a.id}
+                              title={a.name}
+                              style={{
+                                ...avatar,
+                                marginLeft: i === 0 ? 0 : -6,
+                                zIndex: 5 - i,
+                              }}
+                            >
+                              {a.name
+                                .split(/\s+/)
+                                .slice(0, 2)
+                                .map((p) => p[0]?.toUpperCase() || "")
+                                .join("")}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {meeting && (
+                        <a
+                          href={meeting}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-sm"
+                          style={joinBtn}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <i className="bi bi-camera-video-fill" /> Go to Meeting
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
+
+          <div style={sideFooter}>
+            <button className="btn" style={{ width: "100%", background: accent, borderColor: accent }} onClick={() => openCreate(selectedDate)}>
+              <i className="bi bi-plus-lg" /> Add Content
+            </button>
+          </div>
+        </div>
       </div>
 
-      <Modal open={modalOpen} onClose={closeModal}>
+      <Modal open={modalOpen} onClose={closeModal} wide>
         <form onSubmit={save}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span className="card-title" style={{ margin: 0 }}>
@@ -396,106 +608,153 @@ export default function ClientCalendarPage() {
             </button>
           </div>
 
-          <label className="field-label" style={{ marginTop: 14 }}>Content type</label>
-              <Select
-                value={form.content_type}
-                onChange={(v) => setForm((f) => ({ ...f, content_type: v }))}
-                options={CONTENT_TYPES}
-                ariaLabel="Content type"
-              />
+          <div className="kwick-form-wide" style={{ marginTop: 14 }}>
+            <div className="kwick-form-wide__row kwick-form-wide__row--3">
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Content type</label>
+                <Select
+                  value={form.content_type}
+                  onChange={(v) => setForm((f) => ({ ...f, content_type: v }))}
+                  options={CONTENT_TYPES}
+                  ariaLabel="Content type"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Status</label>
+                <Select
+                  value={form.status}
+                  onChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                  options={STATUSES}
+                  ariaLabel="Status"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Assign people</label>
+                <MultiSelect
+                  values={form.assignees.map(String)}
+                  onChange={(vals) => setForm((f) => ({ ...f, assignees: vals.map(Number) }))}
+                  options={assigneeOptions}
+                  placeholder="Select people…"
+                  ariaLabel="Assign people"
+                />
+              </div>
+            </div>
 
-              <label className="field-label">Title</label>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Title</label>
               <input
                 className="input"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 required
               />
+            </div>
 
-              <label className="field-label">Description</label>
+            <div className="kwick-form-wide__desc">
+              <label className="field-label" style={{ marginTop: 0 }}>Description</label>
               <textarea
                 className="input"
-                rows={3}
+                rows={6}
                 style={{ resize: "vertical" }}
                 placeholder="Write content details"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               />
+            </div>
 
-              <div style={fieldGrid}>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Scheduled date</label>
-                  <DatePicker
-                    value={form.scheduled_date}
-                    onChange={(v) => setForm((f) => ({ ...f, scheduled_date: v }))}
-                    ariaLabel="Scheduled date"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Deadline</label>
-                  <DatePicker
-                    value={form.deadline}
-                    onChange={(v) => setForm((f) => ({ ...f, deadline: v }))}
-                    ariaLabel="Deadline"
-                  />
-                </div>
-              </div>
-
-              <label className="field-label">Status</label>
-              <Select
-                value={form.status}
-                onChange={(v) => setForm((f) => ({ ...f, status: v }))}
-                options={STATUSES}
-                ariaLabel="Status"
-              />
-
-              <label className="field-label">Assign people</label>
-              <MultiSelect
-                values={form.assignees.map(String)}
-                onChange={(vals) => setForm((f) => ({ ...f, assignees: vals.map(Number) }))}
-                options={assigneeOptions}
-                placeholder="Select people…"
-                ariaLabel="Assign people"
-              />
-
-              <label className="field-label">Attachment</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <input
-                  ref={attachmentInputRef}
-                  type="file"
-                  hidden
-                  onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+            <div className="kwick-form-wide__row kwick-form-wide__row--2">
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Deadline</label>
+                <DatePicker
+                  value={form.deadline}
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      deadline: v,
+                      scheduled_date: v,
+                    }))
+                  }
+                  ariaLabel="Deadline"
                 />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => attachmentInputRef.current?.click()}
-                >
-                  <i className="bi bi-paperclip" /> Choose file
-                </button>
-                <span className="muted" style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {attachment
-                    ? attachment.name
-                    : editingItem?.attachment_url
-                    ? "Current attachment kept"
-                    : "No file chosen"}
-                </span>
               </div>
-              {editingItem?.attachment_url && !attachment && (
-                <a
-                  href={editingItem.attachment_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="muted"
-                  style={{ fontSize: 12, color: "var(--gold)", marginTop: 6, display: "inline-block" }}
-                >
-                  <i className="bi bi-download" /> View current attachment
-                </a>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Attachments</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files || []);
+                      e.target.value = "";
+                      if (!picked.length) return;
+                      setAttachments((prev) => [...prev, ...picked].slice(0, 5));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => attachmentInputRef.current?.click()}
+                    disabled={attachments.length >= 5}
+                  >
+                    <i className="bi bi-paperclip" /> Choose files
+                  </button>
+                  <span className="muted" style={{ fontSize: 12.5 }}>
+                    Up to 5{attachments.length ? ` · ${attachments.length} selected` : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+              {attachments.length > 0 && (
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {attachments.map((f, idx) => (
+                    <li key={`${f.name}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                      <i className="bi bi-file-earmark" style={{ color: "var(--gold)" }} />
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: "2px 8px", color: "var(--danger)" }}
+                        onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label="Remove file"
+                      >
+                        <i className="bi bi-x-lg" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
+              {(() => {
+                const existing = editingItem?.attachment_urls?.length
+                  ? editingItem.attachment_urls
+                  : editingItem?.attachment_url
+                  ? [editingItem.attachment_url]
+                  : [];
+                if (!existing.length || attachments.length > 0) return null;
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span className="muted" style={{ fontSize: 12 }}>Current attachments kept unless you choose new files:</span>
+                    {existing.map((url, i) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="muted"
+                        style={{ fontSize: 12, color: "var(--gold)" }}
+                      >
+                        <i className="bi bi-download" /> Attachment {i + 1}
+                      </a>
+                    ))}
+                  </div>
+                );
+              })()}
 
-              {error && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 10 }}>{error}</p>}
+              {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
 
-              <div style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button className="btn" disabled={saving}>
                   {saving ? "Saving…" : editingId ? "Save changes" : "Add item"}
                 </button>
@@ -514,6 +773,7 @@ export default function ClientCalendarPage() {
                   </button>
                 )}
           </div>
+          </div>
         </form>
       </Modal>
       {ConfirmDialog}
@@ -527,8 +787,61 @@ const calHeader: React.CSSProperties = {
   justifyContent: "space-between",
   flexWrap: "wrap",
   gap: 12,
-  padding: "16px 20px",
+  padding: "14px 16px",
   color: "#fff",
+  flexShrink: 0,
+};
+const sidePanel: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  padding: 14,
+  minWidth: 0,
+  minHeight: 0,
+  height: "100%",
+  overflow: "hidden",
+};
+const sideFooter: React.CSSProperties = {
+  marginTop: 14,
+  paddingTop: 14,
+  borderTop: "1px solid var(--border)",
+};
+const contentCard: React.CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: 14,
+  padding: 12,
+  boxShadow: "var(--shadow)",
+};
+const typeIcon: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  minWidth: 34,
+  borderRadius: 10,
+  display: "grid",
+  placeItems: "center",
+  fontSize: 14,
+};
+const avatar: React.CSSProperties = {
+  width: 24,
+  height: 24,
+  borderRadius: "50%",
+  background: "var(--brand-fill)",
+  color: "var(--on-brand)",
+  fontSize: 9,
+  fontWeight: 700,
+  display: "grid",
+  placeItems: "center",
+  border: "2px solid #fff",
+};
+const joinBtn: React.CSSProperties = {
+  marginTop: 10,
+  background: "#1E9E62",
+  color: "#fff",
+  border: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  textDecoration: "none",
 };
 const navBtn: React.CSSProperties = {
   width: 30,
@@ -554,16 +867,18 @@ const weekHeaderCell: React.CSSProperties = {
 };
 const monthGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
 };
 const dayCell: React.CSSProperties = {
-  minHeight: 84,
+  minHeight: 0,
+  minWidth: 0,
   padding: 6,
   borderRight: "1px solid var(--border)",
   borderBottom: "1px solid var(--border)",
   display: "flex",
   flexDirection: "column",
   cursor: "pointer",
+  overflow: "hidden",
 };
 const addDayBtn: React.CSSProperties = {
   width: 18,

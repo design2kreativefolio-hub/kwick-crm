@@ -7,6 +7,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from common.permissions import IsActive, IsSuperadmin
 from common.services import log_activity
+from notifications.services import refresh_daily_reminder, stop_recurring_reminder
 
 from .models import ModuleAccess, Role, User, UserStatus
 from .serializers import (
@@ -30,6 +31,13 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        name = user.full_name or user.email
+        refresh_daily_reminder(
+            source="registration",
+            title="New signup awaiting approval",
+            body=f"{name} ({user.email}) registered and is waiting for approval.",
+            object_ref=f"registration:{user.id}",
+        )
         return Response(
             {
                 "id": user.id,
@@ -88,6 +96,7 @@ class ApproveUserView(APIView):
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
         user.status = UserStatus.ACTIVE
         user.save(update_fields=["status", "updated_at"])
+        stop_recurring_reminder(object_ref=f"registration:{user.id}")
         # Approval email is email-only (no push) per spec §4. Self-registered
         # employees already have a password and just get notified; employees
         # added via HR (no password yet) get a set-password link instead.
@@ -110,6 +119,7 @@ class RejectUserView(APIView):
                 {"detail": "User not found or not awaiting approval."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        stop_recurring_reminder(object_ref=f"registration:{user.id}")
         user.delete()
         return Response({"detail": "Registration rejected."})
 
@@ -122,9 +132,9 @@ class EmployeeListView(APIView):
     permission_classes = [IsSuperadmin]
 
     def get(self, request):
-        employees = User.objects.filter(role=Role.EMPLOYEE, status=UserStatus.ACTIVE).order_by(
-            "full_name"
-        )
+        employees = User.objects.filter(
+            role=Role.EMPLOYEE, status=UserStatus.ACTIVE, purged_at__isnull=True
+        ).order_by("full_name")
         return Response(
             [
                 {"id": e.id, "full_name": e.full_name, "email": e.email}
@@ -168,8 +178,7 @@ class ForgotPasswordView(APIView):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        # Same response whether or not the email matched an account.
-        return Response({"detail": "If an account exists for that email, a reset link has been sent."})
+        return Response({"detail": "A password reset link has been sent to your email."})
 
 
 class SetPasswordView(APIView):

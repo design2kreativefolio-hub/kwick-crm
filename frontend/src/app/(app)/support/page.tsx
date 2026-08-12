@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Reveal } from "@/components/Reveal";
 import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
@@ -70,14 +71,17 @@ export default function SupportPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 880 }}>
-      <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 880, width: "100%", margin: "0 auto" }}>
+      <Reveal index={0}>
+      <div style={{ textAlign: "center" }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>Support</h1>
         <p className="muted" style={{ marginTop: 4 }}>
           Need help with Kwick? Send a message or reach us directly by email or WhatsApp.
         </p>
       </div>
+      </Reveal>
 
+      <Reveal index={1}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
         <a href={`mailto:${SUPPORT_EMAIL}`} className="card" style={contactCard}>
           <i className="bi bi-envelope-fill" style={contactIcon} />
@@ -94,7 +98,9 @@ export default function SupportPage() {
           </div>
         </a>
       </div>
+      </Reveal>
 
+      <Reveal index={2}>
       <form className="card" onSubmit={submit}>
         <span className="card-title">
           <i className="bi bi-headset" style={{ color: "var(--gold)" }} />
@@ -184,6 +190,7 @@ export default function SupportPage() {
           </button>
         </div>
       </form>
+      </Reveal>
     </div>
   );
 }

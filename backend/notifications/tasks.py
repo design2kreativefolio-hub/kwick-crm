@@ -67,6 +67,18 @@ def _send_web_push(user, payload):
 
 
 @shared_task
+def send_web_push_payload(user_id: int, payload: dict):
+    """Send a raw web-push payload to one user (e.g. chat) without creating a NotificationEvent."""
+    from accounts.models import User
+
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return
+    _send_web_push(user, payload)
+
+
+@shared_task
 def refire_recurring_reminders():
     """
     Re-fire active recurring reminders (leave/ticket) so they nag daily while

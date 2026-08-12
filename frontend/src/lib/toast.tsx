@@ -39,7 +39,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div style={host}>
+      <div className="kwick-toast-host" aria-live="polite">
         <AnimatePresence>
           {toasts.map((t) => {
             const meta = TYPE_META[t.type];
@@ -47,6 +47,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <motion.div
                 key={t.id}
                 layout
+                className="kwick-toast"
                 initial={{ opacity: 0, y: 16, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.95 }}
@@ -57,10 +58,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                     setToasts((prev) => prev.filter((x) => x.id !== t.id));
                   }
                 }}
-                style={{ ...toastStyle, cursor: t.onClick ? "pointer" : "default" }}
+                style={{ cursor: t.onClick ? "pointer" : "default" }}
               >
                 <i className={`bi ${meta.icon}`} style={{ color: meta.color, fontSize: 17 }} />
-                <span style={{ fontSize: 13.5, fontWeight: 500 }}>{t.message}</span>
+                <span className="kwick-toast__msg">{t.message}</span>
               </motion.div>
             );
           })}
@@ -69,27 +70,3 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     </ToastContext.Provider>
   );
 }
-
-const host: React.CSSProperties = {
-  position: "fixed",
-  bottom: 24,
-  right: 24,
-  zIndex: 1000,
-  display: "flex",
-  flexDirection: "column-reverse",
-  gap: 10,
-  pointerEvents: "none",
-};
-const toastStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  boxShadow: "var(--shadow)",
-  borderRadius: 12,
-  padding: "12px 18px",
-  minWidth: 240,
-  maxWidth: 360,
-  pointerEvents: "auto",
-};

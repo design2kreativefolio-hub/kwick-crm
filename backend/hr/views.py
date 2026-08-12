@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 from accounts.models import Module, Role, StaffProfile, UserStatus
 from accounts.tasks import send_password_reset_email, send_status_change_email, send_welcome_email
 from common.permissions import HasModuleAccess, IsActive, has_module_access
+from common.services import log_activity
 from notifications.services import (
     notify_user,
     start_recurring_reminder,
@@ -35,6 +36,7 @@ from .serializers import (
     StaffUpdateSerializer,
     TicketSerializer,
 )
+from .services import purge_staff_account
 
 User = get_user_model()
 
@@ -81,10 +83,13 @@ class StaffViewSet(viewsets.ViewSet):
     """Staff directory — superadmin, or anyone granted HR access (spec §5.1/§5.3)."""
 
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_STAFF
 
     def list(self, request):
-        qs = User.objects.filter(role=Role.EMPLOYEE).select_related("profile")
+        qs = (
+            User.objects.filter(role=Role.EMPLOYEE, purged_at__isnull=True)
+            .select_related("profile")
+        )
         search = request.query_params.get("search")
         if search:
             qs = qs.filter(full_name__icontains=search) | qs.filter(email__icontains=search)
@@ -105,7 +110,9 @@ class StaffViewSet(viewsets.ViewSet):
 
     def retrieve(self, request, pk=None):
         try:
-            user = User.objects.select_related("profile").get(pk=pk)
+            user = User.objects.select_related("profile").get(
+                pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True
+            )
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         year = date.today().year
@@ -125,7 +132,7 @@ class StaffViewSet(viewsets.ViewSet):
 
     def partial_update(self, request, pk=None):
         try:
-            user = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+            user = User.objects.get(pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True)
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -145,7 +152,7 @@ class StaffViewSet(viewsets.ViewSet):
         """Manager forces a password reset — emails the employee a one-time
         set-password link rather than a plaintext password (spec follow-up)."""
         try:
-            user = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+            user = User.objects.get(pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True)
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         user.set_unusable_password()
@@ -157,7 +164,7 @@ class StaffViewSet(viewsets.ViewSet):
     def set_status(self, request, pk=None):
         """Manager enables/disables an employee's CRM access (spec follow-up)."""
         try:
-            user = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+            user = User.objects.get(pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True)
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         new_status = request.data.get("status")
@@ -168,18 +175,34 @@ class StaffViewSet(viewsets.ViewSet):
         send_status_change_email.delay(user.id, new_status)
         return Response(StaffListSerializer(user).data)
 
+    @action(detail=True, methods=["post"])
+    def delete_account(self, request, pk=None):
+        """Permanently remove personal details after the account is disabled.
+        Tasks, projects, and other work history stay in the database."""
+        try:
+            user = User.objects.select_related("profile").get(pk=pk, role=Role.EMPLOYEE)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        label = user.full_name or user.email
+        try:
+            purge_staff_account(user=user, actor=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        log_activity(actor=request.user, action=f"Deleted staff account: {label}")
+        return Response({"detail": "Account deleted."}, status=status.HTTP_200_OK)
+
 
 class StaffAvatarUploadView(APIView):
     """Manager sets/replaces an employee's photo — used both from the Add
     Staff form and the staff edit page (spec follow-up)."""
 
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_STAFF
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, pk):
         try:
-            staff = User.objects.get(pk=pk, role=Role.EMPLOYEE)
+            staff = User.objects.get(pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True)
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         upload = request.FILES.get("file")
@@ -201,7 +224,7 @@ class EmployeeCollateralView(APIView):
     """Manager generates a collateral PDF → Object Storage (spec §5.3)."""
 
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_DOCUMENTS
 
     def post(self, request, doc_type):
         staff_id = request.data.get("staff")
@@ -229,7 +252,7 @@ class EmployeeCollateralUploadView(APIView):
     instead of auto-generating one from a template (spec follow-up)."""
 
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_DOCUMENTS
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -265,7 +288,7 @@ class EmployeeCollateralDetailView(APIView):
     can remove')."""
 
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_DOCUMENTS
 
     def delete(self, request, pk):
         try:
@@ -282,7 +305,7 @@ class EmployeeRecordUploadView(APIView):
     (spec follow-up)."""
 
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_DOCUMENTS
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -320,7 +343,7 @@ class EmployeeRecordDetailView(APIView):
     """DELETE an attached HR record."""
 
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_DOCUMENTS
 
     def delete(self, request, pk):
         try:
@@ -344,6 +367,8 @@ class MyCollateralsView(APIView):
 class LeaveViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveSerializer
     permission_classes = [IsActive]
+    # Used by approve/reject actions (HasModuleAccess).
+    required_module = Module.HR_STAFF
 
     def get_queryset(self):
         qs = Leave.objects.select_related("staff")
@@ -417,6 +442,7 @@ class LeaveBalanceView(APIView):
 
 
 class TicketViewSet(viewsets.ModelViewSet):
+    required_module = Module.HR_STAFF
     serializer_class = TicketSerializer
     permission_classes = [IsActive]
 
@@ -455,9 +481,9 @@ class HrLetterViewSet(viewsets.ModelViewSet):
 
     serializer_class = HrLetterSerializer
     permission_classes = [HasModuleAccess]
-    required_module = Module.HR
+    required_module = Module.HR_DOCUMENTS
     filterset_fields = ["doc_type", "status", "staff"]
-    search_fields = ["title"]
+    search_fields = ["title", "staff__full_name", "staff__email", "doc_type"]
 
     def get_queryset(self):
         return HrLetter.objects.select_related("staff", "created_by")

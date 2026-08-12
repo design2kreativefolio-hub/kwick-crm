@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 
 import { BackLink } from "@/components/BackLink";
 import { DatePicker } from "@/components/DatePicker";
+import { DocNameField } from "@/components/DocNameField";
 import { Select } from "@/components/Select";
 import { InvoicePreview } from "@/components/invoices/InvoicePreview";
 import {
@@ -18,6 +19,7 @@ import {
   mergedInvoiceContent,
 } from "@/lib/invoiceContent";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -40,6 +42,7 @@ export default function InvoiceBuilderPage() {
   const [status, setStatus] = useState("draft");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [sending, setSending] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
 
   const formState = useMemo(() => ({ content, status }), [content, status]);
@@ -152,6 +155,33 @@ export default function InvoiceBuilderPage() {
     }
   };
 
+  const sendToEmail = async () => {
+    if (!content) return;
+    const ok = await save();
+    if (!ok) return;
+    setSending(true);
+    try {
+      const res = await api<{ file_url: string }>(`/api/sales/invoices/${id}/pdf`, { method: "POST" });
+      const name = content.title || content.invoice_number || `Invoice-${id}`;
+      await sendDocumentViaEmail({
+        pdfUrl: res.file_url,
+        to: content.bill_to_email,
+        subject: name,
+        body: `Please find the attached invoice${content.invoice_number ? ` #${content.invoice_number}` : ""}.\n\nAttach the downloaded PDF if it is not already attached, then send.`,
+        filename: `${name.replace(/[^\w\-]+/g, "_")}.pdf`,
+      });
+      showToast(
+        content.bill_to_email
+          ? "Email draft opened. Attach the downloaded PDF before sending."
+          : "PDF downloaded. Add a recipient email, or pick one in your mail app."
+      );
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't prepare email." : err.message, "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading || !content) {
     return <p className="muted">Loading invoice…</p>;
   }
@@ -164,35 +194,12 @@ export default function InvoiceBuilderPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
         <div>
           <BackLink href="/sales/invoices" label="Back to Invoices" />
-          <input
-            className="input"
+          <DocNameField
             value={content.title || ""}
-            onChange={(e) => patch({ title: e.target.value })}
-            aria-label="Invoice name"
+            onChange={(v) => patch({ title: v })}
+            ariaLabel="Invoice name"
             placeholder="Invoice"
-            style={{
-              marginTop: 8,
-              fontSize: 22,
-              fontWeight: 700,
-              color: "var(--navy)",
-              border: "1px solid transparent",
-              background: "transparent",
-              padding: "4px 8px",
-              marginLeft: -8,
-              width: "min(100%, 520px)",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--border)";
-              e.currentTarget.style.background = "#fff";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "transparent";
-              e.currentTarget.style.background = "transparent";
-            }}
           />
-          <p className="muted" style={{ marginTop: 4 }}>
-            Rename above for the list and PDF filename. The invoice template still shows INVOICE.
-          </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ width: 150 }}>
@@ -200,6 +207,9 @@ export default function InvoiceBuilderPage() {
           </div>
           <button className="btn btn-ghost" disabled={saving} onClick={save}>
             {saving ? "Saving…" : "Save"}
+          </button>
+          <button className="btn btn-ghost" disabled={sending || exporting} onClick={sendToEmail}>
+            <i className="bi bi-envelope" /> {sending ? "Preparing…" : "Send to"}
           </button>
           <button className="btn btn-accent" disabled={exporting} onClick={exportPdf}>
             <i className="bi bi-file-earmark-pdf-fill" /> {exporting ? "Exporting…" : "Export PDF"}
@@ -304,7 +314,7 @@ export default function InvoiceBuilderPage() {
                     />
                   </div>
                   <div>
-                    <label className="field-label">Details (one bullet per line)</label>
+                    <label className="field-label">Details</label>
                     <textarea
                       className="input"
                       rows={3}
@@ -353,55 +363,84 @@ export default function InvoiceBuilderPage() {
             </div>
           </div>
 
-          <div className="section-card">
-            <div className="section-card-head">
-              <i className="bi bi-bank" style={{ color: "var(--gold)", fontSize: 16 }} />
-              <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>Payment details</span>
-            </div>
-            <div className="section-card-body">
-              <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Payment method</label>
-                <input
-                  className="input"
-                  value={content.payment.payment_method}
-                  onChange={(e) => patchPayment({ payment_method: e.target.value })}
-                />
+          {content.invoice_kind === "petty_cash" ? (
+            <div className="section-card">
+              <div className="section-card-head">
+                <i className="bi bi-person-check" style={{ color: "var(--gold)", fontSize: 16 }} />
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>Authorization</span>
               </div>
-              <div>
-                <label className="field-label">Bank name</label>
-                <input
-                  className="input"
-                  value={content.payment.bank_name}
-                  onChange={(e) => patchPayment({ bank_name: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="field-label">Account name</label>
-                <input
-                  className="input"
-                  value={content.payment.account_name}
-                  onChange={(e) => patchPayment({ account_name: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="field-label">IBAN / Account number</label>
-                <input
-                  className="input"
-                  value={content.payment.iban}
-                  onChange={(e) => patchPayment({ iban: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="field-label">Paid amount</label>
-                <input
-                  className="input"
-                  value={content.payment.paid_amount}
-                  onChange={(e) => patchPayment({ paid_amount: e.target.value })}
-                  placeholder="AED 0.00"
-                />
+              <div className="section-card-body">
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Received by</label>
+                  <input
+                    className="input"
+                    value={content.received_by || ""}
+                    onChange={(e) => patch({ received_by: e.target.value })}
+                    placeholder="Name of person who received"
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Passed by</label>
+                  <input
+                    className="input"
+                    value={content.passed_by || ""}
+                    onChange={(e) => patch({ passed_by: e.target.value })}
+                    placeholder="Name of person who passed / approved"
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="section-card">
+              <div className="section-card-head">
+                <i className="bi bi-bank" style={{ color: "var(--gold)", fontSize: 16 }} />
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>Payment details</span>
+              </div>
+              <div className="section-card-body">
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Payment method</label>
+                  <input
+                    className="input"
+                    value={content.payment.payment_method}
+                    onChange={(e) => patchPayment({ payment_method: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Bank name</label>
+                  <input
+                    className="input"
+                    value={content.payment.bank_name}
+                    onChange={(e) => patchPayment({ bank_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Account name</label>
+                  <input
+                    className="input"
+                    value={content.payment.account_name}
+                    onChange={(e) => patchPayment({ account_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">IBAN / Account number</label>
+                  <input
+                    className="input"
+                    value={content.payment.iban}
+                    onChange={(e) => patchPayment({ iban: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Paid amount</label>
+                  <input
+                    className="input"
+                    value={content.payment.paid_amount}
+                    onChange={(e) => patchPayment({ paid_amount: e.target.value })}
+                    placeholder="AED 0.00"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="section-card">
             <div className="section-card-head">

@@ -1,4 +1,4 @@
-import { InvoiceContent, invoiceSubtotal, lineAmount } from "./invoiceContent";
+import { InvoiceContent, invoiceDocLabel, invoiceSubtotal, lineAmount } from "./invoiceContent";
 
 function esc(value: string | null | undefined): string {
   if (!value) return "";
@@ -39,6 +39,9 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
   const dateDisplay = formatDate(content.date);
   const dueDisplay = formatDate(content.due_date);
   const payment = content.payment;
+  const kind = content.invoice_kind || "standard";
+  const label = invoiceDocLabel(kind);
+  const isPetty = kind === "petty_cash";
 
   const rows = content.items
     .map((item, i) => {
@@ -56,6 +59,21 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
     })
     .join("");
 
+  const footerBlock = isPetty
+    ? `<div class="footer-block">
+          <h3>Authorization</h3>
+          <p class="pay-row"><strong>Received by:</strong> ${esc(content.received_by) || "—"}</p>
+          <p class="pay-row"><strong>Passed by:</strong> ${esc(content.passed_by) || "—"}</p>
+        </div>`
+    : `<div class="footer-block">
+          <h3>Payment Details</h3>
+          <p class="pay-row"><strong>Payment Method:</strong> ${esc(payment.payment_method) || "—"}</p>
+          <p class="pay-row"><strong>Bank Name:</strong> ${esc(payment.bank_name) || "—"}</p>
+          <p class="pay-row"><strong>Account Name:</strong> ${esc(payment.account_name) || "—"}</p>
+          <p class="pay-row"><strong>IBAN / Account Number:</strong> ${esc(payment.iban) || "—"}</p>
+          <p class="pay-row"><strong>Paid Amount:</strong> ${esc(payment.paid_amount) || "—"}</p>
+        </div>`;
+
   return `
   <table class="layout">
     <tr>
@@ -70,7 +88,7 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
         </p>
       </td>
       <td class="doc-side">
-        <p class="doc-label">INVOICE</p>
+        <p class="doc-label">${esc(label)}</p>
         <p class="doc-number"># ${esc(content.invoice_number) || "—"}</p>
       </td>
     </tr>
@@ -111,14 +129,7 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
   <table class="bottom-grid">
     <tr>
       <td>
-        <div class="footer-block">
-          <h3>Payment Details</h3>
-          <p class="pay-row"><strong>Payment Method:</strong> ${esc(payment.payment_method) || "—"}</p>
-          <p class="pay-row"><strong>Bank Name:</strong> ${esc(payment.bank_name) || "—"}</p>
-          <p class="pay-row"><strong>Account Name:</strong> ${esc(payment.account_name) || "—"}</p>
-          <p class="pay-row"><strong>IBAN / Account Number:</strong> ${esc(payment.iban) || "—"}</p>
-          <p class="pay-row"><strong>Paid Amount:</strong> ${esc(payment.paid_amount) || "—"}</p>
-        </div>
+        ${footerBlock}
         ${
           content.notes
             ? `<div class="footer-block" style="margin-top:16px;"><h3>Notes</h3><p class="notes-text">${esc(content.notes)}</p></div>`
@@ -128,7 +139,7 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
       <td></td>
     </tr>
   </table>
-  <p class="disclaimer">This is a system-generated invoice and does not require a signature.</p>
+  <p class="disclaimer">This is a system-generated ${esc(label.toLowerCase())} and does not require a signature.</p>
   <div class="powered-by">Powered By Kwick</div>
   `;
 }

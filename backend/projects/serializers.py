@@ -117,11 +117,13 @@ class ClientDirectorySerializer(serializers.ModelSerializer):
 
 class ContentCalendarItemSerializer(serializers.ModelSerializer):
     """A client's monthly social-media content calendar item (Projects >
-    Clients > Calendar). `attachment` is write-only — pass a file to (re)set
-    it; omit it to leave the existing attachment untouched."""
+    Clients > Calendar). Pass one or more files as multipart field
+    `attachments` (up to 5) to (re)set files; omit to leave existing
+    attachments untouched. Legacy single `attachment` is still accepted."""
 
     assignee_names = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
+    my_task_id = serializers.SerializerMethodField()
     attachment = serializers.FileField(write_only=True, required=False, allow_null=True)
 
     class Meta:
@@ -137,13 +139,15 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             "status",
             "assignees",
             "assignee_names",
+            "my_task_id",
             "attachment",
             "attachment_url",
+            "attachment_urls",
             "created_by",
             "created_by_name",
             "created_at",
         ]
-        read_only_fields = ["attachment_url", "created_by", "created_at"]
+        read_only_fields = ["attachment_url", "attachment_urls", "created_by", "created_at", "my_task_id"]
 
     def get_assignee_names(self, obj):
         return [{"id": u.id, "name": u.full_name or u.email} for u in obj.assignees.all()]
@@ -153,36 +157,89 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             return ""
         return obj.created_by.full_name or obj.created_by.email
 
-    def _save_attachment(self, instance, upload):
+    def get_my_task_id(self, obj):
+        """Mirrored Task id for navigation from the content calendar → task overview."""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return None
+        tasks = list(obj.tasks.all())
+        if not tasks:
+            return None
+        for t in tasks:
+            if t.assignee_id == user.id:
+                return t.id
+        return tasks[0].id
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        urls = list(instance.attachment_urls or [])
+        if not urls and instance.attachment_url:
+            urls = [instance.attachment_url]
+        data["attachment_urls"] = urls
+        if urls and not data.get("attachment_url"):
+            data["attachment_url"] = urls[0]
+        return data
+
+    def _save_attachments(self, instance, uploads):
         from django.core.files.storage import default_storage
 
         request = self.context["request"]
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "bin"
-        key = f"content-calendar/{instance.client_id}/{instance.pk}.{ext}"
-        if default_storage.exists(key):
-            default_storage.delete(key)
-        saved_path = default_storage.save(key, upload)
-        instance.attachment_url = request.build_absolute_uri(default_storage.url(saved_path))
-        instance.save(update_fields=["attachment_url"])
+        files = [f for f in uploads if f][:5]
+        if not files:
+            return
+        urls = []
+        for idx, upload in enumerate(files):
+            ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "bin"
+            key = f"content-calendar/{instance.client_id}/{instance.pk}_{idx}.{ext}"
+            if default_storage.exists(key):
+                default_storage.delete(key)
+            saved_path = default_storage.save(key, upload)
+            urls.append(request.build_absolute_uri(default_storage.url(saved_path)))
+        instance.attachment_urls = urls
+        instance.attachment_url = urls[0] if urls else ""
+        instance.save(update_fields=["attachment_urls", "attachment_url"])
+
+    def _uploads_from_request(self):
+        request = self.context.get("request")
+        if request is None:
+            return []
+        files = list(request.FILES.getlist("attachments"))
+        single = request.FILES.get("attachment")
+        if single:
+            files.insert(0, single)
+        if not files:
+            one = request.FILES.get("attachments")
+            if one:
+                files.append(one)
+        return files[:5]
 
     def create(self, validated_data):
-        attachment = validated_data.pop("attachment", None)
+        validated_data.pop("attachment", None)
         assignees = validated_data.pop("assignees", [])
         instance = ContentCalendarItem.objects.create(**validated_data)
         if assignees:
             instance.assignees.set(assignees)
-        if attachment:
-            self._save_attachment(instance, attachment)
+        uploads = self._uploads_from_request()
+        if uploads:
+            self._save_attachments(instance, uploads)
         return instance
 
     def update(self, instance, validated_data):
-        attachment = validated_data.pop("attachment", None)
+        validated_data.pop("attachment", None)
         assignees = validated_data.pop("assignees", None)
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.save()
         if assignees is not None:
             instance.assignees.set(assignees)
-        if attachment:
-            self._save_attachment(instance, attachment)
+        request = self.context.get("request")
+        if request is not None and (
+            request.FILES.getlist("attachments")
+            or request.FILES.get("attachment")
+            or request.FILES.get("attachments")
+        ):
+            uploads = self._uploads_from_request()
+            if uploads:
+                self._save_attachments(instance, uploads)
         return instance

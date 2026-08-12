@@ -1,33 +1,57 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Reveal } from "@/components/Reveal";
-import { api, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { DatePicker } from "@/components/DatePicker";
+import { Modal } from "@/components/Modal";
+import { MultiSelect } from "@/components/MultiSelect";
+import { Select } from "@/components/Select";
+import { api, ApiError, formatApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
+import { useShellFillHeight } from "@/lib/useShellFillHeight";
 
 type AgendaItem = {
   source: string;
   id: number;
   title: string;
   date: string;
+  done?: boolean;
   meta?: Record<string, any>;
 };
 
+type Contact = { id: number; full_name: string; email: string };
+type ReminderDetail = {
+  id: number;
+  title: string;
+  description: string;
+  meeting_url: string;
+  remind_at: string;
+  recurrence: string;
+  recurrence_end: string | null;
+  assignee_ids: number[];
+};
 type View = "month" | "week" | "day";
 
-const SOURCE_META: Record<string, { color: string; label: string; href: string }> = {
-  task: { color: "var(--blue-500)", label: "Task", href: "/tasks" },
-  daily_tracker: { color: "var(--success)", label: "Daily Tracker", href: "/reports" },
-  renewal: { color: "var(--danger)", label: "Renewal", href: "/renewals" },
-  manual: { color: "var(--warning)", label: "Reminder", href: "" },
-  project: { color: "#7C4FE0", label: "Project Delivery", href: "/projects" },
-  content_calendar: { color: "#E0387D", label: "Content Calendar", href: "/projects/clients" },
+const SOURCE_META: Record<string, { color: string; bg: string; label: string; icon: string }> = {
+  task: { color: "var(--cal-task)", bg: "var(--cal-task-bg)", label: "Task", icon: "bi-check2-square" },
+  todo: { color: "var(--cal-todo)", bg: "var(--cal-todo-bg)", label: "To-Do", icon: "bi-list-check" },
+  daily_tracker: { color: "var(--cal-todo)", bg: "var(--cal-todo-bg)", label: "Daily Tracker", icon: "bi-journal-text" },
+  renewal: { color: "var(--cal-renewal)", bg: "var(--cal-renewal-bg)", label: "Renewal", icon: "bi-arrow-repeat" },
+  manual: { color: "var(--cal-manual)", bg: "var(--cal-manual-bg)", label: "Reminder", icon: "bi-bell-fill" },
+  project: { color: "var(--cal-project)", bg: "var(--cal-project-bg)", label: "Project Delivery", icon: "bi-folder-fill" },
+  content_calendar: { color: "var(--cal-content)", bg: "var(--cal-content-bg)", label: "Content", icon: "bi-calendar2-heart" },
 };
-const DEFAULT_META = { color: "var(--gold)", label: "Item", href: "" };
+const DEFAULT_META = { color: "var(--gold)", bg: "var(--gold-soft)", label: "Item", icon: "bi-calendar-event" };
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const RECURRENCE_OPTIONS = [
+  { value: "none", label: "Does not repeat" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+];
 
 function toIso(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -40,18 +64,70 @@ function startOfWeek(d: Date) {
   x.setDate(x.getDate() - x.getDay());
   return x;
 }
+function isMeetingUrl(url?: string) {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  return u.includes("teams.microsoft.com") || u.includes("meet.google.com");
+}
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
+}
+
+/** Navigate to the module that owns this agenda item (calendar-native reminders return null). */
+function itemHref(item: AgendaItem): string | null {
+  switch (item.source) {
+    case "task":
+      return `/tasks/${item.id}`;
+    case "todo":
+      return "/todo";
+    case "project":
+      return `/projects/${item.id}`;
+    case "content_calendar":
+      return item.meta?.client ? `/projects/clients/${item.meta.client}/calendar` : "/projects/clients";
+    case "daily_tracker":
+      return "/reports";
+    case "renewal":
+      return "/renewals";
+    case "manual":
+      return null;
+    default:
+      return null;
+  }
+}
+
+const emptyReminder = {
+  title: "",
+  description: "",
+  meeting_url: "",
+  time: "09:00",
+  recurrence: "none",
+  recurrence_end: "",
+  assignee_ids: [] as string[],
+};
 
 export default function CalendarPage() {
-  const { user } = useAuth();
+  const router = useRouter();
   const { showToast } = useToast();
-  const isSuperadmin = user?.role === "superadmin";
+  const { confirm, ConfirmDialog } = useConfirm();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useShellFillHeight(rootRef);
 
   const [view, setView] = useState<View>("month");
   const [anchor, setAnchor] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [items, setItems] = useState<AgendaItem[]>([]);
-  const [reminderTitle, setReminderTitle] = useState("");
-  const [addingReminder, setAddingReminder] = useState(false);
+  const [directory, setDirectory] = useState<Contact[]>([]);
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState(emptyReminder);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const gridStart = useMemo(() => {
     const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
@@ -74,7 +150,7 @@ export default function CalendarPage() {
 
   const load = () => {
     api<{ items: AgendaItem[] }>(
-      `/api/calendar/agenda?from=${toIso(rangeFrom)}&to=${toIso(rangeTo)}&scope=${isSuperadmin ? "all" : "self"}`
+      `/api/calendar/agenda?from=${toIso(rangeFrom)}&to=${toIso(rangeTo)}&scope=self`
     )
       .then((d) => setItems(d.items))
       .catch(() => {});
@@ -82,6 +158,15 @@ export default function CalendarPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [view, toIso(rangeFrom), toIso(rangeTo)]);
+
+  useEffect(() => {
+    api<Contact[]>("/api/messages/directory").then(setDirectory).catch(() => {});
+  }, []);
+
+  const assigneeOptions = useMemo(
+    () => directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email })),
+    [directory]
+  );
 
   const itemsByDate = useMemo(() => {
     const map: Record<string, AgendaItem[]> = {};
@@ -110,6 +195,7 @@ export default function CalendarPage() {
 
   const today = new Date();
   const selectedItems = itemsByDate[toIso(selectedDate)] ?? [];
+  const weekCount = Math.max(1, Math.ceil(monthDays.length / 7));
 
   const goPrev = () => {
     if (view === "month") setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1));
@@ -134,41 +220,156 @@ export default function CalendarPage() {
       ? `${weekDays[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${weekDays[6].toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
       : anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
-  const addReminder = async () => {
-    if (!reminderTitle.trim()) return;
-    setAddingReminder(true);
+  const openCreateReminder = () => {
+    setEditingId(null);
+    setForm({ ...emptyReminder });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const openEditReminder = async (item: AgendaItem) => {
     try {
-      const remindAt = new Date(selectedDate);
-      remindAt.setHours(12, 0, 0, 0);
-      await api("/api/calendar/reminders", {
-        method: "POST",
-        body: JSON.stringify({ title: reminderTitle.trim(), remind_at: remindAt.toISOString() }),
+      const rem = await api<ReminderDetail>(`/api/calendar/reminders/${item.id}`);
+      const when = new Date(rem.remind_at);
+      setEditingId(rem.id);
+      setForm({
+        title: rem.title || "",
+        description: rem.description || "",
+        meeting_url: rem.meeting_url || "",
+        time: `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`,
+        recurrence: rem.recurrence || "none",
+        recurrence_end: rem.recurrence_end || "",
+        assignee_ids: (rem.assignee_ids || []).map(String),
       });
-      setReminderTitle("");
-      showToast("Reminder added.");
-      load();
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't add reminder." : err.message, "error");
-    } finally {
-      setAddingReminder(false);
+      // Keep the selected day in sync with the reminder's date.
+      setSelectedDate(new Date(when.getFullYear(), when.getMonth(), when.getDate()));
+      setFormError(null);
+      setFormOpen(true);
+    } catch {
+      showToast("Couldn't load reminder.", "error");
     }
   };
 
+  const saveReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      setFormError("Title is required.");
+      return;
+    }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const [hh, mm] = form.time.split(":").map(Number);
+      const remindAt = new Date(selectedDate);
+      remindAt.setHours(hh || 9, mm || 0, 0, 0);
+      const payload: Record<string, unknown> = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        meeting_url: form.meeting_url.trim(),
+        remind_at: remindAt.toISOString(),
+        recurrence: form.recurrence,
+        assignee_ids: form.assignee_ids.map(Number),
+        recurrence_end: form.recurrence !== "none" && form.recurrence_end ? form.recurrence_end : null,
+      };
+      if (editingId) {
+        await api(`/api/calendar/reminders/${editingId}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        showToast("Reminder updated.");
+      } else {
+        await api("/api/calendar/reminders", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        showToast("Reminder created.");
+      }
+      setFormOpen(false);
+      setEditingId(null);
+      setForm(emptyReminder);
+      load();
+    } catch (err: any) {
+      setFormError(err instanceof ApiError ? formatApiError(err.data) : err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteReminder = async (item: AgendaItem) => {
+    const ok = await confirm(
+      `Are you sure you want to delete "${item.title}"?\nThis reminder will be removed from the calendar and cannot be undone.`,
+      {
+        title: "Delete Reminder",
+        danger: true,
+        confirmLabel: "Delete",
+      }
+    );
+    if (!ok) return;
+    try {
+      await api(`/api/calendar/reminders/${item.id}`, { method: "DELETE" });
+      showToast("Reminder deleted.");
+      if (editingId === item.id) {
+        setFormOpen(false);
+        setEditingId(null);
+      }
+      load();
+    } catch {
+      showToast("Couldn't delete reminder.", "error");
+    }
+  };
+
+  const toggleDone = async (it: AgendaItem) => {
+    try {
+      if (it.source === "manual") {
+        await api(`/api/calendar/reminders/${it.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ done: !it.done }),
+        });
+      } else if (it.source === "todo") {
+        await api(`/api/todos/${it.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ done: !it.done }),
+        });
+      } else if (it.source === "task") {
+        await api(`/api/tasks/${it.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: it.done ? "todo" : "completed" }),
+        });
+      } else {
+        return;
+      }
+      load();
+    } catch {
+      showToast("Couldn't update item.", "error");
+    }
+  };
+
+  const openItem = (it: AgendaItem) => {
+    if (it.source === "manual") {
+      openEditReminder(it);
+      return;
+    }
+    const href = itemHref(it);
+    if (href) router.push(href);
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Reveal index={0}>
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+    <div
+      ref={rootRef}
+      className="kwick-personal-cal"
+      style={pageRoot}
+    >
+      <div className="kwick-cal-layout" style={layout}>
+        <div className="card" style={calCard}>
           <div style={calHeader}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 17, fontWeight: 700 }}>{headerLabel}</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>{headerLabel}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {(["month", "week", "day"] as View[]).map((v) => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
                   className={view === v ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
-                  style={{ textTransform: "capitalize" }}
+                  style={{ textTransform: "capitalize", color: view === v ? undefined : "#fff" }}
                 >
                   {v}
                 </button>
@@ -177,7 +378,7 @@ export default function CalendarPage() {
                 <i className="bi bi-chevron-left" />
               </button>
               <button className="icon-btn-anim" style={navBtn} onClick={goToday} aria-label="Today">
-                <i className="bi bi-calendar-event" />
+                Today
               </button>
               <button className="icon-btn-anim" style={navBtn} onClick={goNext} aria-label="Next">
                 <i className="bi bi-chevron-right" />
@@ -186,13 +387,13 @@ export default function CalendarPage() {
           </div>
 
           {view === "month" && (
-            <div>
+            <div style={monthBody}>
               <div style={weekHeaderRow}>
                 {WEEKDAYS.map((d) => (
-                  <div key={d} style={weekHeaderCell}>{d}</div>
+                  <div key={d} style={weekHeaderCell}>{d.slice(0, 3)}</div>
                 ))}
               </div>
-              <div style={monthGrid}>
+              <div style={{ ...monthGrid, gridTemplateRows: `repeat(${weekCount}, 1fr)` }}>
                 {monthDays.map((d) => {
                   const iso = toIso(d);
                   const dayItems = itemsByDate[iso] ?? [];
@@ -207,22 +408,35 @@ export default function CalendarPage() {
                         ...dayCell,
                         background: isSelected ? "var(--gold-soft)" : isToday ? "var(--success-soft)" : "transparent",
                         opacity: inMonth ? 1 : 0.4,
+                        boxShadow: isSelected ? "inset 0 0 0 2px var(--gold)" : undefined,
                       }}
                     >
                       <div style={dayCellTop}>
-                        {dayItems.length > 0 && <span style={countBadge}>{dayItems.length}</span>}
-                        <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: isToday ? 700 : 500 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: isToday || isSelected ? 700 : 500 }}>
                           {d.getDate()}
                         </span>
+                        {dayItems.length > 0 && <span style={countBadge}>{dayItems.length}</span>}
                       </div>
                       {dayItems.length > 0 && (
-                        <div style={dotRow}>
-                          {dayItems.slice(0, 4).map((it, i) => (
-                            <span
-                              key={i}
-                              style={{ ...dayDot, background: (SOURCE_META[it.source] ?? DEFAULT_META).color }}
-                            />
-                          ))}
+                        <div style={dotRow} title={dayItems.map((it) => it.title).join(", ")}>
+                          {dayItems.slice(0, 4).map((it) => {
+                            const meta = SOURCE_META[it.source] ?? DEFAULT_META;
+                            return (
+                              <span
+                                key={`${it.source}-${it.id}-${it.date}`}
+                                style={{
+                                  ...eventDot,
+                                  background: meta.color,
+                                  opacity: it.done ? 0.45 : 1,
+                                }}
+                              />
+                            );
+                          })}
+                          {dayItems.length > 4 && (
+                            <span className="muted" style={{ fontSize: 9, lineHeight: 1, marginLeft: 1 }}>
+                              +{dayItems.length - 4}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -246,23 +460,34 @@ export default function CalendarPage() {
                     style={{
                       ...weekCell,
                       background: isSelected ? "var(--gold-soft)" : isToday ? "var(--success-soft)" : "transparent",
+                      boxShadow: isSelected ? "inset 0 0 0 2px var(--gold)" : undefined,
                     }}
                   >
                     <div className="muted" style={{ fontSize: 11, fontWeight: 600 }}>
                       {WEEKDAYS[d.getDay()].slice(0, 3)}
                     </div>
                     <div style={{ fontSize: 15, fontWeight: isToday ? 700 : 500, marginBottom: 8 }}>{d.getDate()}</div>
-                    {dayItems.slice(0, 4).map((it, i) => (
-                      <div key={i} style={weekItemChip}>
-                        <span style={{ ...dayDot, background: (SOURCE_META[it.source] ?? DEFAULT_META).color }} />
-                        <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {it.title}
-                        </span>
-                      </div>
-                    ))}
-                    {dayItems.length > 4 && (
-                      <span className="muted" style={{ fontSize: 10.5 }}>+{dayItems.length - 4} more</span>
-                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "auto" }}>
+                      {dayItems.map((it) => {
+                        const meta = SOURCE_META[it.source] ?? DEFAULT_META;
+                        return (
+                          <div
+                            key={`${it.source}-${it.id}`}
+                            style={{
+                              ...weekItemChip,
+                              textDecoration: it.done ? "line-through" : undefined,
+                              opacity: it.done ? 0.65 : 1,
+                              pointerEvents: "none",
+                            }}
+                          >
+                            <span style={{ ...dayDot, background: meta.color }} />
+                            <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {it.title}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
@@ -270,130 +495,469 @@ export default function CalendarPage() {
           )}
 
           {view === "day" && (
-            <div style={{ padding: 20 }}>
+            <div style={dayBody}>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button className="btn btn-accent btn-sm" onClick={openCreateReminder}>
+                  <i className="bi bi-plus-lg" /> Create Reminder
+                </button>
+              </div>
               {selectedItems.length === 0 && <p className="muted">Nothing scheduled for this day.</p>}
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {selectedItems.map((it, i) => {
-                  const meta = SOURCE_META[it.source] ?? DEFAULT_META;
-                  return (
-                    <li key={i} style={agendaRow}>
-                      <span style={{ ...dayDot, background: meta.color }} />
-                      <span style={{ flex: 1 }}>{it.title}</span>
-                      <span className="muted" style={{ fontSize: 11.5 }}>{meta.label}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+              {selectedItems.map((it) => (
+                <AgendaCard
+                  key={`${it.source}-${it.id}-${it.date}`}
+                  item={it}
+                  onToggleDone={() => toggleDone(it)}
+                  onOpen={() => openItem(it)}
+                  onEdit={it.source === "manual" ? () => openEditReminder(it) : undefined}
+                  onDelete={it.source === "manual" ? () => deleteReminder(it) : undefined}
+                />
+              ))}
             </div>
           )}
         </div>
-      </Reveal>
 
-      {view !== "day" && (
-        <Reveal index={1}>
-          <div className="card">
-            <span className="card-title">
-              {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-            </span>
-            {selectedItems.length === 0 && <p className="muted">Nothing scheduled for this day.</p>}
-            {selectedItems.length > 0 && (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {selectedItems.map((it, i) => {
-                  const meta = SOURCE_META[it.source] ?? DEFAULT_META;
-                  return (
-                    <li key={i} style={agendaRow}>
-                      <span style={{ ...dayDot, background: meta.color }} />
-                      <span style={{ flex: 1 }}>{it.title}</span>
-                      <span className="muted" style={{ fontSize: 11.5 }}>{meta.label}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-              <input
-                className="input"
-                placeholder="Add a reminder for this day…"
-                value={reminderTitle}
-                onChange={(e) => setReminderTitle(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addReminder()}
-              />
-              <button className="btn btn-sm" onClick={addReminder} disabled={addingReminder || !reminderTitle.trim()}>
-                <i className="bi bi-plus-lg" /> Add
+        {view !== "day" && (
+          <div className="card" style={sidePanel}>
+            <div style={{ marginBottom: 12, flexShrink: 0 }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--navy)" }}>
+                {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              </h2>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto", minHeight: 0 }}>
+              {selectedItems.length === 0 && (
+                <p className="muted" style={{ fontSize: 13 }}>Nothing scheduled. Create a reminder below.</p>
+              )}
+              {selectedItems.map((it) => (
+                <AgendaCard
+                  key={`${it.source}-${it.id}-${it.date}`}
+                  item={it}
+                  onToggleDone={() => toggleDone(it)}
+                  onOpen={() => openItem(it)}
+                  onEdit={it.source === "manual" ? () => openEditReminder(it) : undefined}
+                  onDelete={it.source === "manual" ? () => deleteReminder(it) : undefined}
+                  compact
+                />
+              ))}
+            </div>
+
+            <div style={sideFooter}>
+              <button className="btn btn-accent" style={{ width: "100%" }} onClick={openCreateReminder}>
+                <i className="bi bi-plus-lg" /> Create Reminder
               </button>
             </div>
           </div>
-        </Reveal>
-      )}
+        )}
+      </div>
+
+      <Modal open={formOpen} onClose={() => setFormOpen(false)} maxWidth={520}>
+        <form onSubmit={saveReminder}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span className="card-title" style={{ margin: 0 }}>
+              <i className="bi bi-bell-fill" style={{ color: "var(--gold)", marginRight: 8 }} />
+              {editingId ? "Edit Reminder" : "New Reminder"}
+            </span>
+            <button type="button" className="icon-btn-anim" style={closeBtn} onClick={() => setFormOpen(false)} aria-label="Close">
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+          <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
+            For {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </p>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Title</label>
+          <input
+            className="input"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="e.g. Weekly stand-up"
+            required
+          />
+
+          <label className="field-label">Description / links</label>
+          <textarea
+            className="input"
+            rows={3}
+            style={{ resize: "vertical", fontFamily: "inherit" }}
+            placeholder="Notes, or paste a Teams / Google Meet link…"
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          />
+
+          <label className="field-label">Meeting link (optional)</label>
+          <input
+            className="input"
+            type="url"
+            placeholder="https://meet.google.com/… or Teams link"
+            value={form.meeting_url}
+            onChange={(e) => setForm((f) => ({ ...f, meeting_url: e.target.value }))}
+          />
+
+          <div style={fieldGrid}>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Time</label>
+              <input
+                className="input"
+                type="time"
+                value={form.time}
+                onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Repeat</label>
+              <Select
+                value={form.recurrence}
+                onChange={(v) => setForm((f) => ({ ...f, recurrence: v }))}
+                options={RECURRENCE_OPTIONS}
+                ariaLabel="Recurrence"
+              />
+            </div>
+          </div>
+
+          {form.recurrence !== "none" && (
+            <>
+              <label className="field-label">Repeat until (optional)</label>
+              <DatePicker
+                value={form.recurrence_end}
+                onChange={(v) => setForm((f) => ({ ...f, recurrence_end: v }))}
+                ariaLabel="Recurrence end"
+              />
+            </>
+          )}
+
+          <label className="field-label">Add people</label>
+          <MultiSelect
+            values={form.assignee_ids}
+            onChange={(vals) => setForm((f) => ({ ...f, assignee_ids: vals }))}
+            options={assigneeOptions}
+            placeholder="Select employees…"
+            ariaLabel="Assignees"
+          />
+
+          {formError && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 10 }}>{formError}</p>}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "center" }}>
+            <button className="btn btn-accent" disabled={saving}>
+              {saving ? "Saving…" : editingId ? "Save changes" : "Create Reminder"}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setFormOpen(false)}>
+              Cancel
+            </button>
+            {editingId && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ color: "var(--danger)", marginLeft: "auto" }}
+                onClick={() =>
+                  deleteReminder({
+                    source: "manual",
+                    id: editingId,
+                    title: form.title || "this reminder",
+                    date: toIso(selectedDate),
+                  })
+                }
+                disabled={saving}
+              >
+                <i className="bi bi-trash-fill" /> Delete
+              </button>
+            )}
+          </div>
+        </form>
+      </Modal>
+      {ConfirmDialog}
     </div>
   );
 }
 
+function AgendaCard({
+  item,
+  onToggleDone,
+  onOpen,
+  onEdit,
+  onDelete,
+  compact = false,
+}: {
+  item: AgendaItem;
+  onToggleDone: () => void;
+  onOpen: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  compact?: boolean;
+}) {
+  const meta = SOURCE_META[item.source] ?? DEFAULT_META;
+  const meetingUrl = item.meta?.meeting_url as string | undefined;
+  const showJoin = isMeetingUrl(meetingUrl);
+  const assignees: { id: number; name: string }[] = item.meta?.assignees || [];
+  const canToggle = item.source === "manual" || item.source === "todo" || item.source === "task";
+  const timeLabel = item.meta?.time as string | undefined;
+  const isManual = item.source === "manual";
+  const href = itemHref(item);
+
+  return (
+    <div
+      style={{
+        ...agendaCard,
+        opacity: item.done ? 0.72 : 1,
+        padding: compact ? 12 : 14,
+        cursor: href || isManual ? "pointer" : "default",
+      }}
+      onClick={onOpen}
+      role={href || isManual ? "button" : undefined}
+      tabIndex={href || isManual ? 0 : undefined}
+      onKeyDown={(e) => {
+        if ((href || isManual) && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <span style={{ ...sourceIcon, background: meta.bg, color: meta.color }}>
+          <i className={`bi ${meta.icon}`} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span
+              style={{
+                fontWeight: 650,
+                fontSize: compact ? 13.5 : 14.5,
+                color: "var(--navy)",
+                textDecoration: item.done ? "line-through" : undefined,
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {item.title}
+            </span>
+            {canToggle && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "2px 8px", fontSize: 11 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleDone();
+                }}
+                title={item.done ? "Mark as not done" : "Mark done"}
+              >
+                <i className={`bi ${item.done ? "bi-arrow-counterclockwise" : "bi-check2"}`} />
+              </button>
+            )}
+            {isManual && onEdit && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "2px 8px", fontSize: 11 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+                title="Edit reminder"
+              >
+                <i className="bi bi-pencil" />
+              </button>
+            )}
+            {isManual && onDelete && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: "2px 8px", fontSize: 11, color: "var(--danger)" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                title="Delete reminder"
+              >
+                <i className="bi bi-trash" />
+              </button>
+            )}
+            {href && (
+              <span className="muted" title="Open source page" style={{ fontSize: 12 }}>
+                <i className="bi bi-box-arrow-up-right" />
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            {timeLabel && (
+              <span className="muted" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <i className="bi bi-clock" style={{ fontSize: 11 }} /> {timeLabel}
+              </span>
+            )}
+            <span className="muted" style={{ fontSize: 11.5 }}>{meta.label}</span>
+            {item.meta?.recurrence && item.meta.recurrence !== "none" && (
+              <span className="muted" style={{ fontSize: 11.5 }}>
+                <i className="bi bi-arrow-repeat" /> {item.meta.recurrence}
+              </span>
+            )}
+          </div>
+          {item.meta?.description && !compact && (
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12.5, lineHeight: 1.4 }}>
+              {String(item.meta.description).slice(0, 140)}
+            </p>
+          )}
+          {assignees.length > 0 && (
+            <div style={{ display: "flex", marginTop: 8 }}>
+              {assignees.slice(0, 5).map((a, i) => (
+                <span
+                  key={a.id}
+                  title={a.name}
+                  style={{
+                    ...avatar,
+                    marginLeft: i === 0 ? 0 : -6,
+                    zIndex: 5 - i,
+                  }}
+                >
+                  {initials(a.name)}
+                </span>
+              ))}
+            </div>
+          )}
+          {showJoin && meetingUrl && (
+            <a
+              href={meetingUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-sm"
+              style={joinBtn}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <i className="bi bi-camera-video-fill" /> Go to Meeting
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const pageRoot: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
+  minHeight: 0,
+  overflow: "hidden",
+};
+const layout: React.CSSProperties = {
+  // columns/gap come from .kwick-cal-layout CSS so height fill isn't fought by inline styles
+  flex: 1,
+  minWidth: 0,
+  minHeight: 0,
+  width: "100%",
+  height: "100%",
+  overflow: "hidden",
+};
+const calCard: React.CSSProperties = {
+  padding: 0,
+  overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
+  minWidth: 0,
+  minHeight: 0,
+  height: "100%",
+};
 const calHeader: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   flexWrap: "wrap",
-  gap: 12,
-  padding: "18px 22px",
-  background: "linear-gradient(135deg, var(--navy) 0%, var(--navy-soft) 100%)",
-  color: "#fff",
+  gap: 8,
+  padding: "10px 14px",
+  background: "linear-gradient(135deg, var(--brand-fill-soft) 0%, var(--brand-fill) 100%)",
+  color: "var(--on-brand)",
+  flexShrink: 0,
 };
 const navBtn: React.CSSProperties = {
-  width: 32,
-  height: 32,
-  borderRadius: "50%",
+  minWidth: 28,
+  height: 28,
+  padding: "0 8px",
+  borderRadius: 999,
   display: "grid",
   placeItems: "center",
   background: "rgba(255,255,255,0.15)",
   color: "#fff",
   border: "none",
+  fontSize: 11.5,
+  fontWeight: 600,
+};
+const monthBody: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
 };
 const weekHeaderRow: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
   borderBottom: "1px solid var(--border)",
+  flexShrink: 0,
 };
 const weekHeaderCell: React.CSSProperties = {
-  padding: "10px 8px",
-  fontSize: 12,
+  padding: "6px 4px",
+  fontSize: 11,
   fontWeight: 600,
   color: "var(--text-muted)",
   textAlign: "center",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 const monthGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+  flex: 1,
+  minHeight: 0,
+  minWidth: 0,
+  overflow: "hidden",
 };
 const dayCell: React.CSSProperties = {
-  minHeight: 92,
-  padding: 8,
+  minHeight: 0,
+  minWidth: 0,
+  padding: "6px 7px",
   borderRight: "1px solid var(--border)",
   borderBottom: "1px solid var(--border)",
   cursor: "pointer",
   display: "flex",
   flexDirection: "column",
   gap: 6,
+  overflow: "hidden",
+  transition: "background 0.15s ease",
 };
 const dayCellTop: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
+  justifyContent: "space-between",
+  flexShrink: 0,
 };
 const countBadge: React.CSSProperties = {
-  width: 18,
-  height: 18,
-  borderRadius: "50%",
-  background: "var(--navy)",
-  color: "#fff",
-  fontSize: 10,
+  minWidth: 16,
+  height: 16,
+  padding: "0 4px",
+  borderRadius: 999,
+  background: "var(--brand-fill)",
+  color: "var(--on-brand)",
+  fontSize: 9.5,
   fontWeight: 700,
   display: "grid",
   placeItems: "center",
 };
 const dotRow: React.CSSProperties = {
   display: "flex",
-  gap: 4,
+  alignItems: "center",
   flexWrap: "wrap",
+  gap: 4,
+  marginTop: "auto",
+  paddingBottom: 2,
+};
+const eventDot: React.CSSProperties = {
+  width: 7,
+  height: 7,
+  minWidth: 7,
+  borderRadius: "50%",
+  display: "inline-block",
 };
 const dayDot: React.CSSProperties = {
   width: 7,
@@ -403,28 +967,103 @@ const dayDot: React.CSSProperties = {
 };
 const weekGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
-  minHeight: 260,
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+  flex: 1,
+  minHeight: 0,
+  minWidth: 0,
+  overflow: "hidden",
 };
 const weekCell: React.CSSProperties = {
-  padding: 10,
+  padding: 8,
   borderRight: "1px solid var(--border)",
   cursor: "pointer",
   display: "flex",
   flexDirection: "column",
   gap: 4,
+  minHeight: 0,
+  minWidth: 0,
+  overflow: "hidden",
 };
 const weekItemChip: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 6,
-  padding: "3px 0",
+  minWidth: 0,
 };
-const agendaRow: React.CSSProperties = {
+const dayBody: React.CSSProperties = {
+  padding: 14,
   display: "flex",
-  alignItems: "center",
+  flexDirection: "column",
   gap: 10,
-  padding: "10px 0",
-  borderBottom: "1px solid var(--border)",
-  fontSize: 13.5,
+  flex: 1,
+  minHeight: 0,
+  overflowY: "auto",
+};
+const sidePanel: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  padding: 14,
+  minWidth: 0,
+  minHeight: 0,
+  height: "100%",
+  overflow: "hidden",
+};
+const sideFooter: React.CSSProperties = {
+  marginTop: 12,
+  paddingTop: 12,
+  borderTop: "1px solid var(--border)",
+  flexShrink: 0,
+};
+const agendaCard: React.CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: 14,
+  boxShadow: "var(--shadow)",
+};
+const sourceIcon: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  minWidth: 34,
+  borderRadius: 10,
+  display: "grid",
+  placeItems: "center",
+  fontSize: 14,
+};
+const avatar: React.CSSProperties = {
+  width: 24,
+  height: 24,
+  borderRadius: "50%",
+  background: "var(--brand-fill)",
+  color: "var(--on-brand)",
+  fontSize: 9,
+  fontWeight: 700,
+  display: "grid",
+  placeItems: "center",
+  border: "2px solid #fff",
+};
+const joinBtn: React.CSSProperties = {
+  marginTop: 10,
+  background: "#1E9E62",
+  color: "#fff",
+  border: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  textDecoration: "none",
+};
+const fieldGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 14,
+  marginTop: 4,
+};
+const closeBtn: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "var(--bg)",
+  border: "none",
+  color: "var(--text-muted)",
 };

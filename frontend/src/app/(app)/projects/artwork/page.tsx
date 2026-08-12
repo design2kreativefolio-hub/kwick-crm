@@ -244,9 +244,6 @@ export default function ArtworkGeneratorPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
         <h1 style={{ margin: 0, fontSize: 22 }}>Artwork ID Generator</h1>
-        <p className="muted" style={{ marginTop: 4 }}>
-          Format: KF_CompanyName_Country_ProductName_Designer_DDMMYY_K-20244001, 20244002…
-        </p>
       </div>
 
       <form className="card" onSubmit={generate}>

@@ -7,9 +7,12 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Combobox } from "@/components/Combobox";
 import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/Modal";
+import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
+import { STATUS_BADGE } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
 type Task = {
@@ -22,6 +25,7 @@ type Task = {
   assignee: number | null;
   assignee_name: string;
   content_item: number | null;
+  content_client_id: number | null;
   status: "todo" | "in_progress" | "completed";
   priority: "low" | "medium" | "high";
   due_date: string | null;
@@ -43,12 +47,6 @@ const PRIORITY_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
-
-const STATUS_BADGE: Record<string, string> = {
-  todo: "badge-muted",
-  in_progress: "badge-warning",
-  completed: "badge-success",
-};
 
 const PRIORITY_BADGE: Record<string, string> = {
   low: "badge-muted",
@@ -129,7 +127,10 @@ export default function TasksPage() {
 
   const openCreateForm = () => {
     setEditingTask(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      assignee: user?.id ? String(user.id) : "",
+    });
     setError(null);
     setShowForm(true);
   };
@@ -140,7 +141,7 @@ export default function TasksPage() {
       title: task.title,
       description: task.description || "",
       client_name: task.client_name || "",
-      assignee: task.assignee ? String(task.assignee) : "",
+      assignee: task.assignee ? String(task.assignee) : user?.id ? String(user.id) : "",
       priority: task.priority,
       status: task.status,
       due_date: task.due_date || "",
@@ -171,7 +172,9 @@ export default function TasksPage() {
         client_name: form.client_name.trim(),
       };
       if (editingTask) body.status = form.status;
-      if (isSuperadmin && form.assignee) body.assignee = Number(form.assignee);
+      const assigneeId = form.assignee || (user?.id ? String(user.id) : "");
+      if (assigneeId) body.assignee = Number(assigneeId);
+      else if (isSuperadmin) body.assignee = null;
       await api<Task>(editingTask ? `/api/tasks/${editingTask.id}` : "/api/tasks", {
         method: editingTask ? "PATCH" : "POST",
         body: JSON.stringify(body),
@@ -226,14 +229,12 @@ export default function TasksPage() {
   };
 
   const clientOptions = clients.map((c) => c.name);
-  const assigneeOptions = [
-    ...(user ? [{ value: String(user.id), label: "Myself" }] : []),
-    ...contacts.map((c) => ({ value: String(c.id), label: c.full_name || c.email })),
-  ];
+  const assigneeOptions = assigneeSelectOptions(user, contacts);
   const showAssigneeColumn = isSuperadmin && tab === "all";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <Reveal index={0}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Tasks</h1>
@@ -249,8 +250,10 @@ export default function TasksPage() {
           <i className="bi bi-plus-lg" /> Add Task
         </button>
       </div>
+      </Reveal>
 
       {isSuperadmin && (
+        <Reveal index={1}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
             className={tab === "all" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
@@ -265,12 +268,18 @@ export default function TasksPage() {
             My Tasks
           </button>
         </div>
+        </Reveal>
       )}
 
-      <Modal open={showForm} onClose={closeForm} maxWidth={760}>
+      <Modal open={showForm} onClose={closeForm} wide>
         <form onSubmit={saveTask}>
-          <span className="card-title">{editingTask ? "Edit Task" : "New Task"}</span>
-          <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="card-title" style={{ margin: 0 }}>{editingTask ? "Edit Task" : "New Task"}</span>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={closeForm} aria-label="Close">
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+          <div className="kwick-form-wide" style={{ marginTop: 14 }}>
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Title</label>
               <input
@@ -280,17 +289,17 @@ export default function TasksPage() {
                 required
               />
             </div>
-            <div>
+            <div className="kwick-form-wide__desc">
               <label className="field-label" style={{ marginTop: 0 }}>Description</label>
               <textarea
                 className="input"
-                rows={3}
+                rows={6}
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 style={{ resize: "vertical" }}
               />
             </div>
-            <div style={fieldGrid}>
+            <div className={`kwick-form-wide__row ${isSuperadmin ? "kwick-form-wide__row--4" : "kwick-form-wide__row--3"}`}>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Client</label>
                 <Combobox
@@ -303,12 +312,12 @@ export default function TasksPage() {
               </div>
               {isSuperadmin && (
                 <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Assignee</label>
+                  <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
                   <Select
                     value={form.assignee}
                     onChange={(v) => setForm((f) => ({ ...f, assignee: v }))}
-                    options={[{ value: "", label: "Unassigned" }, ...assigneeOptions]}
-                    ariaLabel="Assignee"
+                    options={assigneeOptions}
+                    ariaLabel="Assign to"
                   />
                 </div>
               )}
@@ -355,6 +364,7 @@ export default function TasksPage() {
         </form>
       </Modal>
 
+      <Reveal index={2}>
       <div className="card">
         <span className="card-title">
           <i className="bi bi-list-task" style={{ color: "var(--gold)" }} />
@@ -411,7 +421,19 @@ export default function TasksPage() {
                 {tasks.map((t) => (
                   <tr key={t.id}>
                     <td>
-                      <Link href={`/tasks/${t.id}`} style={{ fontWeight: 600, color: "var(--navy)" }}>
+                      <Link
+                        href={
+                          t.content_item && t.content_client_id
+                            ? `/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`
+                            : `/tasks/${t.id}`
+                        }
+                        style={{ fontWeight: 600, color: "var(--navy)" }}
+                        title={
+                          t.content_item && t.content_client_id
+                            ? "Open on client calendar"
+                            : undefined
+                        }
+                      >
                         {t.title}
                       </Link>
                     </td>
@@ -428,14 +450,26 @@ export default function TasksPage() {
                     <td>{formatDate(t.due_date)}</td>
                     <td>
                       {t.content_item ? (
-                        <span
-                          className="muted"
-                          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}
-                          title="From a client content calendar assignment — edit or remove it from that calendar."
-                        >
-                          <i className="bi bi-calendar3-fill" style={{ color: "var(--gold)" }} />
-                          {isSuperadmin ? t.assignee_name || "—" : "From client calendar"}
-                        </span>
+                        t.content_client_id ? (
+                          <Link
+                            href={`/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`}
+                            className="muted"
+                            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}
+                            title="Open client content calendar"
+                          >
+                            <i className="bi bi-calendar3-fill" style={{ color: "var(--gold)" }} />
+                            {isSuperadmin ? t.assignee_name || "Calendar" : "From client calendar"}
+                          </Link>
+                        ) : (
+                          <span
+                            className="muted"
+                            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}
+                            title="From a client content calendar assignment — edit or remove it from that calendar."
+                          >
+                            <i className="bi bi-calendar3-fill" style={{ color: "var(--gold)" }} />
+                            {isSuperadmin ? t.assignee_name || "—" : "From client calendar"}
+                          </span>
+                        )
                       ) : (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <button
@@ -474,6 +508,7 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+      </Reveal>
       {ConfirmDialog}
     </div>
   );

@@ -23,7 +23,7 @@ class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     permission_classes = [HasModuleAccess]
-    required_module = Module.SALES
+    required_module = Module.SALES_CLIENTS
     search_fields = ["name", "company", "contact_email", "website"]
 
     def perform_create(self, serializer):
@@ -80,8 +80,9 @@ class ProposalViewSet(viewsets.ModelViewSet):
     queryset = Proposal.objects.select_related("client").all()
     serializer_class = ProposalSerializer
     permission_classes = [HasModuleAccess]
-    required_module = Module.SALES
+    required_module = Module.SALES_PROPOSALS
     filterset_fields = ["status", "client"]
+    search_fields = ["title", "client__name", "client__company"]
 
     @action(detail=True, methods=["post"])
     def duplicate(self, request, pk=None):
@@ -142,8 +143,9 @@ class EstimateViewSet(viewsets.ModelViewSet):
     queryset = Estimate.objects.select_related("client").all()
     serializer_class = EstimateSerializer
     permission_classes = [HasModuleAccess]
-    required_module = Module.SALES
+    required_module = Module.SALES_PROPOSALS
     filterset_fields = ["status", "client"]
+    search_fields = ["title", "client__name", "client__company", "content__quote_number"]
 
     @action(detail=True, methods=["post"])
     def duplicate(self, request, pk=None):
@@ -182,8 +184,9 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.select_related("client", "proposal").prefetch_related("line_items")
     serializer_class = InvoiceSerializer
     permission_classes = [HasModuleAccess]
-    required_module = Module.SALES
+    required_module = Module.SALES_INVOICES
     filterset_fields = ["status", "client"]
+    search_fields = ["invoice_number", "client__name", "client__company", "content__title"]
 
     @action(detail=True, methods=["post"])
     def duplicate(self, request, pk=None):

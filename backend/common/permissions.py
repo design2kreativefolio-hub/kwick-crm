@@ -19,12 +19,16 @@ def is_employee(user) -> bool:
 
 
 def has_module_access(user, module: str) -> bool:
-    """Superadmin always passes; otherwise needs an explicit grant for `module`."""
+    """Superadmin always passes; otherwise needs a grant for `module`, its
+    parent (e.g. `hr` covers `hr_documents`), or any child when checking a
+    parent (e.g. any HR sub-page counts as having HR)."""
     if is_superadmin(user):
         return True
     if not (user and user.is_authenticated):
         return False
-    return user.module_access.filter(module=module).exists()
+    from accounts.models import grant_keys_for
+
+    return user.module_access.filter(module__in=grant_keys_for(module)).exists()
 
 
 class IsActive(BasePermission):

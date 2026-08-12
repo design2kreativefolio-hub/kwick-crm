@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Logo } from "@/components/Logo";
-import { api } from "@/lib/api";
+import { api, ApiError, formatApiError } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -24,7 +24,11 @@ export default function ForgotPasswordPage() {
       });
       setDone(true);
     } catch (err: any) {
-      setError(err.message ?? "Something went wrong.");
+      if (err instanceof ApiError) {
+        setError(formatApiError(err.data) || "Something went wrong.");
+      } else {
+        setError(err.message ?? "Something went wrong.");
+      }
     } finally {
       setBusy(false);
     }
@@ -38,13 +42,13 @@ export default function ForgotPasswordPage() {
         </div>
         <h2 style={{ margin: "0 0 4px" }}>Forgot your password?</h2>
         <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-          Enter your account email and we&apos;ll send you a link to set a new one.
+          Enter your registered account email and we&apos;ll send a reset link.
         </p>
 
         {done ? (
           <p style={{ color: "var(--gold)", fontSize: 13.5 }}>
             <i className="bi bi-envelope-check-fill" style={{ marginRight: 6 }} />
-            If an account exists for that email, a reset link is on its way. Check your inbox.
+            A password reset link has been sent. Check your inbox.
           </p>
         ) : (
           <form onSubmit={onSubmit}>
@@ -56,7 +60,11 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            {error && <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>}
+            {error && (
+              <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 10, marginBottom: 0 }}>
+                {error}
+              </p>
+            )}
             <button className="btn" style={{ width: "100%", marginTop: 16 }} disabled={busy}>
               {busy ? "Sending…" : "Send reset link"}
             </button>

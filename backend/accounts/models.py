@@ -10,13 +10,40 @@ class Role(models.TextChoices):
 
 
 class Module(models.TextChoices):
-    """The business modules a superadmin can hand out to specific employees
-    one at a time, in place of the old blanket manager role."""
+    """Grantable business areas. Parent keys (`hr`, `sales`) still work and
+    imply every child; sub-keys let the superadmin open only one page
+    (e.g. Documents without Staff)."""
 
     HR = "hr", "HR"
+    HR_DOCUMENTS = "hr_documents", "HR · Documents"
+    HR_STAFF = "hr_staff", "HR · Staff"
     SALES = "sales", "Sales"
+    SALES_CLIENTS = "sales_clients", "Sales · Clients"
+    SALES_PROPOSALS = "sales_proposals", "Sales · Proposals"
+    SALES_INVOICES = "sales_invoices", "Sales · Invoices"
     RENEWALS = "renewals", "Renewals"
     REPORTS = "reports", "Reports"
+
+
+# Parent → child grants. A parent grant satisfies every child check; any child
+# grant also satisfies a parent-level check (e.g. dashboard "has HR").
+MODULE_CHILDREN = {
+    Module.HR: (Module.HR_DOCUMENTS, Module.HR_STAFF),
+    Module.SALES: (Module.SALES_CLIENTS, Module.SALES_PROPOSALS, Module.SALES_INVOICES),
+}
+MODULE_PARENT = {
+    child: parent for parent, children in MODULE_CHILDREN.items() for child in children
+}
+
+
+def grant_keys_for(module: str) -> set[str]:
+    """DB grant values that satisfy access to `module`."""
+    keys = {module}
+    parent = MODULE_PARENT.get(module)
+    if parent:
+        keys.add(parent)
+    keys.update(MODULE_CHILDREN.get(module, ()))
+    return keys
 
 
 class UserStatus(models.TextChoices):
@@ -68,6 +95,9 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     )
     is_active = models.BooleanField(default=True)  # Django-level gate (disabled -> False)
     is_staff = models.BooleanField(default=False)  # Django admin access
+    # Set when a manager permanently removes personal details. The User row
+    # stays so tasks/projects/messages keep their historical assignee links.
+    purged_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
@@ -85,12 +115,22 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         return self.role == Role.SUPERADMIN
 
     @property
+    def is_purged(self):
+        return self.purged_at is not None
+
+    @property
     def can_login(self):
         # Employee cannot log in until status=active (spec §4 acceptance).
-        return self.status == UserStatus.ACTIVE and self.is_active
+        return (
+            self.status == UserStatus.ACTIVE
+            and self.is_active
+            and self.purged_at is None
+        )
 
     def has_module_access(self, module: str) -> bool:
-        return self.is_superadmin or self.module_access.filter(module=module).exists()
+        if self.is_superadmin:
+            return True
+        return self.module_access.filter(module__in=grant_keys_for(module)).exists()
 
 
 class StaffProfile(TimeStampedModel):
@@ -128,7 +168,7 @@ class ModuleAccess(TimeStampedModel):
     """
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="module_access")
-    module = models.CharField(max_length=20, choices=Module.choices)
+    module = models.CharField(max_length=32, choices=Module.choices)
     granted_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="+"
     )

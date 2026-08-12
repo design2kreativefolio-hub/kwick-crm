@@ -17,6 +17,8 @@ urlpatterns = [
     path("api/notifications/", include("notifications.urls")),
     path("api/dashboard/", include("dashboard.urls")),
     path("api/reports/", include("reports.urls")),
+    # OPTIONAL — AI Assistant. Remove this line + the `ai` app to uninstall.
+    path("api/ai/", include("ai.urls")),
     # These routers register their ViewSet under an empty prefix ("") so the
     # resource name lives entirely in the router itself (e.g. "tasks",
     # "todos") rather than being split between here and the app's urls.py.

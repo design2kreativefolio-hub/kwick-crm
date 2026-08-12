@@ -37,6 +37,8 @@ class Message(TimeStampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_messages"
     )
     body = models.TextField(blank=True)
+    # Centered WhatsApp-style notices ("X added Y") — not a normal chat bubble.
+    is_system = models.BooleanField(default=False)
     attachment_url = models.URLField(max_length=500, blank=True)
     attachment_type = models.CharField(
         max_length=10, choices=AttachmentType.choices, blank=True

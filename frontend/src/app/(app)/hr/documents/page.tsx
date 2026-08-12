@@ -8,7 +8,9 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { Modal } from "@/components/Modal";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { DOC_TYPES, DocType, defaultLetterContent, docTypeLabel } from "@/lib/hrLetterContent";
+import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 
 type Letter = {
@@ -31,25 +33,31 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function HrDocumentsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const isSuperadmin = user?.role === "superadmin";
+  const hasAccess = isSuperadmin || hasModuleAccess(user?.module_access, "hr_documents");
 
   const [letters, setLetters] = useState<Letter[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [docType, setDocType] = useState<DocType>("experience_letter");
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [sendingId, setSendingId] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
-    api<Letter[] | { results: Letter[] }>("/api/hr/letters")
+    const qs = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+    api<Letter[] | { results: Letter[] }>(`/api/hr/letters${qs}`)
       .then((d) => setLetters(unwrapList(d)))
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(load, [search]);
 
   const createLetter = async () => {
     setCreating(true);
@@ -102,6 +110,48 @@ export default function HrDocumentsPage() {
     }
   };
 
+  const sendToEmail = async (letter: Letter) => {
+    setSendingId(letter.id);
+    try {
+      const detail = await api<{
+        content: Record<string, any>;
+        title: string;
+        staff: number | null;
+        file_url: string;
+      }>(`/api/hr/letters/${letter.id}`);
+      let to = String(detail.content?.email || "");
+      if (!to && detail.staff) {
+        const staffList = await api<{ id: number; email: string }[] | { results: { id: number; email: string }[] }>(
+          "/api/hr/staff"
+        );
+        const list = Array.isArray(staffList) ? staffList : staffList.results || [];
+        to = list.find((s) => s.id === detail.staff)?.email || "";
+      }
+      const res = await api<{ file_url: string }>(`/api/hr/letters/${letter.id}/pdf`, { method: "POST" });
+      const subject = detail.title || docTypeLabel(letter.doc_type);
+      await sendDocumentViaEmail({
+        pdfUrl: res.file_url,
+        to,
+        subject,
+        body: `Please find the attached document.\n\nAttach the downloaded PDF if it is not already attached, then send.`,
+        filename: `${subject.replace(/[^\w\-]+/g, "_")}.pdf`,
+      });
+      showToast(
+        to
+          ? "Email draft opened. Attach the downloaded PDF before sending."
+          : "PDF downloaded. Assign an employee or add an email on the letter, or pick one in your mail app."
+      );
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't prepare email." : err.message, "error");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  if (!hasAccess) {
+    return <p className="muted">You don&apos;t have access to HR Documents.</p>;
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {ConfirmDialog}
@@ -109,10 +159,7 @@ export default function HrDocumentsPage() {
         <span className="card-title" style={{ margin: 0 }}>
           Create document
         </span>
-        <p className="muted" style={{ marginTop: 8, marginBottom: 14, fontSize: 13.5 }}>
-          Choose the letter type. You can fill fields and export PDF on the next screen.
-        </p>
-        <label className="field-label" style={{ marginTop: 0 }}>
+        <label className="field-label" style={{ marginTop: 16 }}>
           Document type
         </label>
         <Select
@@ -134,14 +181,19 @@ export default function HrDocumentsPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Documents</h1>
-          <p className="muted" style={{ marginTop: 4 }}>
-            Create HR letters, assign to employees (except Offer Letter), and export PDF.
-          </p>
         </div>
         <button className="btn btn-accent" onClick={() => setCreateOpen(true)}>
           <i className="bi bi-plus-lg" /> Create document
         </button>
       </div>
+
+      <input
+        className="input"
+        placeholder="Search by title, employee or type…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ maxWidth: 360 }}
+      />
 
       <div className="card">
         <span className="card-title">
@@ -182,6 +234,14 @@ export default function HrDocumentsPage() {
                         <Link className="btn btn-ghost btn-sm" href={`/hr/documents/${l.id}`}>
                           <i className="bi bi-pencil-fill" /> Edit
                         </Link>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          disabled={sendingId === l.id}
+                          onClick={() => sendToEmail(l)}
+                          title="Open email draft with PDF"
+                        >
+                          <i className="bi bi-envelope" /> {sendingId === l.id ? "…" : "Send to"}
+                        </button>
                         <button
                           className="btn btn-ghost btn-sm"
                           disabled={busyId === l.id}

@@ -24,12 +24,12 @@ def build_artwork_id(
     Format:
       KF_{CompanyName}_{Country}_{ProductName}_{Designer}_{DDMMYY}_K-{SeriesYear}{Seq:04d}
     Example:
-      KF_Acme_UAE_Cacao_RH_260730_K-20264001
+      KF_Acme_UAE_Cacao_RH_260730_K-20244001
     The {DDMMYY} segment is the real generation date, but the sequence's
     leading "year" digits are a fixed series label (SERIES_YEAR) rather than
-    the actual current year — the count starts at 4001 and never resets, it
-    just keeps incrementing per country_code (generated atomically via
-    select_for_update).
+    the actual current year — the count starts at 4001 and steps by 1000
+    (4001, 5001, 6001, …) so suffixes read 20244001, 20245001, 20246001.
+    Generated atomically per country_code via select_for_update.
     """
     on = on or date.today()
     seq = ArtworkSequence.next_number(year=SERIES_YEAR, category_code=country_code)

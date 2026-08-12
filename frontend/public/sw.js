@@ -22,7 +22,10 @@ const SOURCE_HREF = {
   ticket: "/hr",
   document: "/profile",
   staff_renewal: "/hr",
+  chat: "/chat",
 };
+
+const ICON = "/hr/kwick-k-icon.png";
 
 self.addEventListener("push", (event) => {
   if (!event.data) return;
@@ -34,15 +37,25 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title || "Kwick";
-  const url = SOURCE_HREF[payload.source] || "/reminders";
+  let url = SOURCE_HREF[payload.source] || "/reminders";
+  if (payload.kind === "chat_message" && payload.conversation_id) {
+    url = `/chat?conversation=${payload.conversation_id}`;
+  } else if (payload.url) {
+    url = payload.url;
+  }
 
   event.waitUntil(
     self.registration.showNotification(title, {
-      body: payload.body || "",
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      tag: payload.id ? `kwick-${payload.id}` : undefined,
+      body: payload.body || payload.preview || "",
+      icon: ICON,
+      badge: ICON,
+      tag: payload.id
+        ? `kwick-${payload.id}`
+        : payload.kind === "chat_message"
+          ? `chat-${payload.conversation_id}`
+          : undefined,
       data: { url },
+      requireInteraction: false,
     })
   );
 });

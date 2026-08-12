@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useRef, useState } from "react";
 
 type ConfirmOptions = {
@@ -19,6 +19,7 @@ type ConfirmOptions = {
 export function useConfirm() {
   const [state, setState] = useState<{ message: string; options: ConfirmOptions } | null>(null);
   const resolver = useRef<((value: boolean) => void) | null>(null);
+  const reduceMotion = useReducedMotion();
 
   const confirm = useCallback((message: string, options: ConfirmOptions = {}) => {
     setState({ message, options });
@@ -38,23 +39,23 @@ export function useConfirm() {
       {state && (
         <motion.div
           style={overlay}
-          initial={{ opacity: 0 }}
+          initial={reduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          exit={reduceMotion ? undefined : { opacity: 0 }}
+          transition={{ duration: reduceMotion ? 0 : 0.15 }}
           onClick={() => respond(false)}
         >
           <motion.div
             className="card"
             style={card}
             onClick={(e) => e.stopPropagation()}
-            initial={{ opacity: 0, y: 12, scale: 0.98 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }}
           >
             <span className="card-title" style={{ margin: 0 }}>{state.options.title || "Are you sure?"}</span>
-            <p style={{ marginTop: 12, marginBottom: 0, fontSize: 14, whiteSpace: "pre-line", color: "var(--muted-text, #5b6178)" }}>
+            <p className="muted" style={{ marginTop: 12, marginBottom: 0, fontSize: 14, whiteSpace: "pre-line", color: "var(--text-muted)" }}>
               {state.message}
             </p>
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
@@ -83,7 +84,7 @@ export function useConfirm() {
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(16, 19, 63, 0.35)",
+  background: "rgba(7, 11, 22, 0.55)",
   display: "grid",
   placeItems: "center",
   zIndex: 60,
@@ -93,4 +94,8 @@ const overlay: React.CSSProperties = {
 const card: React.CSSProperties = {
   width: "100%",
   maxWidth: 400,
+  height: "auto",
+  maxHeight: "min(90vh, 420px)",
+  overflowY: "auto",
+  alignSelf: "center",
 };

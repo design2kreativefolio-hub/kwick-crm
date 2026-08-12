@@ -10,7 +10,9 @@ import { PerformanceChart } from "@/components/PerformanceChart";
 import { Reveal } from "@/components/Reveal";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import { DEFAULT_SOURCE_META, NotificationEvent, SOURCE_META, timeAgo } from "@/lib/notifications";
+import { STATUS_BADGE, STATUS_COLOR as SHARED_STATUS_COLOR } from "@/lib/statusBadges";
 
 type StatusCount = { status: string; label: string; count: number };
 
@@ -23,11 +25,14 @@ type Task = {
   due_date: string | null;
 };
 
-const TASK_STATUS_BADGE: Record<string, string> = {
-  todo: "badge-muted",
-  in_progress: "badge-warning",
-  completed: "badge-success",
+type PendingApprovalUser = {
+  id: number;
+  full_name: string;
+  email: string;
+  created_at: string;
 };
+
+const TASK_STATUS_BADGE = STATUS_BADGE;
 const TASK_PRIORITY_BADGE: Record<string, string> = {
   low: "badge-muted",
   medium: "badge-warning",
@@ -50,14 +55,14 @@ type Summary = {
   company_ongoing_projects?: number;
   company_task_status_breakdown?: StatusCount[];
   project_status_breakdown?: StatusCount[];
+  pending_approvals?: number;
+  pending_approval_users?: PendingApprovalUser[];
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  todo: "var(--chart-4)",
-  in_progress: "var(--chart-2)",
-  completed: "var(--chart-1)",
-  ongoing: "var(--chart-2)",
-  on_hold: "var(--chart-4)",
+  ...SHARED_STATUS_COLOR,
+  ongoing: SHARED_STATUS_COLOR.in_progress,
+  on_hold: SHARED_STATUS_COLOR.waiting_approval,
 };
 
 function toSlices(breakdown: StatusCount[] | undefined) {
@@ -80,7 +85,8 @@ function sortNotifications(items: NotificationEvent[]) {
     // Top-priority, time-sensitive reminders — staff renewal nags and
     // project delivery dates — surface above everything else once unread
     // status is equal.
-    const rank = (s: string) => (s === "staff_renewal" || s === "project" ? 0 : 1);
+    const rank = (s: string) =>
+      s === "registration" || s === "staff_renewal" || s === "project" ? 0 : 1;
     const pa = rank(a.source);
     const pb = rank(b.source);
     if (pa !== pb) return pa - pb;
@@ -103,11 +109,13 @@ function relativeDate(iso: string) {
 export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const isSuperadmin = user?.role === "superadmin";
   const [summary, setSummary] = useState<Summary | null>(null);
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
   const [sparkline, setSparkline] = useState<number[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
+  const [approvalBusyId, setApprovalBusyId] = useState<number | null>(null);
 
   const load = useCallback(() => {
     api<Summary>("/api/dashboard/summary").then(setSummary).catch(() => {});
@@ -134,6 +142,19 @@ export default function DashboardPage() {
 
   useEffect(load, [load]);
 
+  const decideApproval = async (id: number, action: "approve" | "reject") => {
+    setApprovalBusyId(id);
+    try {
+      await api(`/api/auth/${action}/${id}`, { method: "POST" });
+      showToast(action === "approve" ? "Account approved." : "Registration rejected.");
+      load();
+    } catch {
+      showToast(action === "approve" ? "Couldn't approve account." : "Couldn't reject registration.", "error");
+    } finally {
+      setApprovalBusyId(null);
+    }
+  };
+
   const donutSlices: DonutSlice[] =
     isSuperadmin && summary?.project_status_breakdown
       ? toSlices(summary.project_status_breakdown)
@@ -142,11 +163,6 @@ export default function DashboardPage() {
   const completed = isSuperadmin ? summary?.company_completed_this_month : summary?.completed_this_month;
   const completedPrev = isSuperadmin ? summary?.company_completed_last_month : summary?.completed_last_month;
   const completedTrend = summary ? trendPct(completed ?? 0, completedPrev ?? 0) : null;
-
-  const invoicesTrend =
-    isSuperadmin && summary
-      ? trendPct(summary.invoices_this_month ?? 0, summary.invoices_last_month ?? 0)
-      : null;
 
   const pendingNotifications = notifications.filter((n) => !n.read_at);
 
@@ -182,10 +198,9 @@ export default function DashboardPage() {
             />
             {isSuperadmin ? (
               <KpiCard
-                label="Invoices This Month"
-                value={summary?.invoices_this_month ?? "—"}
-                icon="bi-receipt-cutoff"
-                trend={invoicesTrend}
+                label="Pending Approvals"
+                value={summary?.pending_approvals ?? "—"}
+                icon="bi-person-plus-fill"
                 tone="blue"
               />
             ) : (
@@ -199,7 +214,45 @@ export default function DashboardPage() {
           </div>
         </Reveal>
 
-        <Reveal index={1}>
+        {isSuperadmin && (summary?.pending_approval_users?.length ?? 0) > 0 && (
+          <Reveal index={1}>
+            <div className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="card-title" style={{ margin: 0 }}>Awaiting approval</span>
+                <a href="/hr/staff" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
+                  Open staff <i className="bi bi-arrow-right" />
+                </a>
+              </div>
+              <ul style={{ listStyle: "none", padding: 0, margin: "12px 0 0" }}>
+                {(summary?.pending_approval_users ?? []).map((u) => (
+                  <li key={u.id} style={approvalRow}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{u.full_name || "—"}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>{u.email}</div>
+                    </span>
+                    <button
+                      className="btn btn-sm"
+                      disabled={approvalBusyId === u.id}
+                      onClick={() => decideApproval(u.id, "approve")}
+                    >
+                      {approvalBusyId === u.id ? "…" : "Approve"}
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ color: "var(--danger)" }}
+                      disabled={approvalBusyId === u.id}
+                      onClick={() => decideApproval(u.id, "reject")}
+                    >
+                      Reject
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Reveal>
+        )}
+
+        <Reveal index={2}>
           <div className="dashboard-charts-row" style={{ display: "grid", gap: 22 }}>
             <PerformanceChart
               canScopeCompany={isSuperadmin}
@@ -332,6 +385,13 @@ const heroRow: React.CSSProperties = {
   display: "grid",
   gap: 16,
   alignItems: "stretch",
+};
+const approvalRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "12px 0",
+  borderBottom: "1px solid var(--border)",
 };
 const reminderRow: React.CSSProperties = {
   display: "flex",

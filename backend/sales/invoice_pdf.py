@@ -37,7 +37,10 @@ def _fmt_money(value) -> str:
 
 
 def build_context(invoice) -> dict:
+    from .invoice_content import doc_label
+
     content = merged_content(invoice.content)
+    kind = content.get("invoice_kind") or "standard"
     currency = content.get("currency") or "AED"
     items = []
     for i, item in enumerate(content.get("items") or [], start=1):
@@ -61,6 +64,9 @@ def build_context(invoice) -> dict:
     total = subtotal(content.get("items") or [])
     payment = content.get("payment") or {}
     return {
+        "doc_label": doc_label(kind),
+        "invoice_kind": kind,
+        "is_petty_cash": kind == "petty_cash",
         "invoice_number": content.get("invoice_number") or invoice.invoice_number or "",
         "bill_to": content.get("bill_to") or "",
         "bill_to_email": content.get("bill_to_email") or "",
@@ -71,6 +77,8 @@ def build_context(invoice) -> dict:
         "subtotal_display": f"{currency} {_fmt_money(total)}",
         "total_display": f"{currency} {_fmt_money(total)}",
         "payment": payment,
+        "received_by": content.get("received_by") or "",
+        "passed_by": content.get("passed_by") or "",
         "notes": content.get("notes") or "",
         "logo_data_uri": _data_uri("logo.png"),
     }

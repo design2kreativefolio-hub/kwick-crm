@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { api, ApiError, unwrapList } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { SalesClient } from "@/lib/salesClient";
 import { useToast } from "@/lib/toast";
 
@@ -17,7 +17,7 @@ export default function SalesClientsPage() {
   const { confirm, ConfirmDialog } = useConfirm();
   const router = useRouter();
   const isSuperadmin = user?.role === "superadmin";
-  const hasAccess = isSuperadmin || (user?.module_access ?? []).includes("sales");
+  const hasAccess = isSuperadmin || hasModuleAccess(user?.module_access, "sales_clients");
 
   const [clients, setClients] = useState<SalesClient[]>([]);
   const [loading, setLoading] = useState(true);

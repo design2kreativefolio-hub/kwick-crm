@@ -62,19 +62,33 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
-    """Public self-service reset request. Always succeeds from the caller's
-    point of view — never reveals whether the email actually has an account,
-    same as any standard forgot-password flow."""
+    """Public self-service reset. Only sends mail when the email belongs to
+    a registered, active account — otherwise the API returns an error so the
+    UI can tell the user to contact an admin."""
 
     email = serializers.EmailField()
+
+    def validate_email(self, value):
+        email = (value or "").strip()
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(
+                "No registered account for this email. Please contact your admin."
+            )
+        if user.status != UserStatus.ACTIVE or not user.is_active:
+            raise serializers.ValidationError(
+                "This account is not active yet. Please contact your admin."
+            )
+        self.context["reset_user"] = user
+        return email
 
     def save(self):
         from .tasks import send_forgot_password_email
 
-        try:
+        user = self.context.get("reset_user")
+        if not user:
             user = User.objects.get(email__iexact=self.validated_data["email"])
-        except User.DoesNotExist:
-            return
         send_forgot_password_email.delay(user.id)
 
 

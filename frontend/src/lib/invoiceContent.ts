@@ -1,5 +1,7 @@
 // Canonical shape of Invoice.content — mirrors backend/sales/invoice_content.py.
 
+export type InvoiceKind = "standard" | "proforma" | "petty_cash";
+
 export type InvoiceLineItem = {
   description: string;
   details: string;
@@ -17,6 +19,7 @@ export type InvoicePayment = {
 
 export type InvoiceContent = {
   title: string;
+  invoice_kind: InvoiceKind;
   invoice_number: string;
   bill_to: string;
   bill_to_email: string;
@@ -26,6 +29,10 @@ export type InvoiceContent = {
   currency: string;
   items: InvoiceLineItem[];
   payment: InvoicePayment;
+  /** Petty cash only */
+  received_by: string;
+  /** Petty cash only */
+  passed_by: string;
   notes: string;
 };
 
@@ -45,9 +52,15 @@ export function defaultPayment(): InvoicePayment {
   };
 }
 
-export function defaultInvoiceContent(): InvoiceContent {
+export function defaultInvoiceContent(kind: InvoiceKind = "standard"): InvoiceContent {
+  const titles: Record<InvoiceKind, string> = {
+    standard: "Invoice",
+    proforma: "Proforma Invoice",
+    petty_cash: "Petty Cash Invoice",
+  };
   return {
-    title: "Invoice",
+    title: titles[kind],
+    invoice_kind: kind,
     invoice_number: "",
     bill_to: "",
     bill_to_email: "",
@@ -57,8 +70,16 @@ export function defaultInvoiceContent(): InvoiceContent {
     currency: "AED",
     items: [defaultLineItem()],
     payment: defaultPayment(),
+    received_by: "",
+    passed_by: "",
     notes: DEFAULT_NOTES,
   };
+}
+
+export function invoiceDocLabel(kind: InvoiceKind | string | undefined): string {
+  if (kind === "proforma") return "PROFORMA INVOICE";
+  if (kind === "petty_cash") return "PETTY CASH INVOICE";
+  return "INVOICE";
 }
 
 export function lineAmount(item: InvoiceLineItem): number {
@@ -72,15 +93,19 @@ export function invoiceSubtotal(items: InvoiceLineItem[]): number {
 }
 
 export function mergedInvoiceContent(raw: Partial<InvoiceContent> | null | undefined): InvoiceContent {
-  const base = defaultInvoiceContent();
+  const kind = (raw?.invoice_kind as InvoiceKind) || "standard";
+  const base = defaultInvoiceContent(kind);
   if (!raw) return base;
   return {
     ...base,
     ...raw,
+    invoice_kind: kind,
     items:
       Array.isArray(raw.items) && raw.items.length > 0
         ? raw.items.map((item) => ({ ...defaultLineItem(), ...item }))
         : base.items,
     payment: { ...defaultPayment(), ...(raw.payment || {}) },
+    received_by: raw.received_by ?? base.received_by,
+    passed_by: raw.passed_by ?? base.passed_by,
   };
 }

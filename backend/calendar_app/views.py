@@ -1,5 +1,7 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
+from django.db.models import Q
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import viewsets
 from rest_framework.response import Response
@@ -11,16 +13,20 @@ from todos.models import TodoItem
 
 from .models import ManualReminder
 from .serializers import ManualReminderSerializer
-from .services import build_agenda
+from .services import build_agenda, detect_meeting_url, is_meeting_link
 
 
 class AgendaView(APIView):
-    """GET /api/calendar/agenda?from=&to=&scope= (scope=all is manager-only, spec §10)."""
+    """GET /api/calendar/agenda?from=&to=&scope=
+
+    Personal calendar should always pass scope=self so each user (including
+    superadmin) only sees their own assignments / reminders / todos.
+    """
 
     permission_classes = [IsActive]
 
     def get(self, request):
-        today = date.today()
+        today = timezone.localdate()
         dt_from = parse_date(request.query_params.get("from", "")) or today
         dt_to = parse_date(request.query_params.get("to", "")) or (today + timedelta(days=30))
         scope = request.query_params.get("scope", "self")
@@ -33,22 +39,86 @@ class ManualReminderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsActive]
 
     def get_queryset(self):
-        from django.db.models import Q
-
-        return ManualReminder.objects.filter(
-            Q(owner=self.request.user) | Q(visibility=ManualReminder.Visibility.COMPANY)
+        return (
+            ManualReminder.objects.filter(
+                Q(owner=self.request.user)
+                | Q(assignees=self.request.user)
+                | Q(visibility=ManualReminder.Visibility.COMPANY)
+            )
+            .distinct()
+            .prefetch_related("assignees")
+            .select_related("owner")
         )
 
     def perform_create(self, serializer):
         reminder = serializer.save(owner=self.request.user)
-        # A calendar reminder is also personal follow-up work — mirror it into
-        # the owner's To-Do list and the Reminders/Notifications feed so it
-        # isn't only visible by opening the calendar itself.
-        TodoItem.objects.create(owner=self.request.user, text=reminder.title)
-        notify_user(
-            user=self.request.user,
-            source="calendar",
-            title=reminder.title,
-            body=f"Reminder for {reminder.remind_at.strftime('%b %d, %Y')}",
-            object_ref=f"reminder:{reminder.id}",
+        meeting = reminder.meeting_url or detect_meeting_url(reminder.description or "")
+        if meeting and not reminder.meeting_url:
+            reminder.meeting_url = meeting
+            reminder.save(update_fields=["meeting_url", "updated_at"])
+
+        # Mirror into the owner's To-Do list (with due date) and notify.
+        TodoItem.objects.create(
+            owner=self.request.user,
+            text=reminder.title,
+            due_date=timezone.localtime(reminder.remind_at).date(),
         )
+
+        recipients = {self.request.user}
+        recipients.update(reminder.assignees.all())
+        local_when = timezone.localtime(reminder.remind_at)
+        body = f"Reminder for {local_when.strftime('%b %d, %Y at %I:%M %p')}"
+        if reminder.description:
+            body = f"{body}\n{reminder.description[:200]}"
+        for user in recipients:
+            notify_user(
+                user=user,
+                source="calendar",
+                title=f"📌 {reminder.title}",
+                body=body,
+                object_ref=f"reminder:{reminder.id}",
+            )
+            if user.id != self.request.user.id:
+                TodoItem.objects.create(
+                    owner=user,
+                    text=reminder.title,
+                    due_date=timezone.localtime(reminder.remind_at).date(),
+                )
+
+    def perform_update(self, serializer):
+        was_done = serializer.instance.done
+        reminder = serializer.save()
+        meeting = reminder.meeting_url or detect_meeting_url(reminder.description or "")
+        if meeting and reminder.meeting_url != meeting:
+            reminder.meeting_url = meeting
+            reminder.save(update_fields=["meeting_url", "updated_at"])
+
+        # Advance recurring series after the current occurrence is completed.
+        if (
+            "done" in serializer.validated_data
+            and reminder.done
+            and not was_done
+            and reminder.recurrence != ManualReminder.Recurrence.NONE
+        ):
+            from .services import next_occurrence
+
+            nxt = next_occurrence(reminder.remind_at, reminder.recurrence)
+            if nxt and (
+                not reminder.recurrence_end
+                or timezone.localtime(nxt).date() <= reminder.recurrence_end
+            ):
+                reminder.remind_at = nxt
+                reminder.done = False
+                reminder.done_at = None
+                reminder.day_alert_sent = False
+                reminder.hour_alert_sent = False
+                reminder.save(
+                    update_fields=[
+                        "remind_at",
+                        "done",
+                        "done_at",
+                        "day_alert_sent",
+                        "hour_alert_sent",
+                        "updated_at",
+                    ]
+                )

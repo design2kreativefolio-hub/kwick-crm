@@ -111,8 +111,14 @@ export function PerformanceChart({
             <XAxis dataKey="bucket" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
             <Tooltip
-              cursor={{ fill: "var(--blue-100)", radius: 4 }}
-              contentStyle={{ borderRadius: 8, border: "1px solid var(--border)", fontSize: 12.5 }}
+              cursor={{ fill: "var(--gold-soft)", radius: 4 }}
+              contentStyle={{
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                fontSize: 12.5,
+                background: "var(--surface)",
+                color: "var(--text)",
+              }}
             />
             <Legend content={renderLegend} verticalAlign="top" height={28} />
             <Bar

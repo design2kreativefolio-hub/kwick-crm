@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 16mm 12mm 16mm 12mm;
+    @bottom-center {
+      content: "Powered By Kwick";
+      font-family: Calibri, Carlito, sans-serif;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      color: #1c1e54;
+    }
+    @bottom-right {
+      content: counter(page);
+      font-size: 8px;
+      color: #8a8f9e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: #2a2f45;
+    font-size: 10.5px;
+    line-height: 1.45;
+    margin: 0;
+  }
+  .hero {
+    background: linear-gradient(135deg, #1c1e54 0%, #2a4a9e 55%, #3673fc 100%);
+    color: #fff;
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .hero-table { width: 100%; border-collapse: collapse; }
+  .hero-table td { vertical-align: middle; }
+  .brand-logo {
+    height: 32px;
+    display: block;
+    margin-bottom: 8px;
+    background: #fff;
+    border-radius: 6px;
+    padding: 3px 6px;
+  }
+  .eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin: 0 0 4px;
+  }
+  .hero-title {
+    font-size: 22px;
+    font-weight: 800;
+    margin: 0;
+    letter-spacing: 0.2px;
+  }
+  .hero-meta { margin: 6px 0 0; font-size: 10.5px; opacity: 0.9; }
+  .hero-right { text-align: right; }
+  .period-pill {
+    display: inline-block;
+    background: rgba(255,255,255,0.16);
+    border: 1px solid rgba(255,255,255,0.28);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .kpis {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 8px 0;
+    margin: 0 0 14px;
+  }
+  .kpis td {
+    width: 20%;
+    background: #f4f6fc;
+    border: 1px solid #e4e8f4;
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+  }
+  .kpis .val { font-size: 18px; font-weight: 800; color: #1c1e54; display: block; }
+  .kpis .lbl {
+    font-size: 8.5px;
+    color: #5b6178;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+    font-weight: 600;
+  }
+  .money-banner {
+    background: #eef7f1;
+    border: 1px solid #cfe8d8;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin: -4px 0 14px;
+    color: #1a5c3a;
+    font-size: 10.5px;
+  }
+  .money-banner strong { color: #0f3d26; }
+  .charts {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 10px 0;
+    margin: 0 0 16px;
+  }
+  .charts td {
+    width: 50%;
+    vertical-align: top;
+    background: #fff;
+    border: 1px solid #e4e8f4;
+    border-radius: 12px;
+    padding: 12px 12px 8px;
+  }
+  .chart-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1c1e54;
+    margin: 0 0 8px;
+  }
+  .section {
+    margin: 0 0 14px;
+    border: 1px solid #e4e8f4;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .section-head {
+    background: #f4f6fc;
+    border-bottom: 1px solid #e4e8f4;
+    padding: 8px 12px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #1c1e54;
+  }
+  .section-head .count {
+    float: right;
+    color: #5b6178;
+    font-weight: 600;
+    font-size: 10px;
+  }
+  table.items { width: 100%; border-collapse: collapse; }
+  table.items th {
+    background: #1c1e54;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    text-align: left;
+    padding: 6px 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  table.items td {
+    border-bottom: 1px solid #eef0f6;
+    padding: 6px 10px;
+    font-size: 10px;
+    vertical-align: top;
+  }
+  table.items tr:nth-child(even) td { background: #fafbfe; }
+  .empty {
+    color: #8a8f9e;
+    font-style: italic;
+    margin: 0;
+    padding: 12px;
+    font-size: 10px;
+  }
+  .muted { color: #5b6178; }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <table class="hero-table">
+      <tr>
+        <td>
+          {% if logo_data_uri %}<img class="brand-logo" src="{{ logo_data_uri }}" alt="Logo">{% endif %}
+          <p class="eyebrow">{{ title }}</p>
+          <p class="hero-title">{{ subject_name }}</p>
+          {% if subject_meta %}<p class="hero-meta">{{ subject_meta }}</p>{% endif %}
+        </td>
+        <td class="hero-right">
+          <div class="period-pill">{{ date_from }} → {{ date_to }}</div>
+          <p class="hero-meta" style="margin-top:8px">Generated {{ generated_at }}</p>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  {% if report.type == "employee" %}
+  <table class="kpis">
+    <tr>
+      <td><span class="val">{{ summary.tasks_completed }}</span><span class="lbl">Completed</span></td>
+      <td><span class="val">{{ summary.tasks_open }}</span><span class="lbl">Open tasks</span></td>
+      <td><span class="val">{{ summary.projects }}</span><span class="lbl">Projects</span></td>
+      <td><span class="val">{{ summary.daily_tracker_entries }}</span><span class="lbl">Tracker</span></td>
+      <td><span class="val">{{ summary.leave_days }}</span><span class="lbl">Leave days</span></td>
+    </tr>
+  </table>
+  {% else %}
+  <table class="kpis">
+    <tr>
+      <td><span class="val">{{ summary.projects }}</span><span class="lbl">Projects</span></td>
+      <td><span class="val">{{ summary.content_items }}</span><span class="lbl">Content</span></td>
+      <td><span class="val">{{ summary.tasks }}</span><span class="lbl">Tasks</span></td>
+      <td><span class="val">{{ summary.renewals }}</span><span class="lbl">Renewals</span></td>
+      <td><span class="val">{{ summary.invoices }}</span><span class="lbl">Invoices</span></td>
+    </tr>
+  </table>
+  <div class="money-banner">
+    Invoiced <strong>AED {{ summary.invoiced_total }}</strong>
+    · Paid <strong>AED {{ summary.invoiced_paid }}</strong>
+    · Overdue <strong>AED {{ summary.invoiced_overdue }}</strong>
+    · Upcoming renewals <strong>{{ summary.upcoming_renewals }}</strong>
+  </div>
+  {% endif %}
+
+  {% if charts.overview_svg or charts.breakdown_svg %}
+  <table class="charts">
+    <tr>
+      <td>
+        <p class="chart-title">{{ charts.overview_title }}</p>
+        {{ charts.overview_svg|safe }}
+      </td>
+      <td>
+        <p class="chart-title">{{ charts.breakdown_title }}</p>
+        {{ charts.breakdown_svg|safe }}
+      </td>
+    </tr>
+  </table>
+  {% endif %}
+
+  {% if report.type == "employee" %}
+  <div class="section">
+    <div class="section-head">Tasks completed <span class="count">{{ report.tasks_completed|length }}</span></div>
+    {% if report.tasks_completed %}
+    <table class="items">
+      <thead><tr><th>Title</th><th>Project</th><th>Priority</th><th>Completed</th></tr></thead>
+      <tbody>
+        {% for t in report.tasks_completed %}
+        <tr><td>{{ t.title }}</td><td>{{ t.project|default:"—" }}</td><td>{{ t.priority }}</td><td>{{ t.completed_at|default:"—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No completed tasks in this period.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Open tasks <span class="count">{{ report.tasks_open|length }}</span></div>
+    {% if report.tasks_open %}
+    <table class="items">
+      <thead><tr><th>Title</th><th>Status</th><th>Due</th><th>Priority</th></tr></thead>
+      <tbody>
+        {% for t in report.tasks_open %}
+        <tr><td>{{ t.title }}</td><td>{{ t.status }}</td><td>{{ t.due_date|default:"—" }}</td><td>{{ t.priority }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No open tasks in this period.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Projects <span class="count">{{ report.projects|length }}</span></div>
+    {% if report.projects %}
+    <table class="items">
+      <thead><tr><th>Name</th><th>Client</th><th>Status</th><th>Delivery</th></tr></thead>
+      <tbody>
+        {% for p in report.projects %}
+        <tr><td>{{ p.name }}</td><td>{{ p.client|default:"—" }}</td><td>{{ p.status }}</td><td>{{ p.delivery_date|default:"—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No projects in this period.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Daily tracker <span class="count">{{ report.daily_tracker|length }}</span></div>
+    {% if report.daily_tracker %}
+    <table class="items">
+      <thead><tr><th>Date</th><th>Task</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for e in report.daily_tracker %}
+        <tr><td>{{ e.date }}</td><td>{{ e.task_name }}</td><td>{{ e.description|default:"—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No daily tracker entries.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Leave <span class="count">{{ report.leave|length }}</span></div>
+    {% if report.leave %}
+    <table class="items">
+      <thead><tr><th>Type</th><th>From</th><th>To</th><th>Days</th></tr></thead>
+      <tbody>
+        {% for l in report.leave %}
+        <tr><td>{{ l.type }}</td><td>{{ l.start_date }}</td><td>{{ l.end_date }}</td><td>{{ l.days }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No approved leave overlapping this period.</p>{% endif %}
+  </div>
+
+  {% else %}
+  <div class="section">
+    <div class="section-head">Projects <span class="count">{{ report.projects|length }}</span></div>
+    {% if report.projects %}
+    <table class="items">
+      <thead><tr><th>Name</th><th>Status</th><th>Start</th><th>Delivery</th></tr></thead>
+      <tbody>
+        {% for p in report.projects %}
+        <tr><td>{{ p.name }}</td><td>{{ p.status }}</td><td>{{ p.start_date|default:"—" }}</td><td>{{ p.delivery_date|default:"—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No projects matched for this client.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Content calendar <span class="count">{{ report.content_calendar|length }}</span></div>
+    {% if report.content_calendar %}
+    <table class="items">
+      <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Scheduled</th></tr></thead>
+      <tbody>
+        {% for c in report.content_calendar %}
+        <tr><td>{{ c.title }}</td><td>{{ c.content_type }}</td><td>{{ c.status }}</td><td>{{ c.scheduled_date }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No content items in this period.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Tasks <span class="count">{{ report.tasks|length }}</span></div>
+    {% if report.tasks %}
+    <table class="items">
+      <thead><tr><th>Title</th><th>Assignee</th><th>Status</th><th>Due</th></tr></thead>
+      <tbody>
+        {% for t in report.tasks %}
+        <tr><td>{{ t.title }}</td><td>{{ t.assignee|default:"—" }}</td><td>{{ t.status }}</td><td>{{ t.due_date|default:"—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No tasks in this period.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Renewals <span class="count">{{ report.renewals|length }}</span></div>
+    {% if report.renewals %}
+    <table class="items">
+      <thead><tr><th>Type</th><th>Due</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        {% for r in report.renewals %}
+        <tr><td>{{ r.renewal_type }}</td><td>{{ r.due_date }}</td><td>{{ r.status }}</td><td>{{ r.notes|default:"—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No renewals on file for this client.</p>{% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head">Invoices <span class="count">{{ report.invoices|length }}</span></div>
+    {% if report.invoices %}
+    <table class="items">
+      <thead><tr><th>Number</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead>
+      <tbody>
+        {% for i in report.invoices %}
+        <tr><td>{{ i.invoice_number }}</td><td>AED {{ i.amount }}</td><td>{{ i.status }}</td><td>{{ i.due_date|default:"—" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">No invoices in this period.</p>{% endif %}
+  </div>
+  {% endif %}
+</body>
+</html>

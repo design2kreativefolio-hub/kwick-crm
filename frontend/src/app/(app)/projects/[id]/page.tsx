@@ -10,7 +10,9 @@ import { Combobox } from "@/components/Combobox";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
+import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
+import { STATUS_BADGE } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
 type ProjectStatus = "assigned" | "started" | "waiting_approval" | "completed";
@@ -41,12 +43,6 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
   started: "Started",
   waiting_approval: "Waiting for approval",
   completed: "Completed",
-};
-const STATUS_BADGE: Record<ProjectStatus, string> = {
-  assigned: "badge-muted",
-  started: "badge-purple",
-  waiting_approval: "badge-warning",
-  completed: "badge-success",
 };
 const STATUS_OPTIONS = (Object.keys(STATUS_LABEL) as ProjectStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }));
 
@@ -125,8 +121,8 @@ export default function ProjectDetailPage() {
   }, [directory]);
 
   const assigneeOptions = useMemo(
-    () => [{ value: "", label: "Unassigned" }, ...directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email }))],
-    [directory]
+    () => assigneeSelectOptions(user, directory),
+    [user, directory]
   );
 
   const clientNames = useMemo(() => clients.map((c) => c.name), [clients]);
@@ -148,7 +144,7 @@ export default function ProjectDetailPage() {
       name: project.name,
       description: project.description || "",
       client: project.client || "",
-      assignee: project.members[0] ? String(project.members[0]) : "",
+      assignee: project.members[0] ? String(project.members[0]) : user?.id ? String(user.id) : "",
       status: project.status,
       priority: project.priority,
       delivery_date: project.delivery_date || "",

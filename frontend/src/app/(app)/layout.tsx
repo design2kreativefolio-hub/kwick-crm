@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { PageTransition } from "@/components/PageTransition";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { useAuth } from "@/lib/auth";
@@ -48,7 +49,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
         <div className="shell-main">
           <Topbar collapsed={collapsed} onToggleCollapsed={toggleNav} />
-          <main className="shell-content">{children}</main>
+          <main className="shell-content">
+            <PageTransition>{children}</PageTransition>
+          </main>
         </div>
       </div>
     </LiveUpdatesProvider>

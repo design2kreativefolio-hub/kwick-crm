@@ -14,12 +14,20 @@ class MessageSerializer(serializers.ModelSerializer):
             "sender",
             "sender_name",
             "body",
+            "is_system",
             "attachment_url",
             "attachment_type",
             "attachment_name",
             "created_at",
         ]
-        read_only_fields = ["sender", "attachment_url", "attachment_type", "attachment_name", "created_at"]
+        read_only_fields = [
+            "sender",
+            "is_system",
+            "attachment_url",
+            "attachment_type",
+            "attachment_name",
+            "created_at",
+        ]
 
 
 class ConversationSerializer(serializers.ModelSerializer):
@@ -62,7 +70,12 @@ class ConversationSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request:
             return 0
-        return obj.messages.exclude(sender=request.user).exclude(read_by=request.user).count()
+        return (
+            obj.messages.exclude(is_system=True)
+            .exclude(sender=request.user)
+            .exclude(read_by=request.user)
+            .count()
+        )
 
     def get_participants_detail(self, obj):
         if not obj.is_group:

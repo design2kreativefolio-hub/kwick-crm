@@ -7,7 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { ClientFormFields } from "@/components/sales/ClientFormFields";
 import { api, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, hasModuleAccess } from "@/lib/auth";
 import {
   DEFAULT_CLIENT_ACCENT,
   SalesClient,
@@ -25,7 +25,7 @@ export default function SalesClientDetailPage() {
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const isSuperadmin = user?.role === "superadmin";
-  const hasAccess = isSuperadmin || (user?.module_access ?? []).includes("sales");
+  const hasAccess = isSuperadmin || hasModuleAccess(user?.module_access, "sales_clients");
 
   const [client, setClient] = useState<SalesClient | null>(null);
   const [loading, setLoading] = useState(true);

@@ -1,13 +1,14 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
-import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
-import { useAuth, Module } from "@/lib/auth";
+import { api, ApiError, formatApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
 type StaffDetail = {
@@ -33,15 +34,6 @@ type StaffDetail = {
   };
 };
 
-type Grant = { id: number; module: Module };
-
-const MODULES: { key: Module; label: string }[] = [
-  { key: "hr", label: "HR" },
-  { key: "sales", label: "Sales" },
-  { key: "renewals", label: "Renewals" },
-  { key: "reports", label: "Reports" },
-];
-
 const emptyForm = {
   full_name: "",
   email: "",
@@ -61,6 +53,7 @@ const emptyForm = {
 
 export default function StaffEditPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -74,11 +67,9 @@ export default function StaffEditPage() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarRef = useRef<HTMLInputElement>(null);
-
-  const [grants, setGrants] = useState<Grant[]>([]);
-  const [grantBusy, setGrantBusy] = useState<Module | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -107,36 +98,6 @@ export default function StaffEditPage() {
   };
 
   useEffect(load, [id]);
-
-  const loadGrants = () => {
-    if (!isSuperadmin) return;
-    api<Grant[] | { results: Grant[] }>(`/api/auth/module-access?user=${id}`)
-      .then((d) => setGrants(unwrapList(d)))
-      .catch(() => {});
-  };
-
-  useEffect(loadGrants, [id, isSuperadmin]);
-
-  const toggleModule = async (module: Module, checked: boolean) => {
-    setGrantBusy(module);
-    try {
-      if (checked) {
-        await api("/api/auth/module-access", {
-          method: "POST",
-          body: JSON.stringify({ user: Number(id), module }),
-        });
-      } else {
-        const grant = grants.find((g) => g.module === module);
-        if (grant) await api(`/api/auth/module-access/${grant.id}`, { method: "DELETE" });
-      }
-      showToast(checked ? "Access granted." : "Access removed.");
-      loadGrants();
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? formatApiError(err.data) : "Couldn't update access.", "error");
-    } finally {
-      setGrantBusy(null);
-    }
-  };
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -194,6 +155,30 @@ export default function StaffEditPage() {
       showToast(err instanceof ApiError ? "Couldn't update status." : err.message, "error");
     } finally {
       setTogglingStatus(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!data) return;
+    const name = data.staff.full_name || data.staff.email;
+    const ok = await confirm(
+      `Delete ${name}'s account? Their personal details will be removed. Tasks and projects they worked on will stay in the system.`,
+      { confirmLabel: "Delete account", danger: true }
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await api(`/api/hr/staff/${id}/delete_account`, { method: "POST" });
+      showToast("Account deleted.");
+      router.push("/hr/staff");
+    } catch (err: any) {
+      const message =
+        err instanceof ApiError
+          ? formatApiError(err.data) || "Couldn't delete account."
+          : err.message;
+      showToast(message, "error");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -382,43 +367,30 @@ export default function StaffEditPage() {
                 <i className={`bi ${isActive ? "bi-slash-circle-fill" : "bi-check-circle-fill"}`} />{" "}
                 {togglingStatus ? "Updating…" : isActive ? "Disable account" : "Enable account"}
               </button>
+              {!isActive && (
+                <button
+                  className="btn btn-sm"
+                  onClick={deleteAccount}
+                  disabled={deleting}
+                  style={{
+                    justifyContent: "flex-start",
+                    background: "var(--danger)",
+                  }}
+                >
+                  <i className="bi bi-trash-fill" /> {deleting ? "Deleting…" : "Delete account"}
+                </button>
+              )}
+              {isSuperadmin && (
+                <Link
+                  className="btn btn-ghost btn-sm"
+                  href="/hr/roles"
+                  style={{ justifyContent: "flex-start", textDecoration: "none" }}
+                >
+                  <i className="bi bi-shield-lock-fill" /> Manage section roles
+                </Link>
+              )}
             </div>
           </div>
-
-          {isSuperadmin && (
-            <div className="card">
-              <span className="card-title">Module Access</span>
-              <p className="muted" style={{ fontSize: 12.5, marginTop: -8, marginBottom: 10 }}>
-                By default this employee only has their standard access. Grant full access to any
-                of these modules below.
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {MODULES.map((m) => {
-                  const granted = grants.some((g) => g.module === m.key);
-                  return (
-                    <label
-                      key={m.key}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        fontSize: 13.5,
-                        cursor: grantBusy ? "default" : "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={granted}
-                        disabled={grantBusy === m.key}
-                        onChange={(e) => toggleModule(m.key, e.target.checked)}
-                      />
-                      {m.label}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       </div>
       {ConfirmDialog}

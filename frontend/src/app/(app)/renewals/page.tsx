@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { DatePicker } from "@/components/DatePicker";
 import { Select } from "@/components/Select";
-import { api, ApiError, unwrapList } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
+import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
-type SubjectType = "client" | "staff";
+type SubjectType = "client" | "staff" | "other";
 type RenewalType = "hosting" | "domain" | "contract" | "visa" | "other";
 type RenewalStatus = "upcoming" | "renewed" | "overdue";
 
@@ -19,7 +19,11 @@ type Renewal = {
   client_name: string | null;
   staff: number | null;
   staff_name: string | null;
+  subject_name: string;
+  subject_label?: string;
   renewal_type: RenewalType;
+  renewal_type_detail: string;
+  type_label?: string;
   due_date: string;
   notes: string;
   status: RenewalStatus;
@@ -47,6 +51,7 @@ const SUBJECT_FILTER_OPTIONS = [
   { value: "", label: "All Subjects" },
   { value: "client", label: "Client" },
   { value: "staff", label: "Staff" },
+  { value: "other", label: "Other" },
 ];
 
 const STATUS_FILTER_OPTIONS = [
@@ -68,7 +73,9 @@ const emptyForm = {
   subject_type: "client" as SubjectType,
   client: "",
   staff: "",
+  subject_name: "",
   renewal_type: "hosting" as RenewalType,
+  renewal_type_detail: "",
   due_date: "",
   notes: "",
 };
@@ -77,6 +84,12 @@ function formatDate(iso: string) {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function subjectIcon(type: SubjectType) {
+  if (type === "client") return "bi-building";
+  if (type === "staff") return "bi-person-fill";
+  return "bi-three-dots";
 }
 
 export default function RenewalsPage() {
@@ -97,7 +110,7 @@ export default function RenewalsPage() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const hasAccess = user?.role === "superadmin" || (user?.module_access ?? []).includes("renewals");
+  const hasAccess = user?.role === "superadmin" || hasModuleAccess(user?.module_access, "renewals");
 
   const load = () => {
     setLoading(true);
@@ -136,6 +149,16 @@ export default function RenewalsPage() {
     [staff]
   );
 
+  const setSubjectType = (subject_type: SubjectType) => {
+    setForm((f) => ({
+      ...f,
+      subject_type,
+      client: subject_type === "client" ? f.client : "",
+      staff: subject_type === "staff" ? f.staff : "",
+      subject_name: subject_type === "other" ? f.subject_name : "",
+    }));
+  };
+
   const addRenewal = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -146,6 +169,14 @@ export default function RenewalsPage() {
     }
     if (form.subject_type === "staff" && !form.staff) {
       setError("Please select a staff member.");
+      return;
+    }
+    if (form.subject_type === "other" && !form.subject_name.trim()) {
+      setError("Please enter a name for this renewal.");
+      return;
+    }
+    if (form.renewal_type === "other" && !form.renewal_type_detail.trim()) {
+      setError("Please describe the renewal type.");
       return;
     }
     if (!form.due_date) {
@@ -159,7 +190,9 @@ export default function RenewalsPage() {
         subject_type: form.subject_type,
         client: form.subject_type === "client" ? Number(form.client) : null,
         staff: form.subject_type === "staff" ? Number(form.staff) : null,
+        subject_name: form.subject_type === "other" ? form.subject_name.trim() : "",
         renewal_type: form.renewal_type,
+        renewal_type_detail: form.renewal_type === "other" ? form.renewal_type_detail.trim() : "",
         due_date: form.due_date,
         notes: form.notes,
       };
@@ -169,7 +202,7 @@ export default function RenewalsPage() {
       showToast("Renewal added.");
       load();
     } catch (err: any) {
-      setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+      setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
     } finally {
       setCreating(false);
     }
@@ -213,7 +246,7 @@ export default function RenewalsPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Renewals</h1>
           <p className="muted" style={{ marginTop: 4 }}>
-            Client and staff renewal dates for hosting, domains, contracts, visas and more.
+            Client, staff, and other renewal dates for hosting, domains, contracts, visas and more.
           </p>
         </div>
         <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
@@ -224,25 +257,32 @@ export default function RenewalsPage() {
       {showForm && (
         <form className="card" onSubmit={addRenewal}>
           <span className="card-title">New Renewal</span>
-          <div style={{ display: "flex", gap: 8, margin: "14px 0" }}>
+          <div style={{ display: "flex", gap: 8, margin: "14px 0", flexWrap: "wrap" }}>
             <button
               type="button"
               className={form.subject_type === "client" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
-              onClick={() => setForm((f) => ({ ...f, subject_type: "client", staff: "" }))}
+              onClick={() => setSubjectType("client")}
             >
               <i className="bi bi-building" /> Client
             </button>
             <button
               type="button"
               className={form.subject_type === "staff" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
-              onClick={() => setForm((f) => ({ ...f, subject_type: "staff", client: "" }))}
+              onClick={() => setSubjectType("staff")}
             >
               <i className="bi bi-person-fill" /> Staff
+            </button>
+            <button
+              type="button"
+              className={form.subject_type === "other" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+              onClick={() => setSubjectType("other")}
+            >
+              <i className="bi bi-three-dots" /> Other
             </button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-            {form.subject_type === "client" ? (
+            {form.subject_type === "client" && (
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Client</label>
                 <Select
@@ -252,7 +292,8 @@ export default function RenewalsPage() {
                   ariaLabel="Client"
                 />
               </div>
-            ) : (
+            )}
+            {form.subject_type === "staff" && (
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Staff</label>
                 <Select
@@ -263,16 +304,47 @@ export default function RenewalsPage() {
                 />
               </div>
             )}
+            {form.subject_type === "other" && (
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Name</label>
+                <input
+                  className="input"
+                  value={form.subject_name}
+                  onChange={(e) => setForm((f) => ({ ...f, subject_name: e.target.value }))}
+                  placeholder="e.g. Office lease, Vendor X"
+                  aria-label="Other subject name"
+                />
+              </div>
+            )}
 
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Renewal type</label>
               <Select
                 value={form.renewal_type}
-                onChange={(v) => setForm((f) => ({ ...f, renewal_type: v as RenewalType }))}
+                onChange={(v) =>
+                  setForm((f) => ({
+                    ...f,
+                    renewal_type: v as RenewalType,
+                    renewal_type_detail: v === "other" ? f.renewal_type_detail : "",
+                  }))
+                }
                 options={RENEWAL_TYPE_OPTIONS}
                 ariaLabel="Renewal type"
               />
             </div>
+
+            {form.renewal_type === "other" && (
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Type details</label>
+                <input
+                  className="input"
+                  value={form.renewal_type_detail}
+                  onChange={(e) => setForm((f) => ({ ...f, renewal_type_detail: e.target.value }))}
+                  placeholder="e.g. SSL certificate, License"
+                  aria-label="Other renewal type details"
+                />
+              </div>
+            )}
 
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Due date</label>
@@ -335,20 +407,29 @@ export default function RenewalsPage() {
               </thead>
               <tbody>
                 {renewals.map((r) => {
-                  const subjectLabel = r.subject_type === "client" ? r.client_name : r.staff_name;
+                  const subjectLabel =
+                    r.subject_label ||
+                    (r.subject_type === "client"
+                      ? r.client_name
+                      : r.subject_type === "staff"
+                        ? r.staff_name
+                        : r.subject_name) ||
+                    "—";
+                  const typeLabel =
+                    r.type_label ||
+                    (r.renewal_type === "other" && r.renewal_type_detail
+                      ? r.renewal_type_detail
+                      : TYPE_LABEL[r.renewal_type]);
                   return (
                     <tr key={r.id}>
                       <td>
                         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <i
-                            className={`bi ${r.subject_type === "client" ? "bi-building" : "bi-person-fill"}`}
-                            style={{ color: "var(--text-muted)" }}
-                          />
-                          {subjectLabel || "—"}
+                          <i className={`bi ${subjectIcon(r.subject_type)}`} style={{ color: "var(--text-muted)" }} />
+                          {subjectLabel}
                         </span>
                       </td>
                       <td>
-                        <span className="badge">{TYPE_LABEL[r.renewal_type]}</span>
+                        <span className="badge">{typeLabel}</span>
                       </td>
                       <td style={{ color: r.status === "overdue" ? "var(--danger)" : undefined, fontWeight: r.status === "overdue" ? 700 : undefined }}>
                         {formatDate(r.due_date)}

@@ -13,6 +13,20 @@ DEFAULT_PAYMENT = {
     "paid_amount": "",
 }
 
+INVOICE_KINDS = ("standard", "proforma", "petty_cash")
+
+KIND_TITLES = {
+    "standard": "Invoice",
+    "proforma": "Proforma Invoice",
+    "petty_cash": "Petty Cash Invoice",
+}
+
+KIND_DOC_LABELS = {
+    "standard": "INVOICE",
+    "proforma": "PROFORMA INVOICE",
+    "petty_cash": "PETTY CASH INVOICE",
+}
+
 
 def default_line_item() -> dict:
     return {
@@ -23,9 +37,12 @@ def default_line_item() -> dict:
     }
 
 
-def default_content() -> dict:
+def default_content(kind: str = "standard") -> dict:
+    if kind not in INVOICE_KINDS:
+        kind = "standard"
     return {
-        "title": "Invoice",
+        "title": KIND_TITLES[kind],
+        "invoice_kind": kind,
         "invoice_number": "",
         "bill_to": "",
         "bill_to_email": "",
@@ -35,6 +52,8 @@ def default_content() -> dict:
         "currency": "AED",
         "items": [default_line_item()],
         "payment": dict(DEFAULT_PAYMENT),
+        "received_by": "",
+        "passed_by": "",
         "notes": DEFAULT_NOTES,
     }
 
@@ -55,8 +74,11 @@ def subtotal(items: list) -> float:
 
 
 def merged_content(raw: dict | None) -> dict:
-    base = default_content()
     raw = raw or {}
+    kind = raw.get("invoice_kind") or "standard"
+    if kind not in INVOICE_KINDS:
+        kind = "standard"
+    base = default_content(kind)
     for key, default_value in base.items():
         value = raw.get(key)
         if value is None:
@@ -65,6 +87,13 @@ def merged_content(raw: dict | None) -> dict:
             base["items"] = [{**default_line_item(), **item} for item in value] or [default_line_item()]
         elif key == "payment" and isinstance(value, dict):
             base["payment"] = {**DEFAULT_PAYMENT, **value}
+        elif key == "invoice_kind":
+            continue
         else:
             base[key] = value
+    base["invoice_kind"] = kind
     return base
+
+
+def doc_label(kind: str | None) -> str:
+    return KIND_DOC_LABELS.get(kind or "standard", "INVOICE")

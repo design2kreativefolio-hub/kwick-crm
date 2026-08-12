@@ -1,6 +1,6 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from common.permissions import IsActive, IsSuperadminOrReadOnly
@@ -162,11 +162,12 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
     Clients directory itself."""
 
     queryset = ContentCalendarItem.objects.select_related("client", "created_by").prefetch_related(
-        "assignees"
+        "assignees", "tasks"
     )
     serializer_class = ContentCalendarItemSerializer
     permission_classes = [IsActive]
     filterset_fields = ["client", "status", "content_type"]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def perform_create(self, serializer):
         item = serializer.save(created_by=self.request.user)
@@ -207,6 +208,7 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
             if assignee_id not in current_ids:
                 task.delete()
 
+        client_name = item.client.name
         for assignee in item.assignees.all():
             task = existing.get(assignee.id)
             if task is None:
@@ -215,6 +217,7 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
                     assignee=assignee,
                     title=title,
                     description=item.description,
+                    client_name=client_name,
                     due_date=due_date,
                     status=task_status,
                     board_status=board_status,
@@ -224,15 +227,25 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
                         user=assignee,
                         source="content_calendar",
                         title=f"You were assigned to \"{item.title}\"",
-                        body=f"{item.client.name} — scheduled {item.scheduled_date}.",
+                        body=f"{client_name} — scheduled {item.scheduled_date}.",
                         object_ref=f"content_item:{item.id}",
                     )
             else:
                 task.title = title
                 task.description = item.description
+                task.client_name = client_name
                 task.due_date = due_date
                 task.status = task_status
                 task.board_status = board_status
                 task.save(
-                    update_fields=["title", "description", "due_date", "status", "board_status", "completed_at", "updated_at"]
+                    update_fields=[
+                        "title",
+                        "description",
+                        "client_name",
+                        "due_date",
+                        "status",
+                        "board_status",
+                        "completed_at",
+                        "updated_at",
+                    ]
                 )

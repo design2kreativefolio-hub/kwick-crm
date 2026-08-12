@@ -3,6 +3,27 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _send_user_email(*, subject: str, message: str, recipient: str) -> None:
+    """Send mail and log failures — approval mail runs on Celery, so silent
+    SMTP errors previously looked like 'email never sent' on localhost."""
+    try:
+        sent = send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[recipient],
+            fail_silently=False,
+        )
+        if not sent:
+            logger.error("Email to %s returned 0: %s", recipient, subject)
+    except Exception:
+        logger.exception("Failed sending email to %s: %s", recipient, subject)
+        raise
 
 
 @shared_task
@@ -38,12 +59,10 @@ def send_approval_email(user_id: int):
             "— Kwick"
         )
 
-    send_mail(
+    _send_user_email(
         subject="Your Kwick account has been approved",
         message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-        fail_silently=True,
+        recipient=user.email,
     )
 
 
@@ -65,12 +84,10 @@ def send_welcome_email(user_id: int):
         "your manager shared with you.\n\n"
         "— Kwick"
     )
-    send_mail(
+    _send_user_email(
         subject="Your Kwick account is ready",
         message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-        fail_silently=True,
+        recipient=user.email,
     )
 
 
@@ -96,12 +113,10 @@ def send_password_reset_email(user_id: int):
         "If you didn't expect this, contact your manager.\n\n"
         "— Kwick"
     )
-    send_mail(
+    _send_user_email(
         subject="Your Kwick password was reset",
         message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-        fail_silently=True,
+        recipient=user.email,
     )
 
 
@@ -130,12 +145,10 @@ def send_forgot_password_email(user_id: int):
         "password won't change.\n\n"
         "— Kwick"
     )
-    send_mail(
+    _send_user_email(
         subject="Reset your Kwick password",
         message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-        fail_silently=True,
+        recipient=user.email,
     )
 
 
@@ -164,10 +177,4 @@ def send_status_change_email(user_id: int, new_status: str):
             "until it's re-enabled. Contact your manager with any questions.\n\n"
             "— Kwick"
         )
-    send_mail(
-        subject=subject,
-        message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-        fail_silently=True,
-    )
+    _send_user_email(subject=subject, message=body, recipient=user.email)

@@ -14,6 +14,8 @@ class TodoItem(TimeStampedModel):
     text = models.CharField(max_length=500)
     done = models.BooleanField(default=False)
     done_at = models.DateTimeField(null=True, blank=True)
+    # Optional calendar date — when set, the to-do appears on the personal calendar.
+    due_date = models.DateField(null=True, blank=True)
     # Every personal to-do is mirrored onto the owner's Kanban board (spec
     # request: "to-do tasks I create myself should come in the kanban").
     # Nullable/SET_NULL so deleting the Task from Kanban doesn't take the

@@ -89,10 +89,26 @@ def render_estimate_pdf(estimate, request) -> str:
     from django.core.files.storage import default_storage
     from weasyprint import HTML
 
+    from common.duplicate import slug_filename
+
+    content = merged_content(estimate.content)
     html = render_to_string("sales/estimate_pdf.html", build_context(estimate))
     pdf_bytes = HTML(string=html).write_pdf()
 
-    key = f"estimate-exports/{estimate.pk}/estimate.pdf"
+    raw_name = (
+        (estimate.title or "").strip()
+        or (content.get("quote_number") or "").strip()
+        or f"estimate-{estimate.pk}"
+    )
+    slug = slug_filename(raw_name, fallback=f"estimate-{estimate.pk}")
+    key = f"estimate-exports/{estimate.pk}/{slug}.pdf"
+    folder = f"estimate-exports/{estimate.pk}/"
+    try:
+        _dirs, files = default_storage.listdir(folder)
+        for name in files:
+            default_storage.delete(f"{folder}{name}")
+    except Exception:
+        pass
     if default_storage.exists(key):
         default_storage.delete(key)
     saved_path = default_storage.save(key, ContentFile(pdf_bytes))

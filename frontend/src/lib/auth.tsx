@@ -16,7 +16,39 @@ export type StaffProfile = {
   iloe_renewal_date: string | null;
 };
 
-export type Module = "hr" | "sales" | "renewals" | "reports";
+export type Module =
+  | "hr"
+  | "hr_documents"
+  | "hr_staff"
+  | "sales"
+  | "sales_clients"
+  | "sales_proposals"
+  | "sales_invoices"
+  | "renewals"
+  | "reports";
+
+const MODULE_CHILDREN: Partial<Record<Module, Module[]>> = {
+  hr: ["hr_documents", "hr_staff"],
+  sales: ["sales_clients", "sales_proposals", "sales_invoices"],
+};
+const MODULE_PARENT: Partial<Record<Module, Module>> = {
+  hr_documents: "hr",
+  hr_staff: "hr",
+  sales_clients: "sales",
+  sales_proposals: "sales",
+  sales_invoices: "sales",
+};
+
+/** True if grants cover `module` (parent covers children; any child covers parent). */
+export function hasModuleAccess(grants: readonly string[] | undefined, module: Module): boolean {
+  const access = grants ?? [];
+  if (access.includes(module)) return true;
+  const parent = MODULE_PARENT[module];
+  if (parent && access.includes(parent)) return true;
+  const children = MODULE_CHILDREN[module];
+  if (children?.some((c) => access.includes(c))) return true;
+  return false;
+}
 
 export type User = {
   id: number;

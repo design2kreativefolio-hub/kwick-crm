@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
+import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
 type Staff = {
@@ -52,6 +53,9 @@ function generatePassword() {
 
 export default function HrPage() {
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isSuperadmin = user?.role === "superadmin";
+  const hasAccess = isSuperadmin || hasModuleAccess(user?.module_access, "hr_staff");
   const { confirm, ConfirmDialog } = useConfirm();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +143,10 @@ export default function HrPage() {
       setBusyId(null);
     }
   };
+
+  if (!hasAccess) {
+    return <p className="muted">You don&apos;t have access to HR Staff.</p>;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

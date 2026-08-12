@@ -81,10 +81,14 @@ class ArtworkSequence(TimeStampedModel):
     """Per (year, category_code) running counter. `year` is generic here,
     but services.build_artwork_id always calls this with a fixed series
     year (SERIES_YEAR) rather than the real current year, so in practice
-    the counter never resets — it just keeps incrementing per country_code,
-    starting at 4001."""
+    the counter never resets — it just keeps incrementing per country_code.
 
-    STARTING_NUMBER = 4000
+    Numbers follow 4001, 5001, 6001, … (step of 1000) so the full id suffix
+    reads as 20244001, 20245001, 20246001, …
+    """
+
+    STARTING_NUMBER = 4001
+    STEP = 1000
 
     year = models.PositiveIntegerField()
     category_code = models.CharField(max_length=10)
@@ -95,14 +99,18 @@ class ArtworkSequence(TimeStampedModel):
 
     @classmethod
     def next_number(cls, *, year: int, category_code: str) -> int:
-        """Atomically increment and return the next sequence number (select_for_update)."""
+        """Atomically advance to the next …001 series number (select_for_update)."""
         with transaction.atomic():
             seq, _ = cls.objects.select_for_update().get_or_create(
                 year=year,
                 category_code=category_code,
-                defaults={"last_number": cls.STARTING_NUMBER},
+                defaults={"last_number": 0},
             )
-            seq.last_number += 1
+            if seq.last_number < cls.STARTING_NUMBER:
+                seq.last_number = cls.STARTING_NUMBER
+            else:
+                # Snap to next x001 (handles legacy +1 counters like 4006 → 5001).
+                seq.last_number = (seq.last_number // cls.STEP + 1) * cls.STEP + 1
             seq.save(update_fields=["last_number", "updated_at"])
             return seq.last_number
 
@@ -143,6 +151,8 @@ class ContentCalendarItem(TimeStampedModel):
         settings.AUTH_USER_MODEL, blank=True, related_name="content_calendar_items"
     )
     attachment_url = models.URLField(blank=True, default="")
+    # Extra files (up to 5 total including attachment_url legacy single).
+    attachment_urls = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

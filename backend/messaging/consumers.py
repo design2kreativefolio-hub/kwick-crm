@@ -39,22 +39,46 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         # globally-connected client (not just whoever has this conversation
         # open) can pop a toast and bump their chat unread badge.
         other_ids = await self._other_participant_ids(self.scope["user"].id, self.conversation_id)
+        chat_payload = {
+            "kind": "chat_message",
+            "conversation_id": int(self.conversation_id),
+            "sender_name": message.get("sender_name") or "Someone",
+            "preview": message.get("body") or "Sent an attachment",
+        }
         for uid in other_ids:
             await self.channel_layer.group_send(
                 f"notify_{uid}",
-                {
-                    "type": "notify_event",
-                    "payload": {
-                        "kind": "chat_message",
-                        "conversation_id": int(self.conversation_id),
-                        "sender_name": message.get("sender_name") or "Someone",
-                        "preview": message.get("body") or "Sent an attachment",
-                    },
-                },
+                {"type": "notify_event", "payload": chat_payload},
             )
+        await self._web_push_chat(other_ids, chat_payload)
 
     async def chat_message(self, event):
         await self.send_json(event["payload"])
+
+    async def chat_cleared(self, event):
+        await self.send_json({"event": "cleared", **event["payload"]})
+
+    async def chat_deleted(self, event):
+        await self.send_json({"event": "deleted", **event["payload"]})
+
+    async def chat_members_updated(self, event):
+        await self.send_json({"event": "members_updated", "conversation": event["payload"]})
+
+    async def chat_kicked(self, event):
+        await self.send_json({"event": "kicked", **event["payload"]})
+
+    @database_sync_to_async
+    def _web_push_chat(self, user_ids, payload):
+        from notifications.tasks import send_web_push_payload
+
+        push_payload = {
+            **payload,
+            "source": "chat",
+            "title": payload.get("sender_name") or "New message",
+            "body": payload.get("preview") or "New chat message",
+        }
+        for uid in user_ids:
+            send_web_push_payload.delay(uid, push_payload)
 
     @database_sync_to_async
     def _is_participant(self, user_id, conversation_id):
@@ -87,6 +111,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             "sender": user_id,
             "sender_name": msg.sender.full_name,
             "body": msg.body,
+            "is_system": False,
             "attachment_url": "",
             "attachment_type": "",
             "attachment_name": "",
