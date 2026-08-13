@@ -38,13 +38,25 @@ app.conf.beat_schedule = {
         "task": "calendar_app.tasks.send_calendar_reminder_alerts",
         "schedule": crontab(minute="*/5"),
     },
+    # Open reminders / to-dos digest — 09:15, 14:30, 17:00 Asia/Dubai (UTC+4), Mon–Sat.
+    "open-item-nudge-morning": {
+        "task": "notifications.tasks.send_open_item_nudges",
+        "schedule": crontab(hour=5, minute=15, day_of_week="1-6"),
+    },
+    "open-item-nudge-afternoon": {
+        "task": "notifications.tasks.send_open_item_nudges",
+        "schedule": crontab(hour=10, minute=30, day_of_week="1-6"),
+    },
+    "open-item-nudge-evening": {
+        "task": "notifications.tasks.send_open_item_nudges",
+        "schedule": crontab(hour=13, minute=0, day_of_week="1-6"),
+    },
     # EDITH chat history — drop threads inactive for 15+ days.
     "purge-old-ai-conversations-daily": {
         "task": "ai.tasks.purge_old_ai_conversations",
         "schedule": crontab(hour=3, minute=15),
     },
 }
-
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):

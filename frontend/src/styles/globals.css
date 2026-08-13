@@ -2750,6 +2750,15 @@ html[data-theme="dark"] .edith-ai__bubble--assistant {
   }
 }
 
+/* Avatar cropper — keep media inside the fixed stage */
+.kwick-avatar-crop-stage .reactEasyCrop_Container {
+  position: absolute !important;
+  inset: 0 !important;
+}
+.kwick-avatar-crop-stage .reactEasyCrop_Image {
+  max-width: none !important;
+}
+
 /* ---- HR Roles (section access) ---- */
 .roles-layout {
   display: grid;

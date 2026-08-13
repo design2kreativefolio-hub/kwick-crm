@@ -9,11 +9,10 @@ from rest_framework.views import APIView
 
 from common.permissions import IsActive
 from notifications.services import notify_user
-from todos.models import TodoItem
 
 from .models import ManualReminder
 from .serializers import ManualReminderSerializer
-from .services import build_agenda, detect_meeting_url, is_meeting_link
+from .services import build_agenda, detect_meeting_url
 
 
 class AgendaView(APIView):
@@ -57,13 +56,7 @@ class ManualReminderViewSet(viewsets.ModelViewSet):
             reminder.meeting_url = meeting
             reminder.save(update_fields=["meeting_url", "updated_at"])
 
-        # Mirror into the owner's To-Do list (with due date) and notify.
-        TodoItem.objects.create(
-            owner=self.request.user,
-            text=reminder.title,
-            due_date=timezone.localtime(reminder.remind_at).date(),
-        )
-
+        # Reminders stay separate from To-Dos (to-dos may still appear on the calendar agenda).
         recipients = {self.request.user}
         recipients.update(reminder.assignees.all())
         local_when = timezone.localtime(reminder.remind_at)
@@ -78,12 +71,6 @@ class ManualReminderViewSet(viewsets.ModelViewSet):
                 body=body,
                 object_ref=f"reminder:{reminder.id}",
             )
-            if user.id != self.request.user.id:
-                TodoItem.objects.create(
-                    owner=user,
-                    text=reminder.title,
-                    due_date=timezone.localtime(reminder.remind_at).date(),
-                )
 
     def perform_update(self, serializer):
         was_done = serializer.instance.done

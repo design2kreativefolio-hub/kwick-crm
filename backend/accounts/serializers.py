@@ -203,7 +203,11 @@ class AvatarUploadSerializer(serializers.Serializer):
         # in dev, so a bare relative URL resolves against the WRONG origin in
         # the browser. build_absolute_uri() fixes that; it's a no-op for S3
         # URLs, which are already absolute.
-        profile.avatar_url = request.build_absolute_uri(default_storage.url(saved_path))
+        # Cache-bust so browsers/CDN pick up an overwrite at the same path.
+        from time import time
+
+        base = request.build_absolute_uri(default_storage.url(saved_path))
+        profile.avatar_url = f"{base}{'&' if '?' in base else '?'}v={int(time())}"
         profile.save(update_fields=["avatar_url", "updated_at"])
         return profile.avatar_url
 

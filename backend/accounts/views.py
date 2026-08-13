@@ -85,6 +85,32 @@ class AvatarUploadView(APIView):
         avatar_url = serializer.save()
         return Response({"avatar_url": avatar_url})
 
+    def delete(self, request):
+        from urllib.parse import urlparse
+
+        from django.core.files.storage import default_storage
+
+        from .models import StaffProfile
+
+        try:
+            profile = request.user.profile
+        except StaffProfile.DoesNotExist:
+            return Response({"avatar_url": ""})
+
+        url = profile.avatar_url or ""
+        if url:
+            path = urlparse(url).path
+            marker = "/media/"
+            key = path.split(marker, 1)[-1] if marker in path else path.lstrip("/")
+            # Drop query string leftovers from cache-bust params if any leaked into path.
+            key = key.split("?", 1)[0]
+            if key and default_storage.exists(key):
+                default_storage.delete(key)
+
+        profile.avatar_url = ""
+        profile.save(update_fields=["avatar_url", "updated_at"])
+        return Response({"avatar_url": ""})
+
 
 class ApproveUserView(APIView):
     permission_classes = [IsSuperadmin]

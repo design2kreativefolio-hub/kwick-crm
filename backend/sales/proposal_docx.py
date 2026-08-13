@@ -398,6 +398,20 @@ def render_proposal_docx(proposal, request) -> str:
         if stream:
             doc.add_picture(stream, width=Mm(PAGE_W_MM))
 
+    for item in content.get("custom_sections") or []:
+        if not item.get("enabled", True):
+            continue
+        title = (item.get("title") or "").strip() or "Additional section"
+        body = (item.get("content") or "").strip()
+        images = item.get("image_urls") or []
+        if not body and not images:
+            continue
+        start(title, item.get("page_break_before", False))
+        if body:
+            _add_html(doc, body)
+        for url in images:
+            _picture(doc, url)
+
     buf = io.BytesIO()
     doc.save(buf)
     buf.seek(0)

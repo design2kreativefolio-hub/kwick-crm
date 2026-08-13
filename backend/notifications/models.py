@@ -48,3 +48,38 @@ class NotificationEvent(TimeStampedModel):
 
     def __str__(self):
         return f"{self.source}: {self.title}"
+
+
+class DashboardCardDismiss(TimeStampedModel):
+    """Hide an item from the dashboard Reminders card without marking it done/read.
+
+    Reminders page / calendar / todo keep their own status (read_at / done).
+    Daily nudges clear these rows so open items surface again.
+    """
+
+    class Kind(models.TextChoices):
+        NOTIFICATION = "notification", "Notification"
+        REMINDER = "reminder", "Calendar reminder"
+        TODO = "todo", "To-do"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="dashboard_card_dismissals",
+    )
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    object_id = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "kind", "object_id"],
+                name="uniq_dashboard_card_dismiss",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "kind"]),
+        ]
+
+    def __str__(self):
+        return f"{self.kind}:{self.object_id} → user {self.user_id}"

@@ -46,6 +46,16 @@ export type PricingItem = {
   rows: PricingRow[];
 };
 
+/** User-added section — editable title + description and/or images. */
+export type CustomSection = {
+  id: string;
+  enabled: boolean;
+  page_break_before: boolean;
+  title: string;
+  content: string;
+  image_urls: string[];
+};
+
 export type ProposalContent = {
   home: {
     enabled: boolean;
@@ -75,6 +85,7 @@ export type ProposalContent = {
   pricing: PricingItem[];
   terms: { enabled: boolean; page_break_before: boolean; duration: string; payment_percent: string };
   full_page_image: { enabled: boolean; image_url: string };
+  custom_sections: CustomSection[];
 };
 
 // Fixed, non-reorderable section order — the numbers from the spec doc are
@@ -125,6 +136,7 @@ export function defaultContent(): ProposalContent {
     pricing: [],
     terms: { enabled: true, page_break_before: false, duration: "6 months", payment_percent: "100" },
     full_page_image: { enabled: true, image_url: "" },
+    custom_sections: [],
   };
 }
 
@@ -138,6 +150,21 @@ export function defaultPricingItem(): PricingItem {
     management_fee_label: "Ad Management Fee",
     management_fee: "",
     rows: [],
+  };
+}
+
+export function defaultCustomSection(): CustomSection {
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id,
+    enabled: true,
+    page_break_before: false,
+    title: "Additional section",
+    content: "",
+    image_urls: [],
   };
 }
 
@@ -196,6 +223,13 @@ export function mergedContent(raw: Partial<ProposalContent> | null | undefined):
     if (value === undefined || value === null) continue;
     if (key === "pricing" && Array.isArray(value)) {
       out.pricing = value.map((item) => ({ ...defaultPricingItem(), ...item }));
+    } else if (key === "custom_sections" && Array.isArray(value)) {
+      out.custom_sections = value.map((item) => ({
+        ...defaultCustomSection(),
+        ...item,
+        id: item?.id || defaultCustomSection().id,
+        image_urls: Array.isArray(item?.image_urls) ? item.image_urls : [],
+      }));
     } else if (key === "social_medias" && value && typeof value === "object") {
       const platforms = Array.isArray(value.platforms) ? value.platforms : [];
       out.social_medias = {

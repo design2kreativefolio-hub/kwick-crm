@@ -282,5 +282,13 @@
   <section class="fullbleed-page" style="background-image: url('{{ full_page_image.image_url }}');"></section>
   {% endif %}
 
+  {% for item in custom_sections %}
+  <section class="doc-section{% if item.page_break_before %} page-break-before{% endif %}">
+    <h2>{{ item.title|default:"Additional section" }}</h2>
+    {% if item.content %}{{ item.content|safe }}{% endif %}
+    {% for url in item.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
+  </section>
+  {% endfor %}
+
 </body>
 </html>

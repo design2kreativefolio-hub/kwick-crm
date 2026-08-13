@@ -14,12 +14,14 @@ import { ImageUploadField } from "@/components/proposals/ImageUploadField";
 import { PagedPreview } from "@/components/proposals/PagedPreview";
 import { RichTextEditor } from "@/components/proposals/RichTextEditor";
 import {
+  CustomSection,
   PricingItem,
   ProposalContent,
   SECTION_META,
   SOCIAL_PLATFORM_OPTIONS,
   SocialPlatform,
   SocialPlatformBlock,
+  defaultCustomSection,
   defaultPricingItem,
   defaultSocialPlatform,
   mergedContent,
@@ -49,8 +51,9 @@ function SectionCard({
   toggleDisabled,
   pageBreakBefore,
   onPageBreakChange,
+  onRemove,
 }: {
-  label: string;
+  label: React.ReactNode;
   icon: string;
   enabled: boolean;
   onToggle?: () => void;
@@ -60,12 +63,13 @@ function SectionCard({
   toggleDisabled?: boolean;
   pageBreakBefore?: boolean;
   onPageBreakChange?: (value: boolean) => void;
+  onRemove?: () => void;
 }) {
   return (
     <div className={`section-card${enabled ? "" : " section-disabled"}`}>
       <div className="section-card-head" onClick={onToggleCollapsed}>
         <i className={`bi ${icon}`} style={{ color: "var(--gold)", fontSize: 16 }} />
-        <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{label}</span>
+        <span style={{ flex: 1, fontWeight: 600, fontSize: 14, minWidth: 0 }}>{label}</span>
         {!toggleDisabled && onToggle && (
           <button
             type="button"
@@ -74,8 +78,22 @@ function SectionCard({
               e.stopPropagation();
               onToggle();
             }}
-            aria-label={`Toggle ${label}`}
+            aria-label="Toggle section"
           />
+        )}
+        {onRemove && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            style={{ color: "var(--danger)", padding: "4px 8px" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            aria-label="Remove section"
+          >
+            <i className="bi bi-trash-fill" />
+          </button>
         )}
         <i className={`bi ${collapsed ? "bi-chevron-down" : "bi-chevron-up"}`} style={{ color: "var(--text-muted)", fontSize: 12 }} />
       </div>
@@ -276,6 +294,26 @@ export default function ProposalBuilderPage() {
   const addPricing = () => setContent((prev) => (prev ? { ...prev, pricing: [...prev.pricing, defaultPricingItem()] } : prev));
   const removePricing = (idx: number) =>
     setContent((prev) => (prev ? { ...prev, pricing: prev.pricing.filter((_, i) => i !== idx) } : prev));
+
+  const updateCustom = (idx: number, patch: Partial<CustomSection>) =>
+    setContent((prev) =>
+      prev
+        ? { ...prev, custom_sections: prev.custom_sections.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }
+        : prev
+    );
+  const addCustom = () =>
+    setContent((prev) => {
+      if (!prev) return prev;
+      const item = defaultCustomSection();
+      setCollapsed((c) => {
+        const next = new Set(c);
+        next.delete(`custom:${item.id}`);
+        return next;
+      });
+      return { ...prev, custom_sections: [...prev.custom_sections, item] };
+    });
+  const removeCustom = (idx: number) =>
+    setContent((prev) => (prev ? { ...prev, custom_sections: prev.custom_sections.filter((_, i) => i !== idx) } : prev));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -737,6 +775,58 @@ export default function ProposalBuilderPage() {
               label="Image"
             />
           </SectionCard>
+
+          {/* User-added sections */}
+          {content.custom_sections.map((item, idx) => {
+            const collapseKey = `custom:${item.id}`;
+            return (
+              <SectionCard
+                key={item.id}
+                label={
+                  <input
+                    className="input"
+                    value={item.title}
+                    placeholder="Section title"
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => updateCustom(idx, { title: e.target.value })}
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      padding: "4px 10px",
+                      height: 34,
+                      background: "var(--surface)",
+                    }}
+                  />
+                }
+                icon="bi-plus-square-fill"
+                enabled={item.enabled}
+                onToggle={() => updateCustom(idx, { enabled: !item.enabled })}
+                collapsed={collapsed.has(collapseKey)}
+                onToggleCollapsed={() => toggleCollapsed(collapseKey)}
+                pageBreakBefore={item.page_break_before}
+                onPageBreakChange={(v) => updateCustom(idx, { page_break_before: v })}
+                onRemove={() => removeCustom(idx)}
+              >
+                <label className="field-label" style={{ marginTop: 0 }}>
+                  Description
+                </label>
+                <RichTextEditor
+                  value={item.content}
+                  onChange={(html) => updateCustom(idx, { content: html })}
+                />
+                <label className="field-label">Images</label>
+                <ImageGalleryField
+                  proposalId={Number(id)}
+                  urls={item.image_urls}
+                  onChange={(image_urls) => updateCustom(idx, { image_urls })}
+                />
+              </SectionCard>
+            );
+          })}
+
+          <button type="button" className="btn btn-ghost" onClick={addCustom} style={{ alignSelf: "stretch" }}>
+            <i className="bi bi-plus-lg" /> Add additional field
+          </button>
         </div>
 
         <div style={{ position: "sticky", top: 16, alignSelf: "flex-start" }}>

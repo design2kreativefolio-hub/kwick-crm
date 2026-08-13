@@ -56,6 +56,8 @@ def _prefetch_images(content: dict) -> dict:
         urls.add(content["full_page_image"]["image_url"])
     for p in content["social_medias"].get("platforms", []):
         urls.update(u for u in p.get("image_urls", []) if u)
+    for item in content.get("custom_sections") or []:
+        urls.update(u for u in item.get("image_urls", []) if u)
 
     if not urls:
         return {}
@@ -114,6 +116,14 @@ def build_context(proposal) -> dict:
 
     visible_pricing = [item for item in content["pricing"] if item.get("enabled", True)]
 
+    custom_sections = []
+    for item in content.get("custom_sections") or []:
+        if not item.get("enabled", True):
+            continue
+        item = dict(item)
+        item["image_urls"] = [resolve(u) for u in item.get("image_urls", [])]
+        custom_sections.append(item)
+
     return {
         "home": home,
         "client_display_name": client_display_name,
@@ -131,6 +141,7 @@ def build_context(proposal) -> dict:
         "terms": content["terms"],
         "terms_html": terms_html(content["terms"]),
         "full_page_image": full_page_image,
+        "custom_sections": custom_sections,
         "logo_data_uri": _data_uri("logo.png"),
         "footer_data_uri": _data_uri("footer.png"),
         "cover_full_data_uri": _data_uri("cover_full.jpg"),

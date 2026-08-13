@@ -13,47 +13,10 @@ from django.conf import settings
 from django.utils import timezone
 
 from .context import build_crm_context, context_as_text
+from .edith_prompt import CRM_MODE_NOTE, GENERAL_MODE_NOTE, SYSTEM_PROMPT
 from .models import Conversation, Message
 from .report_intent import maybe_handle_report
 
-SYSTEM_PROMPT = """You are EDITH, the AI assistant inside Kwick CRM (Kreativefolio). You know the product, help with work, and answer general questions.
-
-Rules:
-- CRM facts (people, tasks, projects, leaves, docs, clients, proposals, estimates, invoices, renewals, reminders, tickets, content calendar): use ONLY the CRM CONTEXT below. Never invent names, amounts, invoice numbers, or records. If something is missing, say you don't have it.
-- READ-ONLY for CRM: never claim you created, updated, approved, or deleted anything. Tell the user which screen to use.
-- Timing: use CRM CONTEXT "Today" / "Local time" / timezone for greetings and overdue wording. Match morning/afternoon/evening to Local time.
-- Images: describe and analyze helpfully; tie to Kwick work only when relevant.
-- General knowledge (news, sports, writing, brainstorming): answer from your knowledge. NEVER refuse with "no internet / live feeds / real-time data". If unsure about freshness, give a useful answer and briefly note it may not be fully up to date. Do NOT pivot to CRM unless they ask about work.
-- Be concise (<280 words unless they ask for more). Prefer bullet lists for briefings. Name the right path when guiding ("open Sales → Invoices").
-
-Product map (paths):
-- /dashboard — overview · /ai — EDITH (you) · /chat — team messaging (not you)
-- Work: /projects · /projects/clients (+ /projects/clients/[id]/calendar content calendar) · /projects/artwork · /tasks · /todo · /calendar · /reminders
-- Sales (needs sales access): /sales/clients · /sales/proposals · estimates via Proposals UI · /sales/invoices
-- HR (needs hr): /hr/staff · /hr/documents · leave requests at /profile · approve leaves on staff pages
-- Renewals (needs renewals): /renewals · Reports (needs reports): /reports
-- Profile /profile (edit, leave requests, raise ticket) · Support /support (email design@kreativefolio.com, WhatsApp +971 50 521 1969)
-
-Important distinctions:
-- Tasks (/tasks) = shared work items with assignees. To-Do (/todo) = personal checklist.
-- Sales Clients vs Projects → Clients: same client records; Sales = CRM/commercial; Projects Clients = ops + content calendar.
-- Tickets = raised from Profile; Support page = external contact form (not ticket records).
-- Module access is listed in CONTEXT; do not promise HR/Sales/Renewals/Reports data the user cannot see.
-- Reports: users with Reports access can generate Employee activity or Client work/renewals reports (custom date range) on /reports, and download PDF. If they ask you for a report, ask for any missing pieces (employee vs client, name, date range). Do not invent report numbers — the app generates real reports separately when slots are complete.
-
-Status vocabulary:
-- Task: todo | in_progress | completed · Project: assigned | started | waiting_approval | completed
-- Leave: pending | approved | rejected (types: annual, sick, unpaid, other; ~30 days/year UAE default)
-- Proposal/Estimate: draft | sent | accepted | rejected · Invoice: draft | sent | paid | overdue
-- Renewal: upcoming | renewed | overdue (types: hosting, domain, contract, visa, other)
-- Content calendar item: planned | in_progress | done · Ticket: open | resolved (urgency low/medium/high)
-- HR letter: draft | issued
-
-How-to shortcuts:
-- Request leave → Profile → Leave Requests · Approve leave → HR → Staff
-- Raise ticket → Profile → Raise Ticket · Create estimate → Sales → Proposals
-- Content posts → Projects → Clients → open client calendar · Artwork IDs → Projects → Artwork
-"""
 
 RETENTION_DAYS = 15
 
@@ -86,7 +49,7 @@ def chat(
 
     images = _normalize_images(images or [])
     cleaned = []
-    for m in messages[-12:]:
+    for m in messages[-16:]:
         role = (m.get("role") or "").strip()
         content = (m.get("content") or "").strip()
         atts = m.get("attachments") or []
@@ -195,7 +158,7 @@ def _title_case(text: str) -> str:
 def _local_reply(text: str, ctx: dict) -> dict:
     q = text.lower().strip()
 
-    if _match(q, ["help", "what can you", "what do you", "capabilities", "how do i use"]):
+    if _match(q, ["help", "what can you", "what do you", "capabilities", "how do i use", "who are you"]):
         access = ctx.get("access") or {}
         mods = []
         if access.get("hr"):
@@ -209,23 +172,23 @@ def _local_reply(text: str, ctx: dict) -> dict:
         mod_line = ", ".join(mods) if mods else "core work modules only"
         return {
             "reply": (
-                f"Hi {ctx.get('user_name', 'there')} — I'm EDITH for Kwick CRM.\n\n"
-                "I can look up (read-only):\n"
-                "• Tasks vs personal To-Dos, projects & content calendar\n"
-                "• Who is doing what, reminders, tickets\n"
-                "• Leave balances & pending leave requests\n"
-                f"• Your modules: {mod_line}\n\n"
-                "I also help with writing, brainstorming, news, and image review.\n"
-                "How-tos: request leave → Profile · raise ticket → Profile · "
-                "create estimate → Sales → Proposals.\n"
+                f"Hi {ctx.get('user_name', 'there')} — I'm EDITH for Kwick CRM (Kreativefolio).\n\n"
+                "**CRM (read-only):**\n"
+                "• Shared Tasks vs personal To-Dos vs Calendar Reminders (separate)\n"
+                "• Projects, content calendar, workload, tickets, leaves\n"
+                f"• Your modules: {mod_line}\n"
+                "• Dashboard Reminders card, sales docs, renewals, reports (if you have access)\n\n"
+                "**General:** writing, captions, brainstorming, explainers, plans, coding help, "
+                "news/sports overviews, UAE-business tone drafts — ask anything.\n\n"
                 "Team chat is under Chat (not me). Support: design@kreativefolio.com "
                 "or WhatsApp +971 50 521 1969.\n"
-                "Try: “What needs attention?”, “Pending leaves”, “Open invoices”, or “Where do I request leave?”."
+                "Try: “What needs attention?”, “Draft a follow-up email”, “Brainstorm 5 reel ideas”, "
+                "or “How do I add a reminder?”."
             ),
             "links": [
-                {"label": "Tasks", "href": "/tasks", "icon": "bi-check-square-fill"},
-                {"label": "Calendar", "href": "/calendar", "icon": "bi-calendar3-fill"},
                 {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
+                {"label": "Calendar", "href": "/calendar", "icon": "bi-calendar3-fill"},
+                {"label": "To-Do", "href": "/todo", "icon": "bi-ui-checks-grid"},
             ],
         }
 
@@ -288,8 +251,9 @@ def _local_reply(text: str, ctx: dict) -> dict:
         return {
             "reply": (
                 f"{greet}, {ctx.get('user_name', 'there')}! "
-                f"You have {ctx.get('open_tasks_count', 0)} open task(s) and "
-                f"{ctx.get('active_projects_count', 0)} active project(s). "
+                f"You have {ctx.get('open_tasks_count', 0)} open task(s), "
+                f"{len(ctx.get('todos') or [])} open to-do(s), and "
+                f"{len(ctx.get('upcoming_reminders') or [])} reminder(s) in the next 7 days. "
                 "Ask “What needs attention?” for a quick briefing."
             ),
             "links": [{"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"}],
@@ -319,16 +283,18 @@ def _local_reply(text: str, ctx: dict) -> dict:
             for w in ctx["workload"][:6]:
                 parts.append(f"  – {w['person']}: {w['open_tasks']} open")
         if ctx.get("todos"):
-            parts.append(f"• To-dos: **{len(ctx['todos'])}**")
+            parts.append(f"• Personal to-dos: **{len(ctx['todos'])}**")
             for t in ctx["todos"][:4]:
-                parts.append(f"  – {t['title']}")
+                due = f" (due {t['due_date']})" if t.get("due_date") else ""
+                parts.append(f"  – {t['title']}{due}")
         parts.append(f"• Active projects: **{ctx.get('active_projects_count', 0)}**")
         for p in (ctx.get("active_projects") or [])[:4]:
             parts.append(f"  – {p['name']} [{p['status']}]")
         if ctx.get("upcoming_reminders"):
-            parts.append(f"• Reminders (7 days): **{len(ctx['upcoming_reminders'])}**")
+            parts.append(f"• Calendar reminders (7 days): **{len(ctx['upcoming_reminders'])}**")
             for r in ctx["upcoming_reminders"][:4]:
-                parts.append(f"  – {r['title']}")
+                when = f" @ {r.get('remind_at')}" if r.get("remind_at") else ""
+                parts.append(f"  – {r['title']}{when}")
         if "pending_leaves_count" in ctx and ctx.get("pending_leaves_count"):
             parts.append(f"• Pending leaves: **{ctx['pending_leaves_count']}**")
         if "open_tickets_count" in ctx and ctx.get("open_tickets_count"):
@@ -347,8 +313,12 @@ def _local_reply(text: str, ctx: dict) -> dict:
             parts.append(f"• Overdue renewals: **{ctx['overdue_renewals_count']}**")
         if "upcoming_renewals_count" in ctx:
             parts.append(f"• Renewals due soon: **{ctx['upcoming_renewals_count']}**")
-        parts.append("\nSuggested next step: clear overdue items, then schedule the rest on Calendar.")
+        parts.append(
+            "\nTip: Dashboard Reminders card lists open reminders + to-dos + unread notifications. "
+            "Tick only hides from the card; mark done on Calendar/To-Do to clear for real."
+        )
         links = [
+            {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
             {"label": "Tasks", "href": "/tasks", "icon": "bi-check-square-fill"},
             {"label": "Calendar", "href": "/calendar", "icon": "bi-calendar3-fill"},
         ]
@@ -378,19 +348,34 @@ def _local_reply(text: str, ctx: dict) -> dict:
             "links": [{"label": "Tasks", "href": "/tasks", "icon": "bi-check-square-fill"}],
         }
 
-    if _match(q, ["task", "todo", "to-do", "to do"]):
-        lines = [f"**{ctx.get('open_tasks_count', 0)}** open task(s)."]
+    if _match(q, ["todo", "to-do", "to do", "my checklist", "personal checklist"]):
+        lines = [f"**Personal to-dos (open):** {len(ctx.get('todos') or [])}"]
+        for t in ctx.get("todos") or []:
+            due = f" · due {t['due_date']}" if t.get("due_date") else ""
+            lines.append(f"• {t['title']}{due}")
+        if not ctx.get("todos"):
+            lines.append("None open — nice work.")
+        lines.append(
+            "\nTo-Dos are personal (not Calendar reminders). "
+            "They can appear on Calendar and on the Dashboard Reminders card until marked done."
+        )
+        return {
+            "reply": "\n".join(lines),
+            "links": [
+                {"label": "To-Do", "href": "/todo", "icon": "bi-ui-checks-grid"},
+                {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
+            ],
+        }
+
+    if _match(q, ["task", "who's assigned", "assigned tasks", "my tasks", "open tasks"]):
+        lines = [f"**{ctx.get('open_tasks_count', 0)}** open shared task(s)."]
         for t in ctx.get("open_tasks") or []:
             due = f" · due {t['due_date']}" if t.get("due_date") else ""
             who = f" · {t['assignee']}" if t.get("assignee") else ""
             lines.append(f"• {t['title']} — {t['status']}{who}{due}")
-        if ctx.get("todos"):
-            lines.append("\nPersonal to-dos:")
-            for t in ctx["todos"]:
-                due = f" (due {t['due_date']})" if t.get("due_date") else ""
-                lines.append(f"• {t['title']}{due}")
-        if ctx.get("open_tasks_count", 0) == 0 and not ctx.get("todos"):
+        if ctx.get("open_tasks_count", 0) == 0:
             lines.append("Nothing open — nice work.")
+        lines.append("\nShared Tasks ≠ personal To-Dos ≠ Calendar Reminders.")
         return {
             "reply": "\n".join(lines),
             "links": [
@@ -412,7 +397,7 @@ def _local_reply(text: str, ctx: dict) -> dict:
             "links": [{"label": "Projects", "href": "/projects", "icon": "bi-kanban-fill"}],
         }
 
-    if _match(q, ["where do i", "how do i", "how to", "request leave", "raise a ticket", "raise ticket"]):
+    if _match(q, ["where do i", "how do i", "how to", "request leave", "raise a ticket", "raise ticket", "add a reminder", "create a reminder", "dashboard reminder", "dismiss"]):
         if _match(q, ["leave", "time off", "vacation"]):
             return {
                 "reply": (
@@ -438,6 +423,45 @@ def _local_reply(text: str, ctx: dict) -> dict:
                     {"label": "Chat", "href": "/chat", "icon": "bi-chat-dots-fill"},
                 ],
             }
+        if _match(q, ["reminder", "calendar event", "schedule a meeting"]):
+            return {
+                "reply": (
+                    "To **create a Calendar Reminder**: open Calendar → Add Reminder "
+                    "(title, time, optional assignees / meeting link / recurrence).\n"
+                    "That creates a Reminder only — it does **not** create a To-Do.\n"
+                    "It shows on Calendar for owner + assignees, and on the Dashboard Reminders card until marked done.\n"
+                    "Personal checklists live under To-Do (separate)."
+                ),
+                "links": [
+                    {"label": "Calendar", "href": "/calendar", "icon": "bi-calendar3-fill"},
+                    {"label": "To-Do", "href": "/todo", "icon": "bi-ui-checks-grid"},
+                    {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
+                ],
+            }
+        if _match(q, ["todo", "to-do", "to do", "checklist"]):
+            return {
+                "reply": (
+                    "To **create a personal To-Do**: open To-Do and add an item (optional due date).\n"
+                    "To-Dos can appear on your Calendar agenda and Dashboard Reminders card, "
+                    "but they are not Calendar Reminders."
+                ),
+                "links": [{"label": "To-Do", "href": "/todo", "icon": "bi-ui-checks-grid"}],
+            }
+        if _match(q, ["dashboard", "dismiss", "reminders card", "notification card"]):
+            return {
+                "reply": (
+                    "The **Dashboard Reminders card** shows open Calendar reminders, open to-dos, "
+                    "and unread notifications.\n"
+                    "• Tick = hide from the card only (does not mark done/read).\n"
+                    "• Refresh arrow = bring dismissed pending items back.\n"
+                    "• Mark done on Calendar/To-Do, or mark read on Reminders, to clear for real.\n"
+                    "Nudge times Mon–Sat: 9:15 AM, 2:30 PM, 5:00 PM (Asia/Dubai)."
+                ),
+                "links": [
+                    {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
+                    {"label": "Reminders", "href": "/reminders", "icon": "bi-bell"},
+                ],
+            }
         if _match(q, ["estimate", "quote"]):
             return {
                 "reply": "Create an estimate from **Sales → Proposals** (Create Estimate). Statuses: draft, sent, accepted, rejected.",
@@ -448,12 +472,23 @@ def _local_reply(text: str, ctx: dict) -> dict:
                 "reply": "Manage invoices under **Sales → Invoices**. Statuses: draft, sent, paid, overdue.",
                 "links": [{"label": "Invoices", "href": "/sales/invoices", "icon": "bi-receipt"}],
             }
+        if _match(q, ["artwork", "art work"]):
+            return {
+                "reply": "Generate artwork IDs under **Projects → Artwork**.",
+                "links": [{"label": "Artwork", "href": "/projects/artwork", "icon": "bi-palette-fill"}],
+            }
+        if _match(q, ["avatar", "profile photo", "profile picture"]):
+            return {
+                "reply": "Update your photo under **Profile** — you can crop before saving.",
+                "links": [{"label": "Profile", "href": "/profile", "icon": "bi-person-circle"}],
+            }
         return {
             "reply": (
                 "Common paths:\n"
-                "• Leave → Profile · Tickets → Profile · Chat → /chat\n"
-                "• Tasks → /tasks · Personal to-dos → /todo · Calendar → /calendar\n"
-                "• Sales clients/proposals/invoices · HR staff/documents · Renewals\n"
+                "• Leave / Tickets / Avatar → Profile · Chat → /chat\n"
+                "• Shared tasks → /tasks · Personal to-dos → /todo · Reminders → Calendar\n"
+                "• Pending card → Dashboard · Notification feed → /reminders\n"
+                "• Sales clients/proposals/invoices · HR staff/documents · Renewals · Reports · Logs\n"
                 "Ask “Help” for a full capability list."
             ),
             "links": [{"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"}],
@@ -628,8 +663,26 @@ def _local_reply(text: str, ctx: dict) -> dict:
             "links": [{"label": "Renewals", "href": "/renewals", "icon": "bi-arrow-repeat"}],
         }
 
-    if _match(q, ["calendar", "reminder", "meeting", "schedule"]):
-        lines = ["Upcoming reminders (next 7 days):"]
+    if _match(q, ["calendar", "reminder", "meeting", "schedule", "dashboard card", "nudge"]):
+        if _match(q, ["dashboard", "nudge", "dismiss", "card"]):
+            return {
+                "reply": (
+                    "Dashboard Reminders card = open Calendar reminders (yours or assigned to you) "
+                    "+ open to-dos + unread notifications.\n"
+                    "Tick hides from the card only. Refresh brings pending items back. "
+                    "Mark done/read on the source screen to clear for real.\n"
+                    "Daily nudges Mon–Sat at 09:15, 14:30, 17:00 Asia/Dubai (skip Sunday)."
+                ),
+                "links": [
+                    {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
+                    {"label": "Reminders", "href": "/reminders", "icon": "bi-bell"},
+                ],
+            }
+        lines = [
+            "Calendar Reminders ≠ To-Dos. Reminders are created on Calendar; to-dos on To-Do.",
+            "",
+            "Upcoming reminders (next 7 days):",
+        ]
         for r in ctx.get("upcoming_reminders") or []:
             who = ", ".join(r.get("assignees") or [])
             extra = f" · {who}" if who else ""
@@ -637,6 +690,11 @@ def _local_reply(text: str, ctx: dict) -> dict:
             lines.append(f"• {r['title']} — {r.get('remind_at')}{extra}{meet}")
         if not ctx.get("upcoming_reminders"):
             lines.append("No reminders in the next week.")
+        if ctx.get("todos"):
+            lines.append("\nOpen personal to-dos:")
+            for t in ctx["todos"][:4]:
+                due = f" (due {t['due_date']})" if t.get("due_date") else ""
+                lines.append(f"• {t['title']}{due}")
         if ctx.get("content_calendar"):
             lines.append("\nContent calendar (soon):")
             for item in ctx["content_calendar"][:4]:
@@ -647,13 +705,42 @@ def _local_reply(text: str, ctx: dict) -> dict:
             "reply": "\n".join(lines),
             "links": [
                 {"label": "Calendar", "href": "/calendar", "icon": "bi-calendar3-fill"},
-                {"label": "Reminders", "href": "/reminders", "icon": "bi-bell"},
+                {"label": "To-Do", "href": "/todo", "icon": "bi-ui-checks-grid"},
+                {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
             ],
+        }
+
+    # Lightweight general stubs when the LLM is offline.
+    if _match(
+        q,
+        [
+            "write",
+            "draft",
+            "brainstorm",
+            "caption",
+            "rewrite",
+            "translate",
+            "explain",
+            "ideas for",
+            "subject line",
+            "email template",
+        ],
+    ) and not _is_crm_query(q):
+        return {
+            "reply": (
+                "I can help with that — drafts, captions, brainstorms, explainers, and plans.\n"
+                "The full creative/general model needs AI configured online right now.\n"
+                "Meanwhile for CRM: ask “What needs attention?”, “My reminders”, or “Help”.\n"
+                "Or open EDITH again once AI_API_KEY is available for richer writing."
+            ),
+            "links": [{"label": "EDITH", "href": "/ai", "icon": "bi-stars"}],
         }
 
     return {
         "reply": (
             f"Quick snapshot: **{ctx.get('open_tasks_count', 0)}** open tasks, "
+            f"**{len(ctx.get('todos') or [])}** to-dos, "
+            f"**{ctx.get('open_reminders_count', len(ctx.get('upcoming_reminders') or []))}** open reminders, "
             f"**{ctx.get('active_projects_count', 0)}** active projects"
             + (
                 f", **{ctx.get('overdue_invoices_count', 0)}** overdue invoices"
@@ -661,7 +748,9 @@ def _local_reply(text: str, ctx: dict) -> dict:
                 else ""
             )
             + ".\n\n"
-            "Try asking: “What needs attention?”, “My tasks”, “Open tickets”, “Estimates”, or “Help”."
+            "CRM: “What needs attention?”, “My tasks”, “My to-dos”, “Open tickets”.\n"
+            "General: “Draft a client follow-up”, “Brainstorm reel ideas”, “Explain X simply”.\n"
+            "Or ask “Help”."
         ),
         "links": _suggested_links(q, ctx),
     }
@@ -672,50 +761,115 @@ def _match(q: str, words: list[str]) -> bool:
 
 
 def _is_crm_query(q: str) -> bool:
-    return _match(
-        q.lower(),
+    """True when the user is asking about Kwick data / screens (vs pure general knowledge)."""
+    ql = (q or "").lower()
+    general_markers = [
+        "brainstorm",
+        "caption",
+        "rewrite",
+        "translate",
+        "explain ",
+        "what is ",
+        "what's ",
+        "who won",
+        "recipe",
+        "python",
+        "javascript",
+        "code snippet",
+        "write me a poem",
+        "tell me a joke",
+        "news about",
+        "sports",
+        "weather",
+        "how does ",
+        "why does ",
+        "compare ",
+        "pros and cons",
+    ]
+    crm_markers = [
+        "task",
+        "todo",
+        "to-do",
+        "to do",
+        "invoice",
+        "overdue",
+        "payment",
+        "client",
+        "employee",
+        "employees",
+        "staff",
+        "hr",
+        "leave",
+        "document",
+        "letter",
+        "workload",
+        "who is doing",
+        "who's doing",
+        "project",
+        "renewal",
+        "calendar",
+        "reminder",
+        "attention",
+        "deadline",
+        "kwick",
+        "dashboard",
+        "sales",
+        "proposal",
+        "estimate",
+        "quote",
+        "ticket",
+        "content calendar",
+        "nudge",
+        "artwork",
+        "avatar",
+        "logs",
+        "notification",
+        "what needs",
+        "pending leave",
+        "kreativefolio",
+        "mini-project",
+        "assignee",
+    ]
+    has_crm = _match(ql, crm_markers)
+    has_general = _match(ql, general_markers)
+    if has_crm:
+        return True
+    if has_general:
+        return False
+    # How-to / help about the product
+    if _match(ql, ["where do i", "how do i", "how to"]) and _match(
+        ql,
         [
-            "task",
+            "leave",
+            "ticket",
+            "invoice",
+            "reminder",
             "todo",
             "to-do",
-            "to do",
-            "invoice",
-            "overdue",
-            "payment",
-            "client",
-            "employee",
-            "employees",
-            "staff",
-            "team",
-            "hr",
-            "leave",
-            "balance",
-            "document",
-            "letter",
-            "workload",
-            "who is doing",
-            "who's doing",
-            "project",
-            "renewal",
-            "calendar",
-            "reminder",
-            "attention",
-            "deadline",
-            "kwick",
-            "dashboard",
-            "sales",
             "proposal",
             "estimate",
-            "quote",
-            "ticket",
-            "content",
-            "week",
-            "schedule",
-            "help",
-            "what needs",
-            "where do i",
-            "how do i",
+            "dashboard",
+            "calendar",
+            "staff",
+            "client",
+            "report",
+            "renewal",
+            "avatar",
+            "artwork",
         ],
+    ):
+        return True
+    if _match(ql, ["help", "what can you", "capabilities", "who are you"]):
+        return True
+    return False
+
+
+def _slim_context(ctx: dict) -> str:
+    """Minimal context for general-mode turns (identity + clock only)."""
+    return (
+        f"User: {ctx.get('user_name')} ({ctx.get('role')})\n"
+        f"Today: {ctx.get('today')} ({ctx.get('weekday')})\n"
+        f"Local time: {ctx.get('local_time')} ({ctx.get('timezone')}) — {ctx.get('part_of_day')}"
     )
 
 
@@ -836,10 +990,30 @@ def _llm_reply(ctx: dict, messages: list[dict]) -> str:
     model = getattr(settings, "AI_MODEL", None) or "gpt-4o-mini"
     key = settings.AI_API_KEY
 
-    system = SYSTEM_PROMPT + "\n\nCRM CONTEXT:\n" + context_as_text(ctx)
+    last = (messages[-1].get("content") or "") if messages else ""
+    crm_mode = _is_crm_query(last)
+    if crm_mode:
+        system = (
+            SYSTEM_PROMPT
+            + "\n\n"
+            + CRM_MODE_NOTE
+            + "\n\nCRM CONTEXT:\n"
+            + context_as_text(ctx)
+        )
+        temperature = 0.4
+    else:
+        system = (
+            SYSTEM_PROMPT
+            + "\n\n"
+            + GENERAL_MODE_NOTE
+            + "\n\nSESSION:\n"
+            + _slim_context(ctx)
+        )
+        temperature = 0.7
+
     payload = {
         "model": model,
-        "temperature": 0.5,
+        "temperature": temperature,
         "messages": [
             {"role": "system", "content": system},
             *_llm_message_payload(messages),

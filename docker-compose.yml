@@ -134,12 +134,11 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      # - "443:443"   # enable once TLS certs are mounted (see nginx/README.md)
+      # Production SSL: use docker-compose.prod.yml (443 + Let's Encrypt mount)
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - static:/var/www/static:ro
       - media:/var/www/media:ro
-      # - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - backend
       - frontend

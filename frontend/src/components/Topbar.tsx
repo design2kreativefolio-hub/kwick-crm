@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EdithOrb } from "@/components/EdithOrb";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserAvatar } from "@/components/UserAvatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
@@ -252,7 +253,7 @@ export function Topbar({
               style={profileBtn}
               aria-label="Account menu"
             >
-              <span style={avatar}>{(user?.full_name || user?.email || "?")[0].toUpperCase()}</span>
+              <UserAvatar user={user} size={36} />
               <span style={{ textAlign: "left", lineHeight: 1.2 }}>
                 <span style={{ display: "block", fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
                   {user?.full_name || user?.email}
@@ -417,17 +418,6 @@ const profileBtn: React.CSSProperties = {
   border: "none",
   padding: "6px 8px",
   borderRadius: 8,
-};
-const avatar: React.CSSProperties = {
-  width: 36,
-  height: 36,
-  borderRadius: "50%",
-  background: "var(--brand-fill)",
-  color: "var(--on-brand)",
-  display: "grid",
-  placeItems: "center",
-  fontWeight: 700,
-  fontSize: 14,
 };
 const dropdown: React.CSSProperties = {
   position: "absolute",

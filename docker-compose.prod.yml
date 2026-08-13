@@ -1,0 +1,15 @@
+# Production overrides — use ON THE VPS only:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Requires Let's Encrypt certs at /etc/letsencrypt/live/kwick.kreativefolio.com/
+
+services:
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - static:/var/www/static:ro
+      - media:/var/www/media:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro

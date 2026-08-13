@@ -197,5 +197,18 @@ export function buildProposalHtml(content: ProposalContent): string {
     `);
   }
 
+  for (const item of content.custom_sections || []) {
+    if (!item.enabled) continue;
+    const hasBody = Boolean(item.content?.trim()) || (item.image_urls && item.image_urls.length > 0);
+    if (!hasBody && !item.title?.trim()) continue;
+    parts.push(`
+      <section class="${sectionClass(item.page_break_before)}">
+        <h2>${esc(item.title || "Additional section")}</h2>
+        ${item.content || ""}
+        ${imgs(item.image_urls || [], "section-image")}
+      </section>
+    `);
+  }
+
   return parts.join("\n");
 }

@@ -11,7 +11,7 @@ import { Reveal } from "@/components/Reveal";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
-import { DEFAULT_SOURCE_META, NotificationEvent, SOURCE_META, timeAgo } from "@/lib/notifications";
+import { DEFAULT_SOURCE_META, SOURCE_META, timeAgo } from "@/lib/notifications";
 import { STATUS_BADGE, STATUS_COLOR as SHARED_STATUS_COLOR } from "@/lib/statusBadges";
 
 type StatusCount = { status: string; label: string; count: number };
@@ -30,6 +30,18 @@ type PendingApprovalUser = {
   full_name: string;
   email: string;
   created_at: string;
+};
+
+type DashboardCardItem = {
+  kind: "notification" | "reminder" | "todo";
+  id: number;
+  title: string;
+  body: string;
+  source: string;
+  href: string;
+  at: string;
+  created_at: string;
+  read_at?: string | null;
 };
 
 const TASK_STATUS_BADGE = STATUS_BADGE;
@@ -76,24 +88,6 @@ function trendPct(current: number, previous: number): number | null {
   return Math.round(((current - previous) / previous) * 100);
 }
 
-// Unread first, then most recent — surfaces what actually needs attention.
-function sortNotifications(items: NotificationEvent[]) {
-  return [...items].sort((a, b) => {
-    const ua = a.read_at ? 1 : 0;
-    const ub = b.read_at ? 1 : 0;
-    if (ua !== ub) return ua - ub;
-    // Top-priority, time-sensitive reminders — staff renewal nags and
-    // project delivery dates — surface above everything else once unread
-    // status is equal.
-    const rank = (s: string) =>
-      s === "registration" || s === "staff_renewal" || s === "project" ? 0 : 1;
-    const pa = rank(a.source);
-    const pb = rank(b.source);
-    if (pa !== pb) return pa - pb;
-    return b.created_at.localeCompare(a.created_at);
-  });
-}
-
 function relativeDate(iso: string) {
   const target = new Date(iso);
   const today = new Date();
@@ -106,30 +100,48 @@ function relativeDate(iso: string) {
   return target.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function cardMeta(item: DashboardCardItem) {
+  if (item.kind === "todo") return SOURCE_META.todo ?? DEFAULT_SOURCE_META;
+  if (item.kind === "reminder") return SOURCE_META.calendar ?? DEFAULT_SOURCE_META;
+  return SOURCE_META[item.source] ?? DEFAULT_SOURCE_META;
+}
+
+function cardSubtitle(item: DashboardCardItem) {
+  const meta = cardMeta(item);
+  if (item.kind === "todo") {
+    return item.body || meta.label;
+  }
+  if (item.kind === "reminder") {
+    try {
+      return `${meta.label} · ${relativeDate(item.at)}`;
+    } catch {
+      return meta.label;
+    }
+  }
+  return `${meta.label} · ${timeAgo(item.created_at)}`;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { showToast } = useToast();
   const isSuperadmin = user?.role === "superadmin";
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
+  const [cardItems, setCardItems] = useState<DashboardCardItem[]>([]);
   const [sparkline, setSparkline] = useState<number[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [approvalBusyId, setApprovalBusyId] = useState<number | null>(null);
 
   const load = useCallback(() => {
     api<Summary>("/api/dashboard/summary").then(setSummary).catch(() => {});
-    api<NotificationEvent[]>("/api/notifications")
-      .then((items) => setNotifications(sortNotifications(items)))
+    api<{ items: DashboardCardItem[] }>("/api/dashboard/reminders")
+      .then((d) => setCardItems(d.items || []))
       .catch(() => {});
     api<{ series: { completed: number }[] }>(
       `/api/dashboard/performance?granularity=daily&scope=${isSuperadmin ? "company" : "self"}`
     )
       .then((d) => setSparkline(d.series.slice(-14).map((p) => p.completed)))
       .catch(() => {});
-    // Managers see every employee's tasks relevant to today (due today or
-    // added today), not just "most recently created" — so they can tell
-    // who's doing what today without opening each person's board.
     if (isSuperadmin) {
       api<Task[]>("/api/dashboard/today-tasks").then(setRecentTasks).catch(() => {});
     } else {
@@ -142,6 +154,19 @@ export default function DashboardPage() {
 
   useEffect(load, [load]);
 
+  const dismissCardItem = (item: DashboardCardItem) => {
+    setCardItems((prev) => prev.filter((x) => !(x.kind === item.kind && x.id === item.id)));
+    api("/api/dashboard/reminders/dismiss", {
+      method: "POST",
+      body: JSON.stringify({ kind: item.kind, id: item.id }),
+    }).catch(() => load());
+  };
+
+  const restoreCardItems = () => {
+    api<{ items: DashboardCardItem[] }>("/api/dashboard/reminders/restore", { method: "POST" })
+      .then((d) => setCardItems(d.items || []))
+      .catch(() => load());
+  };
   const decideApproval = async (id: number, action: "approve" | "reject") => {
     setApprovalBusyId(id);
     try {
@@ -163,8 +188,6 @@ export default function DashboardPage() {
   const completed = isSuperadmin ? summary?.company_completed_this_month : summary?.completed_this_month;
   const completedPrev = isSuperadmin ? summary?.company_completed_last_month : summary?.completed_last_month;
   const completedTrend = summary ? trendPct(completed ?? 0, completedPrev ?? 0) : null;
-
-  const pendingNotifications = notifications.filter((n) => !n.read_at);
 
   return (
     <div className="dashboard-grid" style={{ display: "grid", gap: 22, alignItems: "start" }}>
@@ -317,8 +340,8 @@ export default function DashboardPage() {
         </Reveal>
       </div>
 
-      {/* Reminders — always on the right, sticky. Ticking one off marks it read
-          and drops it out of the docket; the badge tracks what's still pending. */}
+      {/* Reminders card — calendar reminders + to-dos + notifications.
+          Tick only dismisses from this card (not mark done / not mark read). */}
       <Reveal index={0} style={{ position: "sticky", top: 24 }}>
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -326,42 +349,52 @@ export default function DashboardPage() {
               <i className="bi bi-bell-fill" style={{ color: "var(--danger)" }} />
               Reminders
             </span>
-            {pendingNotifications.length > 0 && (
-              <span className="badge badge-danger">{pendingNotifications.length}</span>
-            )}
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                type="button"
+                className="icon-btn-anim"
+                style={tickBtn}
+                title="Show pending items again"
+                aria-label="Show pending items again"
+                onClick={restoreCardItems}
+              >
+                <i className="bi bi-arrow-clockwise" />
+              </button>
+              {cardItems.length > 0 && (
+                <span className="badge badge-danger">{cardItems.length}</span>
+              )}
+            </span>
           </div>
-          {pendingNotifications.length === 0 && <p className="muted">Nothing needs attention right now.</p>}
+          {cardItems.length === 0 && <p className="muted">Nothing needs attention right now.</p>}
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {pendingNotifications.slice(0, 8).map((n) => {
-              const meta = SOURCE_META[n.source] ?? DEFAULT_SOURCE_META;
+            {cardItems.slice(0, 8).map((item) => {
+              const meta = cardMeta(item);
+              const href = item.href || meta.href;
               return (
                 <li
-                  key={n.id}
-                  style={{ ...reminderRow, cursor: meta.href ? "pointer" : "default" }}
+                  key={`${item.kind}-${item.id}`}
+                  style={{ ...reminderRow, cursor: href ? "pointer" : "default" }}
                   onClick={() => {
-                    if (meta.href) router.push(meta.href);
+                    if (href) router.push(href);
                   }}
                 >
                   <span style={{ ...reminderIcon, background: meta.bg, color: meta.color }}>
                     <i className={`bi ${meta.icon}`} />
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{n.title}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{item.title}</div>
                     <div className="muted" style={{ fontSize: 11.5 }}>
-                      {meta.label} · {timeAgo(n.created_at)}
+                      {cardSubtitle(item)}
                     </div>
                   </span>
                   <button
                     className="icon-btn-anim"
                     style={tickBtn}
-                    title="Mark as read"
-                    aria-label="Mark as read"
+                    title="Dismiss from card"
+                    aria-label="Dismiss from card"
                     onClick={(e) => {
                       e.stopPropagation();
-                      api(`/api/notifications/${n.id}/read`, { method: "POST" }).catch(() => {});
-                      setNotifications((prev) =>
-                        prev.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x))
-                      );
+                      dismissCardItem(item);
                     }}
                   >
                     <i className="bi bi-check-lg" />
@@ -370,7 +403,7 @@ export default function DashboardPage() {
               );
             })}
           </ul>
-          {pendingNotifications.length > 8 && (
+          {cardItems.length > 8 && (
             <a href="/reminders" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
               View all reminders <i className="bi bi-arrow-right" />
             </a>

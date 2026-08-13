@@ -5,11 +5,11 @@ from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Module, Role, UserStatus
-from calendar_app.services import build_agenda
 from common.models import ActivityLog
 from common.permissions import IsActive, IsSuperadmin, has_module_access, is_superadmin
 from hr.models import HrLetter
@@ -138,17 +138,55 @@ class SummaryView(APIView):
 
 
 class RemindersView(APIView):
-    """GET /api/dashboard/reminders — merged, priority-ordered feed (spec §15.3)."""
+    """GET /api/dashboard/reminders — open reminders, to-dos, and notifications for the card."""
 
     permission_classes = [IsActive]
 
     def get(self, request):
-        today = date.today()
-        scope = "all" if is_superadmin(request.user) else "self"
-        items = build_agenda(
-            user=request.user, dt_from=today, dt_to=today + timedelta(days=30), scope=scope
+        from dashboard.card_feed import build_dashboard_card_items
+
+        return Response({"items": build_dashboard_card_items(request.user)})
+
+
+class ReminderDismissView(APIView):
+    """POST /api/dashboard/reminders/dismiss — hide from card only (not mark done/read)."""
+
+    permission_classes = [IsActive]
+
+    def post(self, request):
+        from notifications.models import DashboardCardDismiss
+
+        kind = (request.data.get("kind") or "").strip()
+        object_id = request.data.get("id")
+        valid = {c.value for c in DashboardCardDismiss.Kind}
+        if kind not in valid:
+            return Response({"detail": "Invalid kind."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            object_id = int(object_id)
+        except (TypeError, ValueError):
+            return Response({"detail": "Invalid id."}, status=status.HTTP_400_BAD_REQUEST)
+
+        DashboardCardDismiss.objects.get_or_create(
+            user=request.user,
+            kind=kind,
+            object_id=object_id,
         )
-        return Response({"items": items})
+        return Response({"detail": "ok"})
+
+
+class ReminderRestoreView(APIView):
+    """POST /api/dashboard/reminders/restore — clear card dismissals so pending items show again."""
+
+    permission_classes = [IsActive]
+
+    def post(self, request):
+        from dashboard.card_feed import build_dashboard_card_items
+        from notifications.models import DashboardCardDismiss
+
+        deleted, _ = DashboardCardDismiss.objects.filter(user=request.user).delete()
+        return Response(
+            {"detail": "ok", "restored": deleted, "items": build_dashboard_card_items(request.user)}
+        )
 
 
 class PerformanceView(APIView):

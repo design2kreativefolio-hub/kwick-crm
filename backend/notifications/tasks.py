@@ -88,3 +88,104 @@ def refire_recurring_reminders():
 
     for event in NotificationEvent.objects.filter(recurring=True, active=True):
         deliver_notification.delay(event.id)
+
+
+@shared_task
+def send_open_item_nudges():
+    """
+    Remind each user about open (not done) calendar reminders and to-dos.
+
+    Beat: 09:15 / 14:30 / 17:00 Asia/Dubai, Monday–Saturday (UTC crontabs).
+    Offline users still get the NotificationEvent and see it on next login.
+    Clears dashboard-card dismissals so items reappear on the card.
+    """
+    from accounts.models import User
+    from calendar_app.models import ManualReminder
+    from todos.models import TodoItem
+
+    from .models import DashboardCardDismiss, NotificationEvent
+
+    now = timezone.localtime()
+    if now.weekday() == 6:  # Sunday
+        return {"skipped": "sunday"}
+
+    today = now.date()
+    slot = now.strftime("%H:%M")
+
+    rem_qs = (
+        ManualReminder.objects.filter(done=False)
+        .select_related("owner")
+        .prefetch_related("assignees")
+    )
+    user_reminders: dict[int, list] = {}
+    for rem in rem_qs:
+        for uid in {rem.owner_id, *rem.assignees.values_list("id", flat=True)}:
+            user_reminders.setdefault(uid, []).append(rem)
+
+    user_todos: dict[int, list] = {}
+    for todo in TodoItem.objects.filter(done=False).select_related("owner"):
+        user_todos.setdefault(todo.owner_id, []).append(todo)
+
+    nudged = 0
+    for uid in set(user_reminders) | set(user_todos):
+        rems = user_reminders.get(uid, [])
+        todos = user_todos.get(uid, [])
+        try:
+            user = User.objects.get(pk=uid)
+        except User.DoesNotExist:
+            continue
+
+        if rems:
+            DashboardCardDismiss.objects.filter(
+                user=user,
+                kind=DashboardCardDismiss.Kind.REMINDER,
+                object_id__in=[r.id for r in rems],
+            ).delete()
+        if todos:
+            DashboardCardDismiss.objects.filter(
+                user=user,
+                kind=DashboardCardDismiss.Kind.TODO,
+                object_id__in=[t.id for t in todos],
+            ).delete()
+
+        parts = []
+        if rems:
+            parts.append(f"{len(rems)} open reminder{'s' if len(rems) != 1 else ''}")
+        if todos:
+            parts.append(f"{len(todos)} open to-do{'s' if len(todos) != 1 else ''}")
+        body = "You still have " + " and ".join(parts) + " pending."
+        titles = [r.title for r in rems[:3]] + [t.text[:60] for t in todos[:3]]
+        if titles:
+            body = body + "\n• " + "\n• ".join(titles)
+            extra = (len(rems) + len(todos)) - len(titles)
+            if extra > 0:
+                body = f"{body}\n…and {extra} more"
+
+        object_ref = f"open-nudge:{uid}:{today.isoformat()}:{slot}"
+        event, created = NotificationEvent.objects.get_or_create(
+            user=user,
+            object_ref=object_ref,
+            defaults={
+                "source": NotificationEvent.Source.CALENDAR,
+                "title": "Pending reminders",
+                "body": body,
+                "recurring": False,
+                "active": True,
+            },
+        )
+        if not created:
+            event.title = "Pending reminders"
+            event.body = body
+            event.active = True
+            event.read_at = None
+            event.save(update_fields=["title", "body", "active", "read_at", "updated_at"])
+
+        DashboardCardDismiss.objects.filter(
+            user=user,
+            kind=DashboardCardDismiss.Kind.NOTIFICATION,
+            object_id=event.id,
+        ).delete()
+        deliver_notification.delay(event.id)
+        nudged += 1
+
+    return {"nudged_users": nudged, "slot": slot, "date": today.isoformat()}

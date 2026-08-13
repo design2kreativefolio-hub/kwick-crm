@@ -1,38 +1,30 @@
 # Nginx / TLS notes
 
-Placeholder domains are used throughout (`yourdomain.com`, `api.yourdomain.com`).
-Swap them in [`nginx.conf`](./nginx.conf) and the root `.env` once DNS is ready.
+| Environment | Config | Command |
+|-------------|--------|---------|
+| **Local** | `nginx.conf` (HTTP only) | `docker compose up --build` |
+| **VPS / prod** | `nginx.prod.conf` + SSL | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` |
 
-## Enabling HTTPS (Let's Encrypt)
+Local does **not** need certificates. Production mounts `/etc/letsencrypt`.
 
-The simplest path on the VPS is Certbot in a companion container or on the host:
+## Enabling HTTPS on the VPS (Let's Encrypt)
 
-1. Point both A-records (`yourdomain.com`, `api.yourdomain.com`) at the VPS IP.
-2. Uncomment the `443` port and the `certs` volume mount in `docker-compose.yml`.
-3. Obtain certs (host Certbot example):
+1. DNS A-records for `kwick.kreativefolio.com` and `api.kwick.kreativefolio.com` → VPS IP.
+2. Install Certbot and stop nginx briefly (standalone needs port 80):
    ```bash
-   sudo certbot certonly --standalone -d yourdomain.com -d www.yourdomain.com -d api.yourdomain.com
+   sudo apt update && sudo apt install -y certbot
+   cd ~/kwick
+   docker compose stop nginx
+   sudo certbot certonly --standalone \
+     -d kwick.kreativefolio.com \
+     -d api.kwick.kreativefolio.com \
+     --email design@kreativefolio.com \
+     --agree-tos --non-interactive
    ```
-4. Mount `/etc/letsencrypt/live/<domain>/` into `./nginx/certs` and add `ssl_certificate` /
-   `ssl_certificate_key` directives plus an HTTP→HTTPS redirect to each server block.
-5. Reload: `docker compose exec nginx nginx -s reload`.
+3. Start with the prod compose file:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+   ```
+4. Set `.env` to `https://` / `wss://` and rebuild frontend.
 
-## IP-only testing (no domain yet)
-
-Replace the two `server` blocks with one catch-all that routes by path:
-
-```nginx
-server {
-    listen 80;
-    server_name _;
-
-    location /static/ { alias /var/www/static/; }
-    location /media/  { alias /var/www/media/;  }
-
-    location /api/ { proxy_pass http://backend; include /etc/nginx/proxy_common.conf; }
-    location /ws/  { proxy_pass http://backend; # + upgrade headers }
-    location /     { proxy_pass http://frontend; # + upgrade headers }
-}
-```
-
-Then set `NEXT_PUBLIC_API_BASE_URL=http://<vps-ip>` (same origin) in `.env`.
+Renewal tip: stop nginx before `certbot renew` if using standalone, then start again with the prod compose files.

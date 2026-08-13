@@ -26,6 +26,7 @@ SECTION_ORDER = [
     "pricing",
     "terms",
     "full_page_image",
+    "custom_sections",
 ]
 
 DEFAULT_ABOUT_KREATIVEFOLIO = (
@@ -87,6 +88,7 @@ def default_content() -> dict:
             "payment_percent": "100",
         },
         "full_page_image": {"enabled": True, "image_url": ""},
+        "custom_sections": [],
     }
 
 
@@ -100,6 +102,17 @@ def default_pricing_item() -> dict:
         "management_fee_label": "Ad Management Fee",
         "management_fee": "",
         "rows": [],
+    }
+
+
+def default_custom_section() -> dict:
+    return {
+        "id": "",
+        "enabled": True,
+        "page_break_before": False,
+        "title": "Additional section",
+        "content": "",
+        "image_urls": [],
     }
 
 
@@ -143,6 +156,16 @@ def merged_content(raw: dict) -> dict:
             continue
         if key == "pricing" and isinstance(value, list):
             base[key] = [{**default_pricing_item(), **item} for item in value]
+        elif key == "custom_sections" and isinstance(value, list):
+            base[key] = [
+                {
+                    **default_custom_section(),
+                    **item,
+                    "id": item.get("id") or "",
+                    "image_urls": item.get("image_urls") if isinstance(item.get("image_urls"), list) else [],
+                }
+                for item in value
+            ]
         elif key == "social_medias" and isinstance(value, dict):
             platforms = value.get("platforms")
             merged_sm = {**default_value, **value}

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Logo } from "@/components/Logo";
+import { UserAvatar } from "@/components/UserAvatar";
 import { useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
 import { NavItem, visibleNav } from "@/lib/nav";
@@ -147,7 +148,7 @@ export function Sidebar({
 
       {!collapsed && (
         <div style={profileCard}>
-          <span style={avatar}>{(user?.full_name || user?.email || "?")[0].toUpperCase()}</span>
+          <UserAvatar user={user} size={36} style={{ color: "#fff" }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis" }}>
               {user?.full_name || "User"}
@@ -252,16 +253,4 @@ const profileCard: React.CSSProperties = {
   margin: "0 12px 14px",
   borderRadius: 12,
   background: "rgba(255,255,255,0.06)",
-};
-const avatar: React.CSSProperties = {
-  width: 34,
-  height: 34,
-  minWidth: 34,
-  borderRadius: "50%",
-  background: "var(--gold)",
-  color: "#fff",
-  display: "grid",
-  placeItems: "center",
-  fontWeight: 700,
-  fontSize: 14,
 };

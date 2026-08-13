@@ -181,12 +181,15 @@ def _add_reminders(ctx: dict, user, today: date) -> None:
         from calendar_app.models import ManualReminder
 
         end = today + timedelta(days=7)
-        rem_qs = (
-            ManualReminder.objects.filter(
-                done=False, remind_at__date__gte=today, remind_at__date__lte=end
-            )
+        base = (
+            ManualReminder.objects.filter(done=False)
             .filter(Q(owner=user) | Q(assignees=user) | Q(visibility="company"))
             .distinct()
+        )
+        ctx["open_reminders_count"] = base.count()
+
+        rem_qs = (
+            base.filter(remind_at__date__gte=today, remind_at__date__lte=end)
             .prefetch_related("assignees")
             .order_by("remind_at")[:8]
         )
@@ -203,6 +206,20 @@ def _add_reminders(ctx: dict, user, today: date) -> None:
                 }
             )
         ctx["upcoming_reminders"] = rows
+
+        overdue = (
+            base.filter(remind_at__date__lt=today)
+            .order_by("-remind_at")[:5]
+            .values("id", "title", "remind_at")
+        )
+        ctx["overdue_reminders"] = [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "remind_at": r["remind_at"].isoformat() if r["remind_at"] else None,
+            }
+            for r in overdue
+        ]
     except Exception:
         pass
 
@@ -510,6 +527,10 @@ def context_as_text(ctx: dict) -> str:
         f"User: {ctx.get('user_name')} ({ctx.get('role')})",
         f"Today: {ctx.get('today')} ({ctx.get('weekday')})",
         f"Local time: {ctx.get('local_time')} ({ctx.get('timezone')}) — {ctx.get('part_of_day')}",
+        "Product notes: Tasks=shared work; To-Dos=personal checklist; "
+        "Calendar Reminders=timed calendar items (not to-dos). "
+        "Dashboard Reminders card lists open reminders + to-dos + unread notifications; "
+        "card tick dismisses only; refresh restores; mark done/read on source screens to clear.",
     ]
     access = ctx.get("access") or {}
     lines.append(
@@ -568,12 +589,18 @@ def context_as_text(ctx: dict) -> str:
             lines.append("  - " + " | ".join(bits))
 
     if ctx.get("todos"):
-        lines.append("Personal to-dos:")
+        lines.append(f"Personal to-dos (open): {len(ctx['todos'])}")
         for t in ctx["todos"]:
             lines.append(f"  - {t['title']} due={t.get('due_date') or '—'}")
 
+    if "open_reminders_count" in ctx:
+        lines.append(f"Open calendar reminders (all, not done): {ctx['open_reminders_count']}")
+    if ctx.get("overdue_reminders"):
+        lines.append("Overdue calendar reminders (not done):")
+        for r in ctx["overdue_reminders"]:
+            lines.append(f"  - {r['title']} at {r.get('remind_at')}")
     if ctx.get("upcoming_reminders"):
-        lines.append("Upcoming reminders (7d):")
+        lines.append("Upcoming calendar reminders (7d):")
         for r in ctx["upcoming_reminders"]:
             who = ", ".join(r.get("assignees") or []) or "—"
             meet = f" | meet={r['meeting_url']}" if r.get("meeting_url") else ""
