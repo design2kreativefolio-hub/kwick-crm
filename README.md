@@ -95,11 +95,15 @@ npm run dev
 
 ## Deployment (OVH VPS-1)
 
+**Full workflow (Git push → VPS pull, paths, SSH key, data safety):** [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
+
+Production live path: **`/opt/kwick`**. After `git pull`, run `bash scripts/deploy-vps.sh` on the VPS.
+
 1. Provision Ubuntu 22.04, add **2 GB swap**, install Docker + Docker Compose plugin.
 2. Point DNS: `yourdomain.com` → frontend, `api.yourdomain.com` → backend (or IP-only for testing).
 3. `cp .env.example .env`, fill in secrets, domains, S3, SMTP, VAPID keys.
-4. `docker compose -f docker-compose.yml up -d --build`.
-5. TLS: add Certbot/Let's Encrypt to the nginx service (see `nginx/README` TODO).
+4. `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
+5. TLS: Let's Encrypt via `docker-compose.prod.yml` (see [`nginx/README.md`](./nginx/README.md)).
 6. Backups: nightly `pg_dump` → OVH Object Storage, in addition to the daily VM snapshot.
 
 ### Resource tuning baked in
