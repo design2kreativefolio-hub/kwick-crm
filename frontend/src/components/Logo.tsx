@@ -1,8 +1,6 @@
 /*
-  Placeholder Kwick logo — a simple inline-SVG "K" badge + wordmark in the
-  brand blue, built so nothing depends on external image files. Swap this out
-  once the real logo artwork is ready; every call site only ever imports
-  <Logo />, so the replacement is a one-file change.
+  Placeholder Kwick logo — plain white "K" badge + wordmark.
+  Swap assets later when final artwork is ready; call sites only import <Logo />.
 */
 export function Logo({
   icon = false,
@@ -22,6 +20,7 @@ export function Logo({
       height={badgeSize}
       viewBox="0 0 40 40"
       style={{ display: "block", minWidth: badgeSize }}
+      aria-label="Kwick"
     >
       <rect width="40" height="40" rx="11" fill="#0000CD" />
       <text
@@ -29,7 +28,7 @@ export function Logo({
         y="53%"
         textAnchor="middle"
         dominantBaseline="middle"
-        fontFamily="var(--font-sans)"
+        fontFamily="var(--font-sans), system-ui, sans-serif"
         fontWeight={700}
         fontSize="22"
         fill="#ffffff"

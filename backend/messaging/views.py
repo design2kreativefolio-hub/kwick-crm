@@ -189,7 +189,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def messages(self, request, pk=None):
         """GET /api/messages/conversations/{id}/messages (spec §12)."""
         convo = self.get_object()
-        qs = convo.messages.select_related("sender")
+        qs = convo.messages.select_related("sender__profile")
         return Response(MessageSerializer(qs, many=True).data)
 
     @action(detail=True, methods=["post"])
@@ -419,8 +419,22 @@ class DirectoryView(APIView):
     permission_classes = [IsActive]
 
     def get(self, request):
-        qs = User.objects.filter(status="active").exclude(pk=request.user.pk).order_by("full_name")
+        qs = (
+            User.objects.filter(status="active")
+            .exclude(pk=request.user.pk)
+            .select_related("profile")
+            .order_by("full_name")
+        )
+        from common.media_urls import user_avatar_url
+
         data = [
-            {"id": u.id, "full_name": u.full_name, "email": u.email, "role": u.role} for u in qs
+            {
+                "id": u.id,
+                "full_name": u.full_name,
+                "email": u.email,
+                "role": u.role,
+                "avatar_url": user_avatar_url(u),
+            }
+            for u in qs
         ]
         return Response(data)

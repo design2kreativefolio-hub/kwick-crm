@@ -5,8 +5,8 @@ from rest_framework.response import Response
 
 from common.permissions import IsActive, IsSuperadminOrReadOnly
 from common.services import log_activity
-from notifications.services import notify_user
 from sales.models import Client
+from tasks.services import combine_due_datetime, notify_task_assignment
 
 from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient
 from .serializers import (
@@ -132,7 +132,7 @@ class ClientDirectoryViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         client = serializer.save()
-        log_activity(actor=self.request.user, action=f"edited client \"{client.name}\" (services)")
+        log_activity(actor=self.request.user, action=f"edited client \"{client.name}\"")
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def logo(self, request, pk=None):
@@ -185,67 +185,174 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
         )
         self._sync_assignee_tasks(item)
 
-    def _sync_assignee_tasks(self, item):
-        """Mirror each current assignee onto their own Task — a content
-        calendar assignment must show up in that employee's Tasks list,
-        Kanban, Dashboard and Calendar the same way any other task
-        assignment does, not just as a notification (spec follow-up)."""
-        from tasks.models import Task as TaskModel
+    def perform_destroy(self, instance):
+        from calendar_app.models import ManualReminder
 
-        status_map = {
-            ContentCalendarItem.Status.PLANNED: (TaskModel.Status.TODO, TaskModel.BoardStatus.TODO),
-            ContentCalendarItem.Status.IN_PROGRESS: (TaskModel.Status.IN_PROGRESS, TaskModel.BoardStatus.DOING),
-            ContentCalendarItem.Status.DONE: (TaskModel.Status.COMPLETED, TaskModel.BoardStatus.DONE),
+        ManualReminder.objects.filter(
+            description__contains=f"[kwick:content_item:{instance.id}"
+        ).delete()
+        log_activity(
+            actor=self.request.user,
+            action=f"deleted content item \"{instance.title}\" for {instance.client.name}",
+        )
+        instance.delete()
+
+    @staticmethod
+    def _content_reminder_marker(item_id: int, user_id: int) -> str:
+        return f"[kwick:content_item:{item_id}:user:{user_id}]"
+
+    def _sync_assignee_reminders(self, item, assignee_ids: set[int], *, published: bool):
+        """Assignees get a personal calendar reminder; everyone else still sees
+        the work via content calendar + company-wide mirrored tasks."""
+        from calendar_app.models import ManualReminder
+
+        marker_prefix = f"[kwick:content_item:{item.id}"
+        if published:
+            ManualReminder.objects.filter(description__contains=marker_prefix).update(done=True)
+            return
+
+        due = item.deadline or item.scheduled_date
+        if not due:
+            return
+        remind_at = combine_due_datetime(due, item.deadline_time)
+
+        existing = {
+            rem.id: rem
+            for rem in ManualReminder.objects.filter(description__contains=marker_prefix)
         }
-        task_status, board_status = status_map[item.status]
-        title = f"{item.title} — {item.client.name}"
-        due_date = item.deadline or item.scheduled_date
-
-        current_ids = set(item.assignees.values_list("id", flat=True))
-        existing = {t.assignee_id: t for t in TaskModel.objects.filter(content_item=item)}
-
-        for assignee_id, task in existing.items():
-            if assignee_id not in current_ids:
-                task.delete()
-
-        client_name = item.client.name
-        for assignee in item.assignees.all():
-            task = existing.get(assignee.id)
-            if task is None:
-                task = TaskModel.objects.create(
-                    content_item=item,
-                    assignee=assignee,
-                    title=title,
-                    description=item.description,
-                    client_name=client_name,
-                    due_date=due_date,
-                    status=task_status,
-                    board_status=board_status,
+        keep_ids: set[int] = set()
+        for uid in assignee_ids:
+            marker = self._content_reminder_marker(item.id, uid)
+            rem = next((r for r in existing.values() if marker in (r.description or "")), None)
+            body = (
+                f"{item.client.name} — content calendar assignment.\n{marker}"
+            )
+            if rem is None:
+                rem = ManualReminder.objects.create(
+                    owner_id=uid,
+                    title=item.title,
+                    description=body,
+                    remind_at=remind_at,
+                    visibility=ManualReminder.Visibility.PRIVATE,
+                    done=False,
                 )
-                if assignee.id != self.request.user.id:
-                    notify_user(
-                        user=assignee,
-                        source="content_calendar",
-                        title=f"You were assigned to \"{item.title}\"",
-                        body=f"{client_name} — scheduled {item.scheduled_date}.",
-                        object_ref=f"content_item:{item.id}",
-                    )
+                rem.assignees.set([uid])
             else:
-                task.title = title
-                task.description = item.description
-                task.client_name = client_name
-                task.due_date = due_date
-                task.status = task_status
-                task.board_status = board_status
-                task.save(
+                rem.title = item.title
+                rem.description = body
+                rem.remind_at = remind_at
+                rem.done = False
+                rem.day_alert_sent = False
+                rem.hour_alert_sent = False
+                rem.save(
                     update_fields=[
                         "title",
                         "description",
-                        "client_name",
-                        "due_date",
-                        "status",
-                        "board_status",
-                        "completed_at",
+                        "remind_at",
+                        "done",
+                        "done_at",
+                        "day_alert_sent",
+                        "hour_alert_sent",
                         "updated_at",
                     ]
                 )
+                rem.assignees.set([uid])
+            keep_ids.add(rem.id)
+
+        for rem in existing.values():
+            if rem.id not in keep_ids:
+                rem.delete()
+
+    def _sync_assignee_tasks(self, item):
+        """Mirror content calendar work as ONE task with multiple assignees
+        (not one duplicate row per person). Assignees still get reminders."""
+        from django.contrib.auth import get_user_model
+
+        from tasks.models import Task as TaskModel
+
+        User = get_user_model()
+        status_map = {
+            ContentCalendarItem.Status.PLANNED: (TaskModel.Status.TODO, TaskModel.BoardStatus.TODO),
+            ContentCalendarItem.Status.IN_PROGRESS: (
+                TaskModel.Status.IN_PROGRESS,
+                TaskModel.BoardStatus.DOING,
+            ),
+            ContentCalendarItem.Status.DONE: (
+                TaskModel.Status.COMPLETED,
+                TaskModel.BoardStatus.DONE,
+            ),
+            ContentCalendarItem.Status.PUBLISHED: (
+                TaskModel.Status.PUBLISHED,
+                TaskModel.BoardStatus.DONE,
+            ),
+        }
+        task_status, board_status = status_map[item.status]
+        title = f"{item.title} — {item.client.name}"
+        published = item.status == ContentCalendarItem.Status.PUBLISHED
+        due_date = None if published else (item.deadline or item.scheduled_date)
+        due_time = None if published else item.deadline_time
+
+        assignee_ids = list(item.assignees.values_list("id", flat=True))
+        holder_only = False
+        if not assignee_ids:
+            holder_id = item.created_by_id or self.request.user.id
+            assignee_ids = [holder_id]
+            holder_only = True
+
+        primary = User.objects.filter(id=assignee_ids[0]).first()
+        if primary is None:
+            return
+
+        client_name = item.client.name
+        existing = list(TaskModel.objects.filter(content_item=item).order_by("id"))
+        task = existing[0] if existing else None
+        for dup in existing[1:]:
+            dup.delete()
+
+        prev_ids = set(task.assignees.values_list("id", flat=True)) if task else set()
+
+        if task is None:
+            task = TaskModel.objects.create(
+                content_item=item,
+                assignee=primary,
+                title=title,
+                description=item.description,
+                client_name=client_name,
+                due_date=due_date,
+                due_time=due_time,
+                status=task_status,
+                board_status=board_status,
+            )
+        else:
+            task.assignee = primary
+            task.title = title
+            task.description = item.description
+            task.client_name = client_name
+            task.due_date = due_date
+            task.due_time = due_time
+            task.status = task_status
+            task.board_status = board_status
+            task.save(
+                update_fields=[
+                    "assignee",
+                    "title",
+                    "description",
+                    "client_name",
+                    "due_date",
+                    "due_time",
+                    "status",
+                    "board_status",
+                    "completed_at",
+                    "updated_at",
+                ]
+            )
+
+        task.assignees.set(assignee_ids)
+
+        if not holder_only:
+            newly = set(assignee_ids) - prev_ids
+            if newly:
+                notify_task_assignment(task=task, actor=self.request.user, user_ids=newly)
+
+        reminder_ids = set() if holder_only else set(assignee_ids)
+        self._sync_assignee_reminders(item, reminder_ids, published=published)

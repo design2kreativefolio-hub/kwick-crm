@@ -17,6 +17,7 @@ from projects.models import Project
 from renewals.models import Renewal
 from sales.models import Client, Estimate, Invoice, Proposal
 from tasks.models import Task
+from tasks.services import tasks_for_user
 from todos.models import TodoItem
 
 User = get_user_model()
@@ -51,15 +52,16 @@ class SummaryView(APIView):
         month_start, _ = _month_bounds()
         last_month_start, last_month_end = _last_month_bounds()
 
-        my_tasks = Task.objects.filter(assignee=user)
+        my_tasks = tasks_for_user(user)
+        terminal = [Task.Status.COMPLETED, Task.Status.PUBLISHED]
         data = {
-            "pending_tasks": my_tasks.exclude(status=Task.Status.COMPLETED).count(),
+            "pending_tasks": my_tasks.exclude(status__in=terminal).count(),
             "completed_this_month": my_tasks.filter(
-                status=Task.Status.COMPLETED, completed_at__date__gte=month_start
+                status__in=terminal, completed_at__date__gte=month_start
             ).count(),
             # Real month-over-month comparison — powers the announcement banner's trend badge.
             "completed_last_month": my_tasks.filter(
-                status=Task.Status.COMPLETED,
+                status__in=terminal,
                 completed_at__date__gte=last_month_start,
                 completed_at__date__lt=last_month_end,
             ).count(),
@@ -94,10 +96,10 @@ class SummaryView(APIView):
                     ],
                     "company_total_tasks": all_tasks.count(),
                     "company_completed_this_month": all_tasks.filter(
-                        status=Task.Status.COMPLETED, completed_at__date__gte=month_start
+                        status__in=terminal, completed_at__date__gte=month_start
                     ).count(),
                     "company_completed_last_month": all_tasks.filter(
-                        status=Task.Status.COMPLETED,
+                        status__in=terminal,
                         completed_at__date__gte=last_month_start,
                         completed_at__date__lt=last_month_end,
                     ).count(),
@@ -208,9 +210,10 @@ class PerformanceView(APIView):
         if scope == "company" and not is_superadmin(request.user):
             scope = "self"
 
-        base = Task.objects.all()
-        if scope == "self":
-            base = base.filter(assignee=request.user)
+        if scope == "company":
+            base = Task.objects.all()
+        else:
+            base = tasks_for_user(request.user)
         trunc = self.TRUNC[granularity]
 
         def _bucketed(queryset, date_field):
@@ -295,7 +298,7 @@ class GlobalSearchView(APIView):
         has_renewals = has_module_access(request.user, Module.RENEWALS)
         results = []
 
-        tasks = Task.objects.all() if mgr else Task.objects.filter(assignee=request.user)
+        tasks = Task.objects.all() if mgr else tasks_for_user(request.user)
         for t in tasks.filter(Q(title__icontains=q) | Q(description__icontains=q))[:5]:
             results.append(
                 {
@@ -493,18 +496,31 @@ class ActivityLogListView(APIView):
     permission_classes = [IsSuperadmin]
 
     def get(self, request):
-        logs = ActivityLog.objects.select_related("actor")[:200]
-        return Response(
-            [
-                {
-                    "id": log.id,
-                    "actor_name": (log.actor.full_name or log.actor.email) if log.actor else "Deleted user",
-                    "action": log.action,
-                    "created_at": log.created_at.isoformat(),
-                }
-                for log in logs
-            ]
-        )
+        from passwords.models import PasswordAccessLog
+        from passwords.services import access_log_message
+
+        activity = [
+            {
+                "id": log.id,
+                "kind": "activity",
+                "actor_name": (log.actor.full_name or log.actor.email) if log.actor else "Deleted user",
+                "action": log.action,
+                "created_at": log.created_at.isoformat(),
+            }
+            for log in ActivityLog.objects.select_related("actor")[:200]
+        ]
+        password_logs = [
+            {
+                "id": log.id,
+                "kind": "password_vault",
+                "actor_name": (log.user.full_name or log.user.email) if log.user else "Unknown",
+                "action": access_log_message(log),
+                "created_at": log.created_at.isoformat(),
+            }
+            for log in PasswordAccessLog.objects.select_related("user")[:200]
+        ]
+        merged = sorted(activity + password_logs, key=lambda r: r["created_at"], reverse=True)[:250]
+        return Response(merged)
 
 
 class TodayTasksView(APIView):

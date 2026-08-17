@@ -2,12 +2,14 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { Logo } from "@/components/Logo";
+import { MaintenanceNotice } from "@/components/MaintenanceNotice";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/lib/auth";
+import { fetchMaintenance, isMaintenanceError } from "@/lib/maintenance";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -16,6 +18,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [maintenance, setMaintenance] = useState(false);
+
+  useEffect(() => {
+    fetchMaintenance(false)
+      .then((s) => setMaintenance(s.enabled))
+      .catch(() => {});
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +33,12 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err.message ?? "Login failed.");
+      if (isMaintenanceError(err)) {
+        setMaintenance(true);
+        setError("Kwick is under maintenance. Only the developer account can sign in.");
+      } else {
+        setError(err.message ?? "Login failed.");
+      }
     } finally {
       setBusy(false);
     }
@@ -51,6 +65,7 @@ export default function LoginPage() {
           <p className="muted" style={{ marginTop: 0 }}>
             Sign in to your Kwick account
           </p>
+          {maintenance && <MaintenanceNotice compact />}
           <label className="field-label">Email</label>
           <input
             className="input"

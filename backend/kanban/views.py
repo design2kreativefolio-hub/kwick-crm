@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -18,8 +19,14 @@ class BoardView(APIView):
     def get(self, request):
         columns = {}
         for value, label in Task.BoardStatus.choices:
-            qs = Task.objects.filter(board_status=value, assignee=request.user)
-            qs = qs.order_by("board_order").select_related("assignee", "project")
+            qs = (
+                Task.objects.filter(board_status=value)
+                .filter(Q(assignee=request.user) | Q(assignees=request.user))
+                .distinct()
+                .order_by("board_order")
+                .select_related("assignee", "project")
+                .prefetch_related("assignees")
+            )
             columns[value] = {"label": label, "tasks": TaskSerializer(qs, many=True).data}
         return Response(columns)
 
@@ -34,7 +41,7 @@ class MoveTaskView(APIView):
             task = Task.objects.get(pk=task_id)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
-        if task.assignee_id != request.user.id:
+        if task.assignee_id != request.user.id and not task.assignees.filter(pk=request.user.id).exists():
             return Response({"detail": "You can only move your own tasks."}, status=403)
 
         board_status = request.data.get("board_status")

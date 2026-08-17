@@ -5,10 +5,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
+import { MonthYearSelect } from "@/components/MonthYearSelect";
 import { Modal } from "@/components/Modal";
 import { MultiSelect } from "@/components/MultiSelect";
 import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError } from "@/lib/api";
+import { assigneeSelectOptions } from "@/lib/assigneeOptions";
+import { useAuth } from "@/lib/auth";
+import { isMeetingUrl } from "@/lib/meetingLinks";
 import { useToast } from "@/lib/toast";
 import { useShellFillHeight } from "@/lib/useShellFillHeight";
 
@@ -64,11 +68,6 @@ function startOfWeek(d: Date) {
   x.setDate(x.getDate() - x.getDay());
   return x;
 }
-function isMeetingUrl(url?: string) {
-  if (!url) return false;
-  const u = url.toLowerCase();
-  return u.includes("teams.microsoft.com") || u.includes("meet.google.com");
-}
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -112,6 +111,7 @@ const emptyReminder = {
 
 export default function CalendarPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -128,6 +128,7 @@ export default function CalendarPage() {
   const [form, setForm] = useState(emptyReminder);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const reminderBaseline = useRef("");
 
   const gridStart = useMemo(() => {
     const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
@@ -164,8 +165,8 @@ export default function CalendarPage() {
   }, []);
 
   const assigneeOptions = useMemo(
-    () => directory.map((c) => ({ value: String(c.id), label: c.full_name || c.email })),
-    [directory]
+    () => assigneeSelectOptions(user, directory),
+    [user, directory]
   );
 
   const itemsByDate = useMemo(() => {
@@ -212,17 +213,25 @@ export default function CalendarPage() {
     setAnchor(new Date(t.getFullYear(), t.getMonth(), 1));
     setSelectedDate(t);
   };
+  const jumpToMonth = (year: number, month: number) => {
+    setAnchor(new Date(year, month, 1));
+    const maxDay = new Date(year, month + 1, 0).getDate();
+    const day = Math.min(selectedDate.getDate(), maxDay);
+    setSelectedDate(new Date(year, month, day));
+  };
 
   const headerLabel =
     view === "day"
-      ? selectedDate.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
+      ? selectedDate.toLocaleDateString(undefined, { weekday: "long", day: "numeric" })
       : view === "week"
       ? `${weekDays[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${weekDays[6].toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
-      : anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      : null;
 
   const openCreateReminder = () => {
     setEditingId(null);
-    setForm({ ...emptyReminder });
+    const next = { ...emptyReminder };
+    setForm(next);
+    reminderBaseline.current = JSON.stringify(next);
     setFormError(null);
     setFormOpen(true);
   };
@@ -232,7 +241,7 @@ export default function CalendarPage() {
       const rem = await api<ReminderDetail>(`/api/calendar/reminders/${item.id}`);
       const when = new Date(rem.remind_at);
       setEditingId(rem.id);
-      setForm({
+      const next = {
         title: rem.title || "",
         description: rem.description || "",
         meeting_url: rem.meeting_url || "",
@@ -240,7 +249,9 @@ export default function CalendarPage() {
         recurrence: rem.recurrence || "none",
         recurrence_end: rem.recurrence_end || "",
         assignee_ids: (rem.assignee_ids || []).map(String),
-      });
+      };
+      setForm(next);
+      reminderBaseline.current = JSON.stringify(next);
       // Keep the selected day in sync with the reminder's date.
       setSelectedDate(new Date(when.getFullYear(), when.getMonth(), when.getDate()));
       setFormError(null);
@@ -250,11 +261,18 @@ export default function CalendarPage() {
     }
   };
 
-  const saveReminder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const closeReminderForm = () => {
+    if (saving) return;
+    setFormOpen(false);
+    setEditingId(null);
+    setForm(emptyReminder);
+    setFormError(null);
+  };
+
+  const persistReminder = async () => {
     if (!form.title.trim()) {
       setFormError("Title is required.");
-      return;
+      return false;
     }
     setSaving(true);
     setFormError(null);
@@ -288,11 +306,34 @@ export default function CalendarPage() {
       setEditingId(null);
       setForm(emptyReminder);
       load();
+      return true;
     } catch (err: any) {
       setFormError(err instanceof ApiError ? formatApiError(err.data) : err.message);
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  const requestCloseReminder = async () => {
+    if (saving) return;
+    if (JSON.stringify(form) === reminderBaseline.current) {
+      closeReminderForm();
+      return;
+    }
+    const result = await confirm("Save your changes, or exit without saving?", {
+      title: "Unsaved changes",
+      confirmLabel: "Save",
+      discardLabel: "Exit without saving",
+      cancelLabel: "Keep editing",
+    });
+    if (result === true) await persistReminder();
+    else if (result === "discard") closeReminderForm();
+  };
+
+  const saveReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await persistReminder();
   };
 
   const deleteReminder = async (item: AgendaItem) => {
@@ -362,7 +403,20 @@ export default function CalendarPage() {
       <div className="kwick-cal-layout" style={layout}>
         <div className="card" style={calCard}>
           <div style={calHeader}>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>{headerLabel}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <MonthYearSelect
+                light
+                month={view === "month" ? anchor.getMonth() : selectedDate.getMonth()}
+                year={view === "month" ? anchor.getFullYear() : selectedDate.getFullYear()}
+                onMonthChange={(month) =>
+                  jumpToMonth(view === "month" ? anchor.getFullYear() : selectedDate.getFullYear(), month)
+                }
+                onYearChange={(year) =>
+                  jumpToMonth(year, view === "month" ? anchor.getMonth() : selectedDate.getMonth())
+                }
+              />
+              {headerLabel && <span style={{ fontSize: 14, fontWeight: 600, opacity: 0.92 }}>{headerLabel}</span>}
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {(["month", "week", "day"] as View[]).map((v) => (
                 <button
@@ -550,14 +604,14 @@ export default function CalendarPage() {
         )}
       </div>
 
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} maxWidth={520}>
+      <Modal open={formOpen} onClose={requestCloseReminder} maxWidth={520}>
         <form onSubmit={saveReminder}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span className="card-title" style={{ margin: 0 }}>
               <i className="bi bi-bell-fill" style={{ color: "var(--gold)", marginRight: 8 }} />
               {editingId ? "Edit Reminder" : "New Reminder"}
             </span>
-            <button type="button" className="icon-btn-anim" style={closeBtn} onClick={() => setFormOpen(false)} aria-label="Close">
+            <button type="button" className="icon-btn-anim" style={closeBtn} onClick={requestCloseReminder} aria-label="Close">
               <i className="bi bi-x-lg" />
             </button>
           </div>
@@ -570,25 +624,23 @@ export default function CalendarPage() {
             className="input"
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            placeholder="e.g. Weekly stand-up"
             required
           />
 
-          <label className="field-label">Description / links</label>
+          <label className="field-label">Description</label>
           <textarea
             className="input"
             rows={3}
             style={{ resize: "vertical", fontFamily: "inherit" }}
-            placeholder="Notes, or paste a Teams / Google Meet link…"
             value={form.description}
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
           />
 
-          <label className="field-label">Meeting link (optional)</label>
+          <label className="field-label">Meeting link</label>
           <input
             className="input"
             type="url"
-            placeholder="https://meet.google.com/… or Teams link"
+            placeholder="Zoom, Google Meet, or Microsoft Teams link"
             value={form.meeting_url}
             onChange={(e) => setForm((f) => ({ ...f, meeting_url: e.target.value }))}
           />
@@ -616,7 +668,7 @@ export default function CalendarPage() {
 
           {form.recurrence !== "none" && (
             <>
-              <label className="field-label">Repeat until (optional)</label>
+              <label className="field-label">Repeat until</label>
               <DatePicker
                 value={form.recurrence_end}
                 onChange={(v) => setForm((f) => ({ ...f, recurrence_end: v }))}
@@ -630,7 +682,7 @@ export default function CalendarPage() {
             values={form.assignee_ids}
             onChange={(vals) => setForm((f) => ({ ...f, assignee_ids: vals }))}
             options={assigneeOptions}
-            placeholder="Select employees…"
+            placeholder="Select people…"
             ariaLabel="Assignees"
           />
 
@@ -640,7 +692,7 @@ export default function CalendarPage() {
             <button className="btn btn-accent" disabled={saving}>
               {saving ? "Saving…" : editingId ? "Save changes" : "Create Reminder"}
             </button>
-            <button type="button" className="btn btn-ghost" onClick={() => setFormOpen(false)}>
+            <button type="button" className="btn btn-ghost" onClick={requestCloseReminder}>
               Cancel
             </button>
             {editingId && (
@@ -823,7 +875,7 @@ function AgendaCard({
               style={joinBtn}
               onClick={(e) => e.stopPropagation()}
             >
-              <i className="bi bi-camera-video-fill" /> Go to Meeting
+              <i className="bi bi-camera-video-fill" /> Join Meeting
             </a>
           )}
         </div>

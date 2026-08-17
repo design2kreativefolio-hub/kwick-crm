@@ -102,6 +102,7 @@ class Leave(TimeStampedModel):
         PENDING = "pending", "Pending"
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
+        CANCELLED = "cancelled", "Cancelled"
 
     staff = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="leaves"

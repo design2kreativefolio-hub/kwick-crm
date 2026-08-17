@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { BackLink } from "@/components/BackLink";
 import { ClientFormFields } from "@/components/sales/ClientFormFields";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import {
   DEFAULT_CLIENT_ACCENT,
@@ -90,7 +90,7 @@ export default function SalesClientDetailPage() {
   const save = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!form.name.trim()) {
-      setError("Company name is required.");
+      setError("Client name is required.");
       return;
     }
     setError(null);
@@ -106,7 +106,7 @@ export default function SalesClientDetailPage() {
       router.replace(`/sales/clients/${id}`);
       showToast("Client updated.");
     } catch (err: any) {
-      setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+      setError(err instanceof ApiError ? formatApiError(err.data) || err.message : err.message);
     } finally {
       setSaving(false);
     }
@@ -185,16 +185,22 @@ export default function SalesClientDetailPage() {
         <form className="card" id="client-edit-form" onSubmit={save}>
           <span className="card-title">Edit client</span>
           <div style={{ marginTop: 14 }}>
-            <ClientFormFields form={form} setForm={setForm} clientId={client.id} />
+            <ClientFormFields
+              form={form}
+              setForm={setForm}
+              clientId={client.id}
+              logoUrl={client.logo_url}
+              onLogoUrlChange={(url) => setClient((prev) => (prev ? { ...prev, logo_url: url } : prev))}
+            />
           </div>
           {error && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 12 }}>{error}</p>}
         </form>
       ) : (
         <div className="client-profile-grid">
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <span className="card-title">Company details</span>
+            <span className="card-title">Client details</span>
             <div style={fieldGrid}>
-              <InfoField label="Company name" value={client.name} />
+              <InfoField label="Client name" value={client.name} />
               <InfoField label="Contact email" value={client.contact_email || "—"} />
               <InfoField label="Contact phone" value={client.contact_phone || "—"} />
               <div>
@@ -242,13 +248,13 @@ export default function SalesClientDetailPage() {
 
             <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <span className="card-title">Company executives</span>
-              {(client.executives || []).filter((e) => e.name || e.phone).length === 0 && (
+              {(client.executives || []).filter((e) => e.name || e.phone || e.email).length === 0 && (
                 <p className="muted" style={{ margin: 0, fontSize: 13.5 }}>
                   None added.
                 </p>
               )}
               {(client.executives || [])
-                .filter((e) => e.name || e.phone)
+                .filter((e) => e.name || e.phone || e.email)
                 .map((e, i) => (
                   <div
                     key={i}
@@ -266,7 +272,7 @@ export default function SalesClientDetailPage() {
                     <div>
                       <div style={{ fontWeight: 600 }}>{e.name || "—"}</div>
                       <div className="muted" style={{ fontSize: 13 }}>
-                        {e.phone || "—"}
+                        {[e.email, e.phone].filter(Boolean).join(" · ") || "—"}
                       </div>
                     </div>
                   </div>

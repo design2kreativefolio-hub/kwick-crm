@@ -1,8 +1,11 @@
 "use client";
 
+import { DatePicker } from "@/components/DatePicker";
 import { Select } from "@/components/Select";
 import { ClientFileField } from "@/components/sales/ClientFileField";
+import { ClientLogoField } from "@/components/sales/ClientLogoField";
 import {
+  CLIENT_SERVICES,
   ClientAdditionalField,
   ClientExecutive,
   SalesClientForm,
@@ -17,12 +20,31 @@ export function ClientFormFields({
   form,
   setForm,
   clientId,
+  logoUrl = "",
+  onLogoUrlChange,
+  pendingLogoFile = null,
+  onPendingLogoFile,
 }: {
   form: SalesClientForm;
   setForm: React.Dispatch<React.SetStateAction<SalesClientForm>>;
   clientId: number | null;
+  logoUrl?: string;
+  onLogoUrlChange?: (url: string) => void;
+  pendingLogoFile?: File | null;
+  onPendingLogoFile?: (file: File | null) => void;
 }) {
   const patch = (partial: Partial<SalesClientForm>) => setForm((f) => ({ ...f, ...partial }));
+
+  const toggleService = (value: string) =>
+    setForm((f) => {
+      const on = f.services.includes(value);
+      const services = on ? f.services.filter((v) => v !== value) : [...f.services, value];
+      return {
+        ...f,
+        services,
+        other_service: value === "other" && on ? "" : f.other_service,
+      };
+    });
 
   const updateExecutive = (idx: number, partial: Partial<ClientExecutive>) =>
     setForm((f) => ({
@@ -30,11 +52,15 @@ export function ClientFormFields({
       executives: f.executives.map((e, i) => (i === idx ? { ...e, ...partial } : e)),
     }));
 
-  const addExecutive = () => setForm((f) => ({ ...f, executives: [...f.executives, { name: "", phone: "" }] }));
+  const addExecutive = () =>
+    setForm((f) => ({ ...f, executives: [...f.executives, { name: "", phone: "", email: "" }] }));
   const removeExecutive = (idx: number) =>
     setForm((f) => ({
       ...f,
-      executives: f.executives.length <= 1 ? [{ name: "", phone: "" }] : f.executives.filter((_, i) => i !== idx),
+      executives:
+        f.executives.length <= 1
+          ? [{ name: "", phone: "", email: "" }]
+          : f.executives.filter((_, i) => i !== idx),
     }));
 
   const updateAdditional = (idx: number, partial: Partial<ClientAdditionalField>) =>
@@ -56,20 +82,31 @@ export function ClientFormFields({
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={fieldGrid}>
         <div>
-          <label className="field-label" style={{ marginTop: 0 }}>Company name</label>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Client name
+          </label>
           <input
             className="input"
             value={form.name}
             onChange={(e) => patch({ name: e.target.value })}
             required
-            placeholder="Company / client name"
+            placeholder="Client name"
           />
-          <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
-            Used as both name and company.
-          </p>
         </div>
         <div>
-          <label className="field-label" style={{ marginTop: 0 }}>Contact email</label>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Start date
+          </label>
+          <DatePicker
+            value={form.start_date}
+            onChange={(v) => patch({ start_date: v })}
+            ariaLabel="Start date"
+          />
+        </div>
+        <div>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Contact email
+          </label>
           <input
             className="input"
             type="email"
@@ -78,7 +115,9 @@ export function ClientFormFields({
           />
         </div>
         <div>
-          <label className="field-label" style={{ marginTop: 0 }}>Contact phone</label>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Contact phone
+          </label>
           <input
             className="input"
             value={form.contact_phone}
@@ -86,7 +125,9 @@ export function ClientFormFields({
           />
         </div>
         <div>
-          <label className="field-label" style={{ marginTop: 0 }}>Website</label>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Website
+          </label>
           <input
             className="input"
             value={form.website}
@@ -95,27 +136,80 @@ export function ClientFormFields({
           />
         </div>
         <div>
-          <label className="field-label" style={{ marginTop: 0 }}>Theme color</label>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Theme color
+          </label>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <input
               type="color"
               value={form.accent_color || "#3673FC"}
               onChange={(e) => patch({ accent_color: e.target.value })}
-              style={{ width: 44, height: 36, border: "1px solid var(--border)", borderRadius: 8, padding: 2, background: "#fff" }}
+              style={{
+                width: 44,
+                height: 36,
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: 2,
+                background: "#fff",
+              }}
               aria-label="Theme color"
             />
             <span className="muted" style={{ fontSize: 12.5, fontFamily: "monospace" }}>
               {form.accent_color || "#3673FC"}
             </span>
           </div>
-          <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
-            Same theme color as Projects → Clients.
-          </p>
         </div>
+        <ClientLogoField
+          clientId={clientId}
+          logoUrl={logoUrl}
+          onLogoUrlChange={(url) => onLogoUrlChange?.(url)}
+          pendingFile={pendingLogoFile}
+          onPendingFile={onPendingLogoFile}
+        />
       </div>
 
       <div>
-        <label className="field-label" style={{ marginTop: 0 }}>Address</label>
+        <label className="field-label" style={{ marginTop: 0 }}>
+          Services using
+        </label>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 6,
+            marginTop: 8,
+          }}
+        >
+          {CLIENT_SERVICES.map((s) => (
+            <label key={s.value} style={serviceCheckboxRow}>
+              <input
+                type="checkbox"
+                checked={form.services.includes(s.value)}
+                onChange={() => toggleService(s.value)}
+              />
+              {s.label}
+            </label>
+          ))}
+        </div>
+        {form.services.includes("other") && (
+          <div style={{ marginTop: 10 }}>
+            <label className="field-label" style={{ marginTop: 0 }}>
+              Other service
+            </label>
+            <input
+              className="input"
+              value={form.other_service}
+              onChange={(e) => patch({ other_service: e.target.value })}
+              placeholder="Describe the other service…"
+            />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="field-label" style={{ marginTop: 0 }}>
+          Address
+        </label>
         <textarea
           className="input"
           rows={3}
@@ -139,14 +233,10 @@ export function ClientFormFields({
           onChange={(url) => patch({ vat_registration_url: url })}
         />
       </div>
-      {!clientId && (
-        <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-          File uploads unlock after the client is saved for the first time.
-        </p>
-      )}
-
       <div>
-        <label className="field-label" style={{ marginTop: 0 }}>Notes</label>
+        <label className="field-label" style={{ marginTop: 0 }}>
+          Notes
+        </label>
         <textarea
           className="input"
           rows={3}
@@ -158,16 +248,31 @@ export function ClientFormFields({
 
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <label className="field-label" style={{ marginTop: 0 }}>Company executives</label>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Company executives
+          </label>
           <button type="button" className="btn btn-ghost btn-sm" onClick={addExecutive}>
             <i className="bi bi-plus-lg" /> Add executive
           </button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {form.executives.map((exec, idx) => (
-            <div key={idx} style={{ ...fieldGrid, border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
-              <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Name</label>
+            <div
+              key={idx}
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                alignItems: "flex-end",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                <label className="field-label" style={{ marginTop: 0 }}>
+                  Name
+                </label>
                 <input
                   className="input"
                   value={exec.name}
@@ -175,8 +280,22 @@ export function ClientFormFields({
                   placeholder="Executive name"
                 />
               </div>
-              <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Phone number</label>
+              <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                <label className="field-label" style={{ marginTop: 0 }}>
+                  Email
+                </label>
+                <input
+                  className="input"
+                  type="email"
+                  value={exec.email || ""}
+                  onChange={(e) => updateExecutive(idx, { email: e.target.value })}
+                  placeholder="email@company.com"
+                />
+              </div>
+              <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                <label className="field-label" style={{ marginTop: 0 }}>
+                  Phone number
+                </label>
                 <input
                   className="input"
                   value={exec.phone}
@@ -184,16 +303,14 @@ export function ClientFormFields({
                   placeholder="Phone"
                 />
               </div>
-              <div style={{ display: "flex", alignItems: "flex-end" }}>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  style={{ color: "var(--danger)" }}
-                  onClick={() => removeExecutive(idx)}
-                >
-                  Remove
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ color: "var(--danger)", flexShrink: 0, height: 42 }}
+                onClick={() => removeExecutive(idx)}
+              >
+                Remove
+              </button>
             </div>
           ))}
         </div>
@@ -201,47 +318,57 @@ export function ClientFormFields({
 
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <label className="field-label" style={{ marginTop: 0 }}>Additional fields</label>
+          <label className="field-label" style={{ marginTop: 0 }}>
+            Additional fields
+          </label>
           <button type="button" className="btn btn-ghost btn-sm" onClick={addAdditional}>
             <i className="bi bi-plus-lg" /> Add field
           </button>
         </div>
-        {form.additional_fields.length === 0 && (
-          <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-            Optional custom fields — text or attachment.
-          </p>
-        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {form.additional_fields.map((field, idx) => (
-            <div key={idx} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={fieldGrid}>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Field name</label>
-                  <input
-                    className="input"
-                    value={field.name}
-                    onChange={(e) => updateAdditional(idx, { name: e.target.value })}
-                    placeholder="e.g. Contract number"
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Type</label>
-                  <Select
-                    value={field.field_type}
-                    onChange={(v) =>
-                      updateAdditional(idx, {
-                        field_type: v === "attachment" ? "attachment" : "text",
-                        value: v === field.field_type ? field.value : "",
-                      })
-                    }
-                    options={FIELD_TYPE_OPTIONS}
-                    ariaLabel="Field type"
-                  />
-                </div>
+            <div
+              key={idx}
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                alignItems: "flex-end",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                <label className="field-label" style={{ marginTop: 0 }}>
+                  Field name
+                </label>
+                <input
+                  className="input"
+                  value={field.name}
+                  onChange={(e) => updateAdditional(idx, { name: e.target.value })}
+                />
+              </div>
+              <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                <label className="field-label" style={{ marginTop: 0 }}>
+                  Type
+                </label>
+                <Select
+                  value={field.field_type}
+                  onChange={(v) =>
+                    updateAdditional(idx, {
+                      field_type: v as "text" | "attachment",
+                      value: v === field.field_type ? field.value : "",
+                    })
+                  }
+                  options={FIELD_TYPE_OPTIONS}
+                />
               </div>
               {field.field_type === "text" ? (
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Value</label>
+                <div style={{ flex: "1 1 140px", minWidth: 0 }}>
+                  <label className="field-label" style={{ marginTop: 0 }}>
+                    Value
+                  </label>
                   <input
                     className="input"
                     value={field.value}
@@ -249,20 +376,22 @@ export function ClientFormFields({
                   />
                 </div>
               ) : (
-                <ClientFileField
-                  clientId={clientId}
-                  label="Attachment"
-                  value={field.value}
-                  onChange={(url) => updateAdditional(idx, { value: url })}
-                />
+                <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+                  <ClientFileField
+                    clientId={clientId}
+                    label="Attachment"
+                    value={field.value}
+                    onChange={(url) => updateAdditional(idx, { value: url })}
+                  />
+                </div>
               )}
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                style={{ color: "var(--danger)", alignSelf: "flex-start" }}
+                style={{ color: "var(--danger)", flexShrink: 0, height: 42 }}
                 onClick={() => removeAdditional(idx)}
               >
-                Remove field
+                Remove
               </button>
             </div>
           ))}
@@ -276,4 +405,16 @@ const fieldGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
   gap: 14,
+};
+
+const serviceCheckboxRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 13,
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  cursor: "pointer",
 };

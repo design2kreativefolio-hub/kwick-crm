@@ -101,15 +101,18 @@ export class ApiError extends Error {
 export function formatApiError(data: any): string {
   if (!data) return "Something went wrong.";
   if (typeof data === "string") return data;
-  if (data.detail) return data.detail;
+  if (typeof data.detail === "string" && data.detail.trim()) return data.detail;
+  if (Array.isArray(data.detail)) return data.detail.map(String).join(" ");
   if (data.message) return data.message;
   const messages: string[] = [];
   for (const key of Object.keys(data)) {
+    if (key === "detail") continue;
     const val = data[key];
-    if (Array.isArray(val)) messages.push(val.join(" "));
-    else if (typeof val === "string") messages.push(val);
+    if (Array.isArray(val)) messages.push(`${key}: ${val.join(" ")}`);
+    else if (typeof val === "string" && val.trim()) messages.push(`${key}: ${val}`);
   }
-  return messages.length ? messages.join(" ") : JSON.stringify(data);
+  if (messages.length) return messages.join(" ");
+  return "Something went wrong. Please try again.";
 }
 
 export { API_BASE };

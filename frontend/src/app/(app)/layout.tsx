@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { MaintenanceBar, MaintenanceProvider } from "@/components/MaintenanceBar";
 import { PageTransition } from "@/components/PageTransition";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
@@ -40,20 +41,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <LiveUpdatesProvider>
-      <div className="shell">
-        <Sidebar
-          role={user.role}
-          collapsed={collapsed}
-          mobileOpen={mobileNavOpen}
-          onNavigate={() => setMobileNavOpen(false)}
-        />
-        <div className="shell-main">
-          <Topbar collapsed={collapsed} onToggleCollapsed={toggleNav} />
-          <main className="shell-content">
-            <PageTransition>{children}</PageTransition>
-          </main>
+      <MaintenanceProvider>
+        <div className="shell">
+          <Sidebar
+            role={user.role}
+            collapsed={collapsed}
+            mobileOpen={mobileNavOpen}
+            onNavigate={() => setMobileNavOpen(false)}
+          />
+          <div className="shell-main">
+            <MaintenanceBar />
+            <Topbar collapsed={collapsed} onToggleCollapsed={toggleNav} />
+            <main className="shell-content">
+              <PageTransition>{children}</PageTransition>
+            </main>
+          </div>
         </div>
-      </div>
+      </MaintenanceProvider>
     </LiveUpdatesProvider>
   );
 }

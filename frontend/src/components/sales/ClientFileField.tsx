@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
+import { displayUploadedFileName } from "@/lib/files";
 import { useToast } from "@/lib/toast";
 
 /** Upload any file for a sales client; stores URL via onChange. */
@@ -44,7 +45,7 @@ export function ClientFileField({
     }
   };
 
-  const fileName = value ? decodeURIComponent(value.split("/").pop() || "File") : "";
+  const fileName = value ? displayUploadedFileName(value) : "";
 
   return (
     <div>

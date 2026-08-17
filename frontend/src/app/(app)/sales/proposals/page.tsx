@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Modal } from "@/components/Modal";
 import { Select } from "@/components/Select";
-import { api, ApiError, unwrapList } from "@/lib/api";
+import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { defaultEstimateContent } from "@/lib/estimateContent";
 import { defaultContent } from "@/lib/proposalContent";
@@ -117,7 +117,7 @@ export default function SalesProposalsPage() {
       setCreateOpen(false);
       router.push(`/sales/proposals/${created.id}`);
     } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't create proposal." : err.message, "error");
+      showToast(err instanceof ApiError ? formatApiError(err.data) || "Couldn't create proposal." : err.message, "error");
       setCreating(false);
     }
   };

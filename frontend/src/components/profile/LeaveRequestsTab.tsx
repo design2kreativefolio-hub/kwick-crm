@@ -37,6 +37,7 @@ const STATUS_BADGE: Record<string, string> = {
   pending: "badge-warning",
   approved: "badge-success",
   rejected: "badge-danger",
+  cancelled: "badge-muted",
 };
 
 const todayIso = () => {
@@ -60,6 +61,7 @@ export function LeaveRequestsTab() {
   const [form, setForm] = useState({ leave_type: "annual", start_date: "", end_date: "", reason: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [retractingId, setRetractingId] = useState<number | null>(null);
 
   const load = () => {
     api<LeaveBalance>("/api/hr/leaves/balance").then(setBalance).catch(() => {});
@@ -90,7 +92,23 @@ export function LeaveRequestsTab() {
     }
   };
 
-  const pct = balance ? Math.min(100, Math.round(((balance.used + balance.pending) / balance.annual_allowance) * 100)) : 0;
+  const retract = async (id: number) => {
+    setRetractingId(id);
+    try {
+      await api(`/api/hr/leaves/${id}/retract`, { method: "POST" });
+      showToast("Leave request retracted.");
+      load();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't retract request." : err.message, "error");
+    } finally {
+      setRetractingId(null);
+    }
+  };
+
+  const overAllowance = balance ? balance.used + balance.pending > balance.annual_allowance : false;
+  const pct = balance
+    ? Math.min(100, Math.round(((balance.used + balance.pending) / Math.max(1, balance.annual_allowance)) * 100))
+    : 0;
 
   return (
     <div style={twoCol}>
@@ -121,9 +139,18 @@ export function LeaveRequestsTab() {
                 </span>
                 <span className="seg-legend-item">
                   <span className="seg-dot" style={{ background: "var(--border)" }} />
-                  Remaining <strong style={{ color: "var(--text)" }}>{balance.remaining}</strong>
+                  Remaining{" "}
+                  <strong style={{ color: balance.remaining < 0 ? "var(--danger)" : "var(--text)" }}>
+                    {balance.remaining}
+                  </strong>
                 </span>
               </div>
+              {overAllowance && (
+                <p style={{ color: "var(--danger)", fontSize: 12.5, margin: "8px 0 0" }}>
+                  Over annual allowance by {balance.used + balance.pending - balance.annual_allowance} day
+                  {balance.used + balance.pending - balance.annual_allowance === 1 ? "" : "s"}. You can still request leave.
+                </p>
+              )}
               <div style={{ ...monthStat, marginBottom: 0 }}>
                 <i className="bi bi-calendar-week-fill" style={{ color: "var(--gold)" }} />
                 <span>
@@ -198,6 +225,7 @@ export function LeaveRequestsTab() {
                   <th>Reason</th>
                   <th>Submitted</th>
                   <th>Status</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -216,6 +244,19 @@ export function LeaveRequestsTab() {
                     <td className="muted" style={{ whiteSpace: "nowrap" }}>{submittedLabel(l.created_at)}</td>
                     <td>
                       <span className={`badge ${STATUS_BADGE[l.status] ?? "badge-muted"}`}>{l.status}</span>
+                    </td>
+                    <td>
+                      {l.status === "pending" && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: "var(--danger)" }}
+                          disabled={retractingId === l.id}
+                          onClick={() => retract(l.id)}
+                        >
+                          {retractingId === l.id ? "…" : "Retract"}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

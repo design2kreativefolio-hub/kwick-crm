@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 
 type LogEntry = {
   id: number;
+  kind?: string;
   actor_name: string;
   action: string;
   created_at: string;
@@ -44,7 +45,7 @@ export default function LogsPage() {
       <div>
         <h1 style={{ margin: 0, fontSize: 22 }}>Activity Logs</h1>
         <p className="muted" style={{ marginTop: 4 }}>
-          Who added or edited tasks, clients, and projects — and when.
+          Tasks, clients, projects, and password vault access.
         </p>
       </div>
 
@@ -67,9 +68,14 @@ export default function LogsPage() {
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id}>
+                  <tr key={`${log.kind ?? "activity"}-${log.id}`}>
                     <td style={{ fontWeight: 600, color: "var(--navy)" }}>{log.actor_name}</td>
-                    <td className="muted">{log.action}</td>
+                    <td className="muted">
+                      {log.kind === "password_vault" && (
+                        <span className="badge badge-warning" style={{ marginRight: 8 }}>Vault</span>
+                      )}
+                      {log.action}
+                    </td>
                     <td className="muted">{formatTimestamp(log.created_at)}</td>
                   </tr>
                 ))}

@@ -27,8 +27,15 @@ class ClientViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "company", "contact_email", "website"]
 
     def perform_create(self, serializer):
-        client = serializer.save()
-        log_activity(actor=self.request.user, action=f"added client \"{client.name}\"")
+        from sales.services import generate_client_id
+
+        # Same as Projects → Clients: always assign a unique KF… id.
+        # Leaving client_id="" violates unique=True once a second blank exists.
+        client = serializer.save(client_id=generate_client_id())
+        log_activity(
+            actor=self.request.user,
+            action=f"added client \"{client.name}\" ({client.client_id})",
+        )
 
     def perform_update(self, serializer):
         client = serializer.save()
@@ -49,11 +56,16 @@ class ClientViewSet(viewsets.ModelViewSet):
             return Response({"detail": "file is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         from django.core.files.storage import default_storage
+        from common.duplicate import slug_filename
 
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "bin"
-        key = f"client-files/{client.pk}/{uuid.uuid4().hex}.{ext}"
+        original = (upload.name or "file").replace("\\", "/").split("/")[-1]
+        stem, ext = (original.rsplit(".", 1) + ["bin"])[:2] if "." in original else (original, "bin")
+        ext = (ext or "bin").lower()[:8]
+        slug = slug_filename(stem, fallback="file")
+        key = f"client-files/{client.pk}/{uuid.uuid4().hex[:8]}_{slug}.{ext}"
         saved_path = default_storage.save(key, upload)
-        return Response({"url": request.build_absolute_uri(default_storage.url(saved_path))})
+        url = request.build_absolute_uri(default_storage.url(saved_path))
+        return Response({"url": url, "name": original})
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def logo(self, request, pk=None):

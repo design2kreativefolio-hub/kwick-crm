@@ -81,9 +81,9 @@ export function MultiSelect({
   const triggerText =
     selectedLabels.length === 0
       ? placeholder
-      : selectedLabels.length <= 2
+      : selectedLabels.length <= 3
       ? selectedLabels.join(", ")
-      : `${selectedLabels.length} selected`;
+      : `${selectedLabels.length} people selected`;
 
   const panel = open && rect && (
     <motion.div
@@ -116,11 +116,13 @@ export function MultiSelect({
             key={o.value}
             role="option"
             aria-selected={checked}
-            className="select-option"
-            style={{ justifyContent: "flex-start" }}
-            onClick={() => toggle(o.value)}
+            className="select-option select-option--multi"
           >
-            <input type="checkbox" checked={checked} onChange={() => toggle(o.value)} onClick={(e) => e.stopPropagation()} />
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => toggle(o.value)}
+            />
             <span>{o.label}</span>
           </label>
         );

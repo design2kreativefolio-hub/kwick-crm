@@ -7,6 +7,8 @@ type ConfirmOptions = {
   title?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** When set, a third action: leave without saving. Resolves to `"discard"`. */
+  discardLabel?: string;
   danger?: boolean;
 };
 
@@ -15,20 +17,23 @@ type ConfirmOptions = {
  * from any async handler and `await` it just like the browser dialog — but
  * render `{ConfirmDialog}` once in the component's JSX so it can actually
  * show up in the app's own UI instead of the browser's native prompt.
+ *
+ * Resolves `true` (confirm), `false` (cancel / click outside), or `"discard"`
+ * when `discardLabel` is used.
  */
 export function useConfirm() {
   const [state, setState] = useState<{ message: string; options: ConfirmOptions } | null>(null);
-  const resolver = useRef<((value: boolean) => void) | null>(null);
+  const resolver = useRef<((value: boolean | "discard") => void) | null>(null);
   const reduceMotion = useReducedMotion();
 
   const confirm = useCallback((message: string, options: ConfirmOptions = {}) => {
     setState({ message, options });
-    return new Promise<boolean>((resolve) => {
+    return new Promise<boolean | "discard">((resolve) => {
       resolver.current = resolve;
     });
   }, []);
 
-  const respond = (value: boolean) => {
+  const respond = (value: boolean | "discard") => {
     resolver.current?.(value);
     resolver.current = null;
     setState(null);
@@ -58,7 +63,7 @@ export function useConfirm() {
             <p className="muted" style={{ marginTop: 12, marginBottom: 0, fontSize: 14, whiteSpace: "pre-line", color: "var(--text-muted)" }}>
               {state.message}
             </p>
-            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="btn"
@@ -68,6 +73,16 @@ export function useConfirm() {
               >
                 {state.options.confirmLabel || "Confirm"}
               </button>
+              {state.options.discardLabel && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ color: "var(--danger)" }}
+                  onClick={() => respond("discard")}
+                >
+                  {state.options.discardLabel}
+                </button>
+              )}
               <button type="button" className="btn btn-ghost" onClick={() => respond(false)}>
                 {state.options.cancelLabel || "Cancel"}
               </button>
@@ -87,7 +102,7 @@ const overlay: React.CSSProperties = {
   background: "rgba(7, 11, 22, 0.55)",
   display: "grid",
   placeItems: "center",
-  zIndex: 60,
+  zIndex: 80,
   padding: 16,
 };
 

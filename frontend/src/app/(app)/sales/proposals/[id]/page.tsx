@@ -371,9 +371,6 @@ export default function ProposalBuilderPage() {
             <div>
               <label className="field-label">Cover title</label>
               <input className="input" value={home.title} onChange={(e) => updateSection("home", { title: e.target.value })} />
-              <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                Shown on the proposal cover inside the document.
-              </p>
             </div>
             <div>
               <label className="field-label">Pick a client</label>

@@ -6,7 +6,7 @@ from accounts.models import Role, StaffProfile, User, UserStatus
 
 
 class Command(BaseCommand):
-    help = "Create the first (and only) superadmin (company owner)."
+    help = "Create a superadmin (company owner, or a second developer account)."
 
     def add_arguments(self, parser):
         parser.add_argument("--email", help="Superadmin email")
@@ -27,8 +27,9 @@ class Command(BaseCommand):
             role=Role.SUPERADMIN,
             status=UserStatus.ACTIVE,
         )
-        user.is_staff = True  # allow Django admin access for the owner
-        user.save(update_fields=["is_staff"])
+        user.is_staff = True
+        user.is_superuser = True
+        user.save(update_fields=["is_staff", "is_superuser"])
         StaffProfile.objects.get_or_create(user=user)
 
         self.stdout.write(self.style.SUCCESS(f"Superadmin created: {email}"))

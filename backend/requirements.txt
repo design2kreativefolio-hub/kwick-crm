@@ -41,6 +41,9 @@ python-docx==1.1.2
 # ---- Image handling (avatar upload validation) ----
 Pillow==10.4.0
 
+# ---- Password vault encryption ----
+cryptography>=49.0.0,<51
+
 # ---- Config / server ----
 python-dotenv==1.0.1
 gunicorn==22.0.0

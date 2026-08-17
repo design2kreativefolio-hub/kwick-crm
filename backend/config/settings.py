@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "dashboard",
     "reports",
     "todos",
+    "passwords",
     # OPTIONAL — AI Assistant (removable). See backend/ai/apps.py to remove.
     "ai",
 ]
@@ -84,6 +85,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "common.middleware.MaintenanceMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -127,10 +129,20 @@ DATABASES = {
 # Channels layer + cache (Redis, maxmemory 256MB / allkeys-lru)
 # ---------------------------------------------------------------------------
 REDIS_URL = env("REDIS_URL", "redis://127.0.0.1:6379/0")
+_redis_parts = REDIS_URL.rsplit("/", 1)
+_redis_base = _redis_parts[0] if len(_redis_parts) == 2 and _redis_parts[1].isdigit() else REDIS_URL
+CACHE_REDIS_URL = env("CACHE_REDIS_URL", f"{_redis_base}/3")
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {"hosts": [REDIS_URL]},
+    }
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": CACHE_REDIS_URL,
     }
 }
 
@@ -180,6 +192,12 @@ CORS_ALLOW_CREDENTIALS = True
 # Frontend base URL — used to build links embedded in emails (set-password, etc.)
 # ---------------------------------------------------------------------------
 FRONTEND_URL = env("FRONTEND_URL", "http://localhost:3000")
+# Public API origin for absolute media links (avatars, uploads). Prefer this
+# over request.build_absolute_uri when set — avoids broken http://backend:8000
+# style URLs behind Docker/nginx.
+PUBLIC_API_URL = (
+    env("PUBLIC_API_URL", "") or env("NEXT_PUBLIC_API_BASE_URL", "") or ""
+).rstrip("/")
 # Employee set-password links stay valid for 7 days (Django default is 3).
 PASSWORD_RESET_TIMEOUT = 60 * 60 * 24 * 7
 
@@ -250,6 +268,18 @@ ELEVENLABS_VOICE_ID = env("ELEVENLABS_VOICE_ID", "XB0fDUnXU5powFXDhCwa") or "XB0
 ELEVENLABS_MODEL_ID = env("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2") or "eleven_multilingual_v2"
 
 # ---------------------------------------------------------------------------
+# Password vault (Fernet — set PASSWORD_VAULT_KEY in production)
+# ---------------------------------------------------------------------------
+PASSWORD_VAULT_KEY = env("PASSWORD_VAULT_KEY", "")
+
+# ---------------------------------------------------------------------------
+# Maintenance mode — lock the live site to the developer account listed here.
+# Toggle on/off from the app, Django admin, or `manage.py maintenance`.
+# ---------------------------------------------------------------------------
+MAINTENANCE_MODE = env_bool("MAINTENANCE_MODE", default=False)
+MAINTENANCE_ALLOW_EMAILS = env_list("MAINTENANCE_ALLOW_EMAIL", "")
+
+# ---------------------------------------------------------------------------
 # i18n / misc
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"
@@ -266,6 +296,7 @@ RENEWAL_LEAD_WINDOWS_DAYS = [30, 14, 7, 1]
 # Security (only enforced when not DEBUG)
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000

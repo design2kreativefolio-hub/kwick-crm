@@ -7,13 +7,19 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Module, Role, StaffProfile, UserStatus
-from accounts.tasks import send_password_reset_email, send_status_change_email, send_welcome_email
+from accounts.tasks import (
+    dispatch_email_task,
+    send_password_reset_email,
+    send_status_change_email,
+    send_welcome_email,
+)
 from common.permissions import HasModuleAccess, IsActive, has_module_access
 from common.services import log_activity
 from notifications.services import (
@@ -105,7 +111,7 @@ class StaffViewSet(viewsets.ViewSet):
         serializer = StaffCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        send_welcome_email.delay(user.id)
+        dispatch_email_task(send_welcome_email, user.id)
         return Response(serializer.to_representation(user), status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, pk=None):
@@ -157,7 +163,7 @@ class StaffViewSet(viewsets.ViewSet):
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         user.set_unusable_password()
         user.save(update_fields=["password", "updated_at"])
-        send_password_reset_email.delay(user.id)
+        dispatch_email_task(send_password_reset_email, user.id)
         return Response({"detail": "Password reset link sent to the employee."})
 
     @action(detail=True, methods=["post"])
@@ -172,7 +178,7 @@ class StaffViewSet(viewsets.ViewSet):
             return Response({"detail": "status must be 'active' or 'disabled'."}, status=400)
         user.status = new_status
         user.save(update_fields=["status", "updated_at"])
-        send_status_change_email.delay(user.id, new_status)
+        dispatch_email_task(send_status_change_email, user.id, new_status)
         return Response(StaffListSerializer(user).data)
 
     @action(detail=True, methods=["post"])
@@ -215,7 +221,12 @@ class StaffAvatarUploadView(APIView):
         if default_storage.exists(key):
             default_storage.delete(key)
         saved_path = default_storage.save(key, upload)
-        profile.avatar_url = request.build_absolute_uri(default_storage.url(saved_path))
+        from time import time
+
+        from common.media_urls import absolute_media_url
+
+        base = absolute_media_url(request, default_storage.url(saved_path))
+        profile.avatar_url = f"{base}{'&' if '?' in base else '?'}v={int(time())}"
         profile.save(update_fields=["avatar_url", "updated_at"])
         return Response({"avatar_url": profile.avatar_url})
 
@@ -378,18 +389,66 @@ class LeaveViewSet(viewsets.ModelViewSet):
         return qs.filter(staff=self.request.user)
 
     def perform_create(self, serializer):
-        # Leave requests are always submitted for the requesting user (spec §5.3: POST is employee-only).
-        staff = self.request.user
-        leave = serializer.save(staff=staff)
-        self._recalc_balance(staff)
-        # Recurring reminder to everyone with HR access, until actioned (spec §5.4 / §17.1).
+        """Employees request for themselves (pending). HR/superadmin can log
+        past leave for a staff member — usually as approved so it counts
+        against annual balance immediately (over-allowance allowed)."""
+        user = self.request.user
+        is_hr = has_module_access(user, Module.HR)
+        staff_id = self.request.data.get("staff")
+
+        if is_hr and staff_id:
+            try:
+                staff = User.objects.get(pk=staff_id, role=Role.EMPLOYEE, purged_at__isnull=True)
+            except User.DoesNotExist as exc:
+                raise ValidationError({"staff": "Staff not found."}) from exc
+            raw_status = self.request.data.get("status") or Leave.Status.APPROVED
+            if raw_status not in {Leave.Status.APPROVED, Leave.Status.PENDING}:
+                raw_status = Leave.Status.APPROVED
+            leave = serializer.save(staff=staff, status=raw_status)
+            self._recalc_balance(staff)
+            log_activity(
+                actor=user,
+                action=f"added {leave.leave_type} leave for \"{staff.full_name or staff.email}\" ({leave.status})",
+            )
+            if leave.status == Leave.Status.PENDING:
+                start_recurring_reminder(
+                    source="leave_request",
+                    title="Leave request pending",
+                    body=f"{staff.full_name or staff.email} requested {leave.leave_type} leave.",
+                    object_ref=f"leave:{leave.id}",
+                    users=users_with_module_access(Module.HR),
+                )
+            return
+
+        # Employee self-request — always pending for own account.
+        leave = serializer.save(staff=user, status=Leave.Status.PENDING)
+        self._recalc_balance(user)
         start_recurring_reminder(
             source="leave_request",
             title="Leave request pending",
-            body=f"{staff.full_name or staff.email} requested {leave.leave_type} leave.",
+            body=f"{user.full_name or user.email} requested {leave.leave_type} leave.",
             object_ref=f"leave:{leave.id}",
             users=users_with_module_access(Module.HR),
         )
+
+    @action(detail=True, methods=["post"])
+    def retract(self, request, pk=None):
+        """Employee (or HR) retracts a leave request that is still pending."""
+        leave = self.get_object()
+        is_owner = leave.staff_id == request.user.id
+        is_hr = has_module_access(request.user, Module.HR)
+        if not is_owner and not is_hr:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if leave.status != Leave.Status.PENDING:
+            return Response(
+                {"detail": "Only pending leave requests can be retracted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        leave.status = Leave.Status.CANCELLED
+        leave.save(update_fields=["status", "updated_at"])
+        self._recalc_balance(leave.staff)
+        stop_recurring_reminder(object_ref=f"leave:{leave.id}")
+        return Response(LeaveSerializer(leave).data)
 
     @action(detail=True, methods=["patch"], permission_classes=[HasModuleAccess])
     def decision(self, request, pk=None):
@@ -399,6 +458,11 @@ class LeaveViewSet(viewsets.ModelViewSet):
         if new_status not in {Leave.Status.APPROVED, Leave.Status.REJECTED}:
             return Response(
                 {"detail": "status must be 'approved' or 'rejected'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if leave.status != Leave.Status.PENDING:
+            return Response(
+                {"detail": "Only pending leave requests can be decided."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         leave.status = new_status
@@ -416,7 +480,8 @@ class LeaveViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _recalc_balance(staff):
-        """Balance nets approved + pending against the 30-day allowance (spec §5.5)."""
+        """Balance nets approved + pending against the 30-day allowance (spec §5.5).
+        Used may exceed annual_allowance; remaining can be negative."""
         year = date.today().year
         balance, _ = LeaveBalance.objects.get_or_create(staff=staff, year=year)
         paid_types = [Leave.LeaveType.ANNUAL, Leave.LeaveType.OTHER]

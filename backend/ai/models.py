@@ -32,6 +32,8 @@ class Message(TimeStampedModel):
     role = models.CharField(max_length=16, choices=Role.choices)
     content = models.TextField(blank=True, default="")
     links = models.JSONField(default=list, blank=True)
+    # Structured UI blocks, e.g. { "kind": "task_cards", "groups": [...] }
+    cards = models.JSONField(default=dict, blank=True)
     # [{ "mime": "image/jpeg", "url": "data:image/jpeg;base64,..." }] — small previews only
     attachments = models.JSONField(default=list, blank=True)
 

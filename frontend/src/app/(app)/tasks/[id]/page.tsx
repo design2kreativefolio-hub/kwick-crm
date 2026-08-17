@@ -23,9 +23,10 @@ type Task = {
   assignee_name: string;
   content_item: number | null;
   content_client_id?: number | null;
-  status: "todo" | "in_progress" | "completed";
+  status: "todo" | "in_progress" | "completed" | "published";
   priority: "low" | "medium" | "high";
   due_date: string | null;
+  due_time: string | null;
   completed_at: string | null;
   created_at: string;
 };
@@ -36,6 +37,7 @@ const STATUS_OPTIONS = [
   { value: "todo", label: "To do" },
   { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Completed" },
+  { value: "published", label: "Published" },
 ];
 const PRIORITY_OPTIONS = [
   { value: "low", label: "Low" },
@@ -51,12 +53,35 @@ const STATUS_LABEL: Record<string, string> = {
   todo: "To do",
   in_progress: "In progress",
   completed: "Completed",
+  published: "Published",
 };
 
-function formatDate(iso: string | null) {
+function formatDue(date: string | null, time?: string | null) {
+  if (!date) return "—";
+  const [y, m, d] = date.split("-").map(Number);
+  const label = new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  if (!time) return label;
+  const [hh, mm] = time.split(":");
+  const t = new Date();
+  t.setHours(Number(hh), Number(mm), 0, 0);
+  return `${label}, ${t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
+function formatDateTime(iso: string | null | undefined) {
   if (!iso) return "—";
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export default function TaskDetailPage() {
@@ -150,7 +175,16 @@ export default function TaskDetailPage() {
       <div>
         <BackLink href="/tasks" label="Back to Tasks" />
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-          <h1 style={{ margin: 0, fontSize: 22 }}>{task.title}</h1>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 22,
+              textDecoration: task.status === "published" ? "line-through" : undefined,
+              opacity: task.status === "published" ? 0.75 : 1,
+            }}
+          >
+            {task.title}
+          </h1>
           <span className={`badge ${PRIORITY_BADGE[task.priority]}`}>{task.priority}</span>
           <span className={`badge ${STATUS_BADGE[task.status]}`}>{STATUS_LABEL[task.status]}</span>
         </div>
@@ -177,7 +211,13 @@ export default function TaskDetailPage() {
             )}
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Due date</label>
-              <div className="input" style={readonlyInput}>{formatDate(task.due_date)}</div>
+              <div className="input" style={readonlyInput}>
+                {task.status === "published" ? "—" : formatDue(task.due_date, task.due_time)}
+              </div>
+            </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Created</label>
+              <div className="input" style={readonlyInput}>{formatDateTime(task.created_at)}</div>
             </div>
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Priority</label>
@@ -198,33 +238,20 @@ export default function TaskDetailPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div className="card">
             <span className="card-title">Status</span>
-            {isSynced ? (
-              <>
-                <span className={`badge ${STATUS_BADGE[task.status]}`} style={{ fontSize: 13 }}>
-                  {STATUS_LABEL[task.status]}
-                </span>
-                <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
-                  <i className="bi bi-calendar3-fill" style={{ color: "var(--gold)", marginRight: 6 }} />
-                  This task comes from a client content calendar assignment — its status stays in sync
-                  with the calendar either way.
-                </p>
-                {task.content_client_id && (
-                  <Link
-                    href={`/projects/clients/${task.content_client_id}/calendar?item=${task.content_item}`}
-                    className="btn btn-ghost btn-sm"
-                    style={{ marginTop: 10 }}
-                  >
-                    <i className="bi bi-arrow-right" /> View in client calendar
-                  </Link>
-                )}
-              </>
-            ) : (
-              <Select
-                value={task.status}
-                onChange={(v) => updateField({ status: v })}
-                options={STATUS_OPTIONS}
-                ariaLabel="Status"
-              />
+            <Select
+              value={task.status}
+              onChange={(v) => updateField({ status: v })}
+              options={STATUS_OPTIONS}
+              ariaLabel="Status"
+            />
+            {isSynced && task.content_client_id && (
+              <Link
+                href={`/projects/clients/${task.content_client_id}/calendar?item=${task.content_item}`}
+                className="btn btn-ghost btn-sm"
+                style={{ marginTop: 10 }}
+              >
+                <i className="bi bi-arrow-right" /> View in client calendar
+              </Link>
             )}
           </div>
 
@@ -232,8 +259,7 @@ export default function TaskDetailPage() {
             <div className="card">
               <span className="card-title">Delete</span>
               <p className="muted" style={{ fontSize: 12.5 }}>
-                This task can't be deleted here — remove the assignee (or the item) from the client
-                content calendar instead.
+                Delete this from the client calendar instead.
               </p>
             </div>
           ) : (

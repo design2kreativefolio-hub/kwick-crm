@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Combobox } from "@/components/Combobox";
 import { DatePicker } from "@/components/DatePicker";
+import { TimePicker } from "@/components/TimePicker";
 import { Modal } from "@/components/Modal";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
@@ -26,9 +27,10 @@ type Task = {
   assignee_name: string;
   content_item: number | null;
   content_client_id: number | null;
-  status: "todo" | "in_progress" | "completed";
+  status: "todo" | "in_progress" | "completed" | "published";
   priority: "low" | "medium" | "high";
   due_date: string | null;
+  due_time: string | null;
   completed_at: string | null;
   created_at: string;
 };
@@ -40,6 +42,7 @@ const STATUS_OPTIONS = [
   { value: "todo", label: "To do" },
   { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Completed" },
+  { value: "published", label: "Published" },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -58,6 +61,7 @@ const STATUS_LABEL: Record<string, string> = {
   todo: "To do",
   in_progress: "In progress",
   completed: "Completed",
+  published: "Published",
 };
 
 const emptyForm = {
@@ -68,12 +72,35 @@ const emptyForm = {
   priority: "medium",
   status: "todo",
   due_date: "",
+  due_time: "",
 };
 
-function formatDate(iso: string | null) {
+function formatDue(date: string | null, time?: string | null) {
+  if (!date) return "—";
+  const [y, m, d] = date.split("-").map(Number);
+  const label = new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  if (!time) return label;
+  const [hh, mm] = time.split(":");
+  const t = new Date();
+  t.setHours(Number(hh), Number(mm), 0, 0);
+  return `${label}, ${t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
+function formatDateTime(iso: string | null | undefined) {
   if (!iso) return "—";
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export default function TasksPage() {
@@ -98,6 +125,7 @@ export default function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const formBaseline = useRef("");
 
   const load = () => {
     setLoading(true);
@@ -105,7 +133,7 @@ export default function TasksPage() {
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);
     if (search.trim()) params.set("search", search.trim());
-    if (isSuperadmin && tab === "mine" && user) params.set("assignee", String(user.id));
+    if (tab === "mine") params.set("mine", "1");
     const qs = params.toString();
     api<Task[] | { results: Task[] }>(`/api/tasks${qs ? `?${qs}` : ""}`)
       .then((d) => setTasks(unwrapList(d)))
@@ -127,17 +155,19 @@ export default function TasksPage() {
 
   const openCreateForm = () => {
     setEditingTask(null);
-    setForm({
+    const next = {
       ...emptyForm,
       assignee: user?.id ? String(user.id) : "",
-    });
+    };
+    setForm(next);
+    formBaseline.current = JSON.stringify(next);
     setError(null);
     setShowForm(true);
   };
 
   const openEditForm = (task: Task) => {
     setEditingTask(task);
-    setForm({
+    const next = {
       title: task.title,
       description: task.description || "",
       client_name: task.client_name || "",
@@ -145,7 +175,10 @@ export default function TasksPage() {
       priority: task.priority,
       status: task.status,
       due_date: task.due_date || "",
-    });
+      due_time: task.due_time || "",
+    };
+    setForm(next);
+    formBaseline.current = JSON.stringify(next);
     setError(null);
     setShowForm(true);
   };
@@ -158,9 +191,13 @@ export default function TasksPage() {
     setError(null);
   };
 
-  const saveTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.title.trim()) return;
+  const formIsDirty = () => JSON.stringify(form) !== formBaseline.current;
+
+  const persistTask = async () => {
+    if (!form.title.trim()) {
+      setError("Title is required.");
+      return false;
+    }
     setError(null);
     setCreating(true);
     try {
@@ -169,6 +206,7 @@ export default function TasksPage() {
         description: form.description,
         priority: form.priority,
         due_date: form.due_date || null,
+        due_time: form.due_time || null,
         client_name: form.client_name.trim(),
       };
       if (editingTask) body.status = form.status;
@@ -185,11 +223,34 @@ export default function TasksPage() {
       setEditingTask(null);
       showToast(wasEditing ? "Task updated." : "Task created.");
       load();
+      return true;
     } catch (err: any) {
       setError(err instanceof ApiError ? JSON.stringify(err.data) : err.message);
+      return false;
     } finally {
       setCreating(false);
     }
+  };
+
+  const requestCloseForm = async () => {
+    if (creating) return;
+    if (!formIsDirty()) {
+      closeForm();
+      return;
+    }
+    const result = await confirm("Save your changes, or exit without saving?", {
+      title: "Unsaved changes",
+      confirmLabel: "Save",
+      discardLabel: "Exit without saving",
+      cancelLabel: "Keep editing",
+    });
+    if (result === true) await persistTask();
+    else if (result === "discard") closeForm();
+  };
+
+  const saveTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await persistTask();
   };
 
   const changeStatus = async (task: Task, status: string) => {
@@ -230,7 +291,7 @@ export default function TasksPage() {
 
   const clientOptions = clients.map((c) => c.name);
   const assigneeOptions = assigneeSelectOptions(user, contacts);
-  const showAssigneeColumn = isSuperadmin && tab === "all";
+  const showAssigneeColumn = true;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -238,13 +299,6 @@ export default function TasksPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Tasks</h1>
-          <p className="muted" style={{ marginTop: 4 }}>
-            {isSuperadmin
-              ? tab === "mine"
-                ? "Your own tasks."
-                : "All tasks across the team."
-              : "Your assigned tasks."}
-          </p>
         </div>
         <button className="btn btn-accent" onClick={openCreateForm}>
           <i className="bi bi-plus-lg" /> Add Task
@@ -252,8 +306,7 @@ export default function TasksPage() {
       </div>
       </Reveal>
 
-      {isSuperadmin && (
-        <Reveal index={1}>
+      <Reveal index={1}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
             className={tab === "all" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
@@ -268,14 +321,13 @@ export default function TasksPage() {
             My Tasks
           </button>
         </div>
-        </Reveal>
-      )}
+      </Reveal>
 
-      <Modal open={showForm} onClose={closeForm} wide>
+      <Modal open={showForm} onClose={requestCloseForm} wide>
         <form onSubmit={saveTask}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="card-title" style={{ margin: 0 }}>{editingTask ? "Edit Task" : "New Task"}</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={closeForm} aria-label="Close">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={requestCloseForm} aria-label="Close">
               <i className="bi bi-x-lg" />
             </button>
           </div>
@@ -341,12 +393,30 @@ export default function TasksPage() {
                   />
                 </div>
               )}
+            </div>
+
+            <div className="kwick-form-wide__row kwick-form-wide__row--2">
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Due date</label>
                 <DatePicker
                   value={form.due_date}
-                  onChange={(v) => setForm((f) => ({ ...f, due_date: v }))}
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      due_date: v,
+                      due_time: v ? f.due_time : "",
+                    }))
+                  }
                   ariaLabel="Due date"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Due time</label>
+                <TimePicker
+                  value={form.due_time}
+                  onChange={(v) => setForm((f) => ({ ...f, due_time: v }))}
+                  ariaLabel="Due time"
+                  disabled={!form.due_date}
                 />
               </div>
             </div>
@@ -356,7 +426,7 @@ export default function TasksPage() {
               <button className="btn" disabled={creating}>
                 {creating ? "Saving…" : editingTask ? "Save changes" : "Create task"}
               </button>
-              <button type="button" className="btn btn-ghost" disabled={creating} onClick={closeForm}>
+              <button type="button" className="btn btn-ghost" disabled={creating} onClick={requestCloseForm}>
                 Cancel
               </button>
             </div>
@@ -368,7 +438,7 @@ export default function TasksPage() {
       <div className="card">
         <span className="card-title">
           <i className="bi bi-list-task" style={{ color: "var(--gold)" }} />
-          {isSuperadmin && tab === "mine" ? "My Tasks" : "All Tasks"}
+          {tab === "mine" ? "My Tasks" : "All Tasks"}
         </span>
 
         <div style={{ ...fieldGrid, marginTop: 14, marginBottom: 6 }}>
@@ -414,6 +484,7 @@ export default function TasksPage() {
                   <th>Priority</th>
                   <th>Status</th>
                   <th>Due date</th>
+                  <th>Created</th>
                   <th></th>
                 </tr>
               </thead>
@@ -427,7 +498,12 @@ export default function TasksPage() {
                             ? `/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`
                             : `/tasks/${t.id}`
                         }
-                        style={{ fontWeight: 600, color: "var(--navy)" }}
+                        style={{
+                          fontWeight: 600,
+                          color: "var(--navy)",
+                          textDecoration: t.status === "published" ? "line-through" : undefined,
+                          opacity: t.status === "published" ? 0.7 : 1,
+                        }}
                         title={
                           t.content_item && t.content_client_id
                             ? "Open on client calendar"
@@ -447,7 +523,10 @@ export default function TasksPage() {
                         {STATUS_LABEL[t.status] ?? t.status}
                       </span>
                     </td>
-                    <td>{formatDate(t.due_date)}</td>
+                    <td>{t.status === "published" ? "—" : formatDue(t.due_date, t.due_time)}</td>
+                    <td className="muted" style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>
+                      {formatDateTime(t.created_at)}
+                    </td>
                     <td>
                       {t.content_item ? (
                         t.content_client_id ? (

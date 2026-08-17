@@ -23,6 +23,7 @@ class Module(models.TextChoices):
     SALES_INVOICES = "sales_invoices", "Sales · Invoices"
     RENEWALS = "renewals", "Renewals"
     REPORTS = "reports", "Reports"
+    PASSWORDS = "passwords", "Passwords"
 
 
 # Parent → child grants. A parent grant satisfies every child check; any child

@@ -135,6 +135,7 @@ class ContentCalendarItem(TimeStampedModel):
         PLANNED = "planned", "To do"
         IN_PROGRESS = "in_progress", "In progress"
         DONE = "done", "Completed"
+        PUBLISHED = "published", "Published"
 
     client = models.ForeignKey(
         "sales.Client", on_delete=models.CASCADE, related_name="content_items"
@@ -146,6 +147,7 @@ class ContentCalendarItem(TimeStampedModel):
     description = models.TextField(blank=True, default="")
     scheduled_date = models.DateField()
     deadline = models.DateField(null=True, blank=True)
+    deadline_time = models.TimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNED)
     assignees = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="content_calendar_items"

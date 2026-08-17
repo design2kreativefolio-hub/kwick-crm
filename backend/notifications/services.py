@@ -45,7 +45,11 @@ def notify_user(*, user, source, title, body="", recurring=False, object_ref="")
         object_ref=object_ref,
         active=True,
     )
-    deliver_notification.delay(event.id)
+    try:
+        deliver_notification.delay(event.id)
+    except Exception:
+        # Celery worker unavailable — still mirror over WebSocket immediately.
+        deliver_notification(event.id)
     return event
 
 

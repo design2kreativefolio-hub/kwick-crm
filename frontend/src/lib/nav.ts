@@ -74,6 +74,7 @@ export const NAV: NavGroup[] = [
       },
       { label: "Renewals", href: "/renewals", icon: "bi-calendar-check-fill", module: "renewals" },
       { label: "Reports", href: "/reports", icon: "bi-bar-chart-line-fill", module: "reports" },
+      { label: "Passwords", href: "/passwords", icon: "bi-shield-lock-fill", module: "passwords" },
     ],
   },
   {

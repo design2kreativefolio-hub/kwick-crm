@@ -58,6 +58,7 @@ const SECTIONS: SectionGroup[] = [
     pages: [
       { key: "renewals", label: "Renewals", blurb: "Hosting, domains, visas", icon: "bi-calendar-check-fill" },
       { key: "reports", label: "Reports", blurb: "Employee and client reports", icon: "bi-bar-chart-line-fill" },
+      { key: "passwords", label: "Passwords", blurb: "Client credentials vault", icon: "bi-shield-lock-fill" },
     ],
   },
 ];

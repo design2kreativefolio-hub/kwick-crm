@@ -3,10 +3,12 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from accounts.views import MaintenanceView
 from projects.urls import bare_urlpatterns as project_bare_urlpatterns
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/maintenance", MaintenanceView.as_view(), name="maintenance"),
     path("api/auth/", include("accounts.urls")),
     path("api/hr/", include("hr.urls")),
     path("api/sales/", include("sales.urls")),
@@ -17,6 +19,7 @@ urlpatterns = [
     path("api/notifications/", include("notifications.urls")),
     path("api/dashboard/", include("dashboard.urls")),
     path("api/reports/", include("reports.urls")),
+    path("api/", include("passwords.urls")),
     # OPTIONAL — AI Assistant. Remove this line + the `ai` app to uninstall.
     path("api/ai/", include("ai.urls")),
     # These routers register their ViewSet under an empty prefix ("") so the

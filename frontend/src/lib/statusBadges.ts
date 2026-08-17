@@ -6,6 +6,7 @@
  *   In progress / Started       → purple
  *   Waiting for approval        → amber (warning)
  *   Completed / Done            → green (success)
+ *   Published                   → teal
  */
 
 export const STATUS_BADGE: Record<string, string> = {
@@ -16,6 +17,7 @@ export const STATUS_BADGE: Record<string, string> = {
   doing: "badge-purple",
   completed: "badge-success",
   done: "badge-success",
+  published: "badge-teal",
   // Projects
   assigned: "badge-info",
   started: "badge-purple",
@@ -35,6 +37,7 @@ export const STATUS_COLOR: Record<string, string> = {
   pending: "#C9821B",
   completed: "#1E9E62",
   done: "#1E9E62",
+  published: "#0D9488",
 };
 
 export function statusBadgeClass(status: string): string {

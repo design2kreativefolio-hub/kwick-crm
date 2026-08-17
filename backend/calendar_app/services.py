@@ -24,12 +24,18 @@ def _iso(value):
 
 
 def detect_meeting_url(text: str) -> str:
-    """Return the first Teams / Google Meet URL found in free text, else ''."""
+    """Return the first Teams / Google Meet / Zoom URL found in free text, else ''."""
     if not text:
         return ""
+    markers = (
+        "teams.microsoft.com",
+        "meet.google.com",
+        "zoom.us",
+        "zoom.com",
+    )
     for token in text.replace("\n", " ").split():
         lower = token.lower().rstrip(".,);]")
-        if "teams.microsoft.com" in lower or "meet.google.com" in lower:
+        if any(m in lower for m in markers):
             if lower.startswith("http"):
                 return token.rstrip(".,);]")
             return f"https://{token.rstrip('.,);]')}"
@@ -43,7 +49,13 @@ def is_meeting_link(url: str) -> bool:
         host = urlparse(url).netloc.lower()
     except Exception:
         return False
-    return "teams.microsoft.com" in host or "meet.google.com" in host
+    return (
+        "teams.microsoft.com" in host
+        or "meet.google.com" in host
+        or "zoom.us" in host
+        or host.endswith(".zoom.us")
+        or "zoom.com" in host
+    )
 
 
 def next_occurrence(remind_at: datetime, recurrence: str) -> datetime | None:
@@ -92,17 +104,20 @@ def expand_reminder_dates(reminder: ManualReminder, dt_from: date, dt_to: date):
 def build_agenda(*, user, dt_from, dt_to, scope="self"):
     """Return a flat, date-sorted list of agenda items.
 
-    Personal calendar always uses scope='self' (own tasks / reminders / todos).
-    scope='all' remains available for manager company views elsewhere.
+    Personal calendar (scope='self'): own tasks/reminders/todos, plus every
+    client's content-calendar item for all employees. scope='all' remains for
+    manager company views elsewhere.
     """
     company = scope == "all" and is_superadmin(user)
     items = []
 
     # --- Tasks with a due_date ---
-    task_qs = Task.objects.filter(due_date__range=(dt_from, dt_to)).select_related("assignee")
-    if company:
-        task_qs = task_qs.filter(content_item__isnull=True)
-    else:
+    # Content-calendar mirrors appear under source=content_calendar (company-wide
+    # for every employee). Keep personal tasks here only to avoid duplicates.
+    task_qs = Task.objects.filter(due_date__range=(dt_from, dt_to), content_item__isnull=True).select_related(
+        "assignee"
+    )
+    if not company:
         task_qs = task_qs.filter(assignee=user)
     for t in task_qs:
         items.append(
@@ -111,7 +126,8 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "id": t.id,
                 "title": t.title,
                 "date": _iso(t.due_date),
-                "done": t.status == Task.Status.COMPLETED,
+                # Published is the finished / struck state; completed stays open visually.
+                "done": t.status == Task.Status.PUBLISHED,
                 "meta": {
                     "status": t.status,
                     "assignee": t.assignee_id,
@@ -175,12 +191,14 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
             }
         )
 
-    # --- Content calendar items — self scope only ---
+    # --- Content calendar items — every employee sees all client content ---
     if not company:
-        content_qs = ContentCalendarItem.objects.filter(
-            scheduled_date__range=(dt_from, dt_to), assignees=user
-        ).select_related("client").prefetch_related("assignees")
-        for ci in content_qs.distinct():
+        content_qs = (
+            ContentCalendarItem.objects.filter(scheduled_date__range=(dt_from, dt_to))
+            .select_related("client")
+            .prefetch_related("assignees")
+        )
+        for ci in content_qs:
             meeting = detect_meeting_url(ci.description or "")
             items.append(
                 {
@@ -188,7 +206,8 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                     "id": ci.id,
                     "title": f"{ci.title} — {ci.client.name}",
                     "date": _iso(ci.scheduled_date),
-                    "done": ci.status == "done",
+                    # Finished / strikethrough only after Published (not Completed).
+                    "done": ci.status == ContentCalendarItem.Status.PUBLISHED,
                     "meta": {
                         "status": ci.status,
                         "content_type": ci.content_type,

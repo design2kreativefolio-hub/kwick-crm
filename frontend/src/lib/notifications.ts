@@ -23,6 +23,7 @@ export const SOURCE_META: Record<
   staff_renewal: { icon: "bi-exclamation-triangle-fill", color: "var(--danger)", bg: "var(--danger-soft)", label: "Renewal due", href: "/hr/staff" },
   registration: { icon: "bi-person-plus-fill", color: "var(--gold)", bg: "var(--gold-soft)", label: "Signup", href: "/hr/staff" },
   project: { icon: "bi-kanban-fill", color: "#7C4FE0", bg: "#F0EBFB", label: "Project", href: "/projects" },
+  content_calendar: { icon: "bi-check-square-fill", color: "#219150", bg: "var(--success-soft)", label: "Task", href: "/tasks" },
   todo: { icon: "bi-check2-square", color: "#219150", bg: "var(--success-soft)", label: "To-do", href: "/todo" },
 };
 export const DEFAULT_SOURCE_META = { icon: "bi-bell-fill", color: "var(--gold)", bg: "var(--gold-soft)", label: "Update", href: "" };

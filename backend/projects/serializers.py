@@ -96,7 +96,10 @@ class ClientDirectorySerializer(serializers.ModelSerializer):
     always server-generated (see ClientDirectoryViewSet.perform_create).
     contact_phone doubles as "Point of Contact Number" and notes as
     "Description" in this UI — field names kept as-is to avoid touching the
-    Sales module's own use of the same model."""
+    Sales module's own use of the same model.
+
+    POC defaults from Sales → first company executive; editable here too.
+    """
 
     class Meta:
         model = Client
@@ -109,10 +112,18 @@ class ClientDirectorySerializer(serializers.ModelSerializer):
             "contact_phone",
             "notes",
             "services",
+            "other_service",
             "accent_color",
             "logo_url",
         ]
         read_only_fields = ["client_id", "logo_url"]
+
+    def to_representation(self, instance):
+        # One-time backfill for clients that already have executives but an
+        # empty POC (so Projects cards show the same person Sales added).
+        if not (instance.poc_name or "").strip():
+            instance.apply_poc_from_first_executive(save=True)
+        return super().to_representation(instance)
 
 
 class ContentCalendarItemSerializer(serializers.ModelSerializer):
@@ -136,6 +147,7 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             "description",
             "scheduled_date",
             "deadline",
+            "deadline_time",
             "status",
             "assignees",
             "assignee_names",

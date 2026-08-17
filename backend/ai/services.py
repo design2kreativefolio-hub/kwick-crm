@@ -16,6 +16,13 @@ from .context import build_crm_context, context_as_text
 from .edith_prompt import CRM_MODE_NOTE, GENERAL_MODE_NOTE, SYSTEM_PROMPT
 from .models import Conversation, Message
 from .report_intent import maybe_handle_report
+from .visuals import (
+    attach_visual_cards,
+    count_tasks_for_person,
+    named_person,
+    wants_task_cards,
+    wants_todo_cards,
+)
 
 
 RETENTION_DAYS = 15
@@ -73,6 +80,14 @@ def chat(
     ctx = build_crm_context(user)
     last = cleaned[-1]["content"]
 
+    # Task/to-do cards come from CRM data — don't wait on Gemini.
+    if wants_todo_cards(last) or wants_task_cards(last, ctx):
+        local = _local_reply(last, ctx)
+        local["links"] = local.get("links") or _suggested_links(last, ctx)
+        local["attachments"] = []
+        local["user_attachments"] = images
+        return _finalize_reply(last, ctx, local)
+
     # Deterministic report flow (clarify → generate PDF) before LLM.
     report_result = maybe_handle_report(user, cleaned, last)
     if report_result is not None:
@@ -82,13 +97,20 @@ def chat(
     if getattr(settings, "AI_API_KEY", ""):
         try:
             reply = _llm_reply(ctx, cleaned)
-            return {
-                "reply": reply,
-                "links": _suggested_links(last, ctx),
-                "attachments": [],
-                "user_attachments": images,
-            }
-        except Exception:
+            return _finalize_reply(
+                last,
+                ctx,
+                {
+                    "reply": reply,
+                    "links": _suggested_links(last, ctx),
+                    "attachments": [],
+                    "user_attachments": images,
+                },
+            )
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning("EDITH LLM failed, using local reply: %s", exc)
             local = _local_reply(last, ctx)
             if images:
                 local["reply"] = (
@@ -98,7 +120,7 @@ def chat(
             local["links"] = _suggested_links(last, ctx)
             local["attachments"] = []
             local["user_attachments"] = images
-            return local
+            return _finalize_reply(last, ctx, local)
 
     local = _local_reply(last, ctx)
     if images:
@@ -109,7 +131,7 @@ def chat(
     local["links"] = _suggested_links(last, ctx)
     local["attachments"] = []
     local["user_attachments"] = images
-    return local
+    return _finalize_reply(last, ctx, local)
 
 
 def ensure_conversation(user, conversation_id=None) -> Conversation:
@@ -133,6 +155,7 @@ def append_exchange(conversation: Conversation, user_text: str, result: dict) ->
         role=Message.Role.ASSISTANT,
         content=result.get("reply") or "",
         links=result.get("links") or [],
+        cards=result.get("cards") or {},
         attachments=result.get("attachments") or [],
     )
     if conversation.title in {"", "New chat", "New Chat"}:
@@ -326,41 +349,34 @@ def _local_reply(text: str, ctx: dict) -> dict:
             links.append({"label": "Invoices", "href": "/sales/invoices", "icon": "bi-receipt"})
         return {"reply": "\n".join(parts), "links": links}
 
-    if _match(q, ["who is doing", "who's doing", "workload", "who working", "assigned to"]):
-        if ctx.get("workload"):
-            lines = ["**Who is doing what** (open tasks):"]
-            for w in ctx["workload"]:
-                lines.append(f"• **{w['person']}** — {w['open_tasks']} open")
-            lines.append("\nDetails:")
-            for t in (ctx.get("open_tasks") or [])[:15]:
-                due = f", due {t['due_date']}" if t.get("due_date") else ""
-                proj = f" · {t['project']}" if t.get("project") else ""
-                lines.append(f"• {t.get('assignee')}: {t['title']} [{t['status']}]{proj}{due}")
-            return {
-                "reply": "\n".join(lines),
-                "links": [{"label": "Tasks", "href": "/tasks", "icon": "bi-check-square-fill"}],
-            }
-        lines = [f"Open tasks visible to you: **{ctx.get('open_tasks_count', 0)}**"]
-        for t in ctx.get("open_tasks") or []:
-            lines.append(f"• {t.get('assignee') or 'You'}: {t['title']} [{t['status']}]")
+    person = named_person(q, ctx)
+    if person and wants_task_cards(q, ctx):
+        mine = person == (ctx.get("user_name") or "")
+        label = "you" if mine else person
+        n = count_tasks_for_person(ctx, person)
         return {
-            "reply": "\n".join(lines),
+            "reply": f"**{n}** open task(s) for **{label}**. Cards below — tap one to open it.",
+            "links": [{"label": "Tasks", "href": "/tasks", "icon": "bi-check-square-fill"}],
+        }
+
+    if _match(q, ["who is doing", "who's doing", "workload", "who working", "assigned to"]):
+        n = ctx.get("open_tasks_count", 0)
+        if ctx.get("workload"):
+            reply = f"**Who is doing what** — **{n}** open task(s). Cards below are grouped by person."
+        else:
+            reply = f"Open tasks visible to you: **{n}**. Cards below."
+        return {
+            "reply": reply,
             "links": [{"label": "Tasks", "href": "/tasks", "icon": "bi-check-square-fill"}],
         }
 
     if _match(q, ["todo", "to-do", "to do", "my checklist", "personal checklist"]):
-        lines = [f"**Personal to-dos (open):** {len(ctx.get('todos') or [])}"]
-        for t in ctx.get("todos") or []:
-            due = f" · due {t['due_date']}" if t.get("due_date") else ""
-            lines.append(f"• {t['title']}{due}")
-        if not ctx.get("todos"):
-            lines.append("None open — nice work.")
-        lines.append(
-            "\nTo-Dos are personal (not Calendar reminders). "
-            "They can appear on Calendar and on the Dashboard Reminders card until marked done."
+        n = len(ctx.get("todos") or [])
+        reply = f"**Personal to-dos:** **{n}** open." + (
+            " Cards below." if n else " None open — nice work."
         )
         return {
-            "reply": "\n".join(lines),
+            "reply": reply,
             "links": [
                 {"label": "To-Do", "href": "/todo", "icon": "bi-ui-checks-grid"},
                 {"label": "Dashboard", "href": "/dashboard", "icon": "bi-grid-1x2-fill"},
@@ -368,16 +384,19 @@ def _local_reply(text: str, ctx: dict) -> dict:
         }
 
     if _match(q, ["task", "who's assigned", "assigned tasks", "my tasks", "open tasks"]):
-        lines = [f"**{ctx.get('open_tasks_count', 0)}** open shared task(s)."]
-        for t in ctx.get("open_tasks") or []:
-            due = f" · due {t['due_date']}" if t.get("due_date") else ""
-            who = f" · {t['assignee']}" if t.get("assignee") else ""
-            lines.append(f"• {t['title']} — {t['status']}{who}{due}")
-        if ctx.get("open_tasks_count", 0) == 0:
-            lines.append("Nothing open — nice work.")
-        lines.append("\nShared Tasks ≠ personal To-Dos ≠ Calendar Reminders.")
+        person = named_person(q, ctx)
+        if person:
+            n = count_tasks_for_person(ctx, person)
+            reply = f"**{n}** open task(s) for **{person}**." + (
+                " Cards below — tap a card to open it." if n else " Nothing open — nice work."
+            )
+        else:
+            n = ctx.get("open_tasks_count", 0)
+            reply = f"**{n}** open shared task(s)." + (
+                " Cards below — tap a card to open it." if n else " Nothing open — nice work."
+            )
         return {
-            "reply": "\n".join(lines),
+            "reply": reply,
             "links": [
                 {"label": "Open Tasks", "href": "/tasks", "icon": "bi-check-square-fill"},
                 {"label": "To-Do", "href": "/todo", "icon": "bi-ui-checks-grid"},
@@ -725,13 +744,24 @@ def _local_reply(text: str, ctx: dict) -> dict:
             "subject line",
             "email template",
         ],
-    ) and not _is_crm_query(q):
+    ) and not _is_crm_query(q, ctx):
         return {
             "reply": (
                 "I can help with that — drafts, captions, brainstorms, explainers, and plans.\n"
                 "The full creative/general model needs AI configured online right now.\n"
                 "Meanwhile for CRM: ask “What needs attention?”, “My reminders”, or “Help”.\n"
                 "Or open EDITH again once AI_API_KEY is available for richer writing."
+            ),
+            "links": [{"label": "EDITH", "href": "/ai", "icon": "bi-stars"}],
+        }
+
+    # Generic fallback when Gemini is offline — don't show a CRM menu for
+    # general-knowledge asks (e.g. "president of india"), which looks broken.
+    if not _is_crm_query(q, ctx):
+        return {
+            "reply": (
+                "I can answer that when the AI model is online — try again in a moment.\n"
+                "For CRM meanwhile: “What needs attention?”, “My tasks”, “My reminders”, or “Help”."
             ),
             "links": [{"label": "EDITH", "href": "/ai", "icon": "bi-stars"}],
         }
@@ -756,13 +786,19 @@ def _local_reply(text: str, ctx: dict) -> dict:
     }
 
 
+def _finalize_reply(last: str, ctx: dict, result: dict) -> dict:
+    return attach_visual_cards(last, ctx, result)
+
+
 def _match(q: str, words: list[str]) -> bool:
     return any(w in q for w in words)
 
 
-def _is_crm_query(q: str) -> bool:
+def _is_crm_query(q: str, ctx: dict | None = None) -> bool:
     """True when the user is asking about Kwick data / screens (vs pure general knowledge)."""
     ql = (q or "").lower()
+    if ctx and named_person(ql, ctx):
+        return True
     general_markers = [
         "brainstorm",
         "caption",
@@ -771,7 +807,12 @@ def _is_crm_query(q: str) -> bool:
         "explain ",
         "what is ",
         "what's ",
+        "who is ",
+        "who's ",
+        "who was ",
         "who won",
+        "president",
+        "capital of",
         "recipe",
         "python",
         "javascript",
@@ -991,7 +1032,7 @@ def _llm_reply(ctx: dict, messages: list[dict]) -> str:
     key = settings.AI_API_KEY
 
     last = (messages[-1].get("content") or "") if messages else ""
-    crm_mode = _is_crm_query(last)
+    crm_mode = _is_crm_query(last, ctx)
     if crm_mode:
         system = (
             SYSTEM_PROMPT

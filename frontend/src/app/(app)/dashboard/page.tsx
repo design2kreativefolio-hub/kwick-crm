@@ -23,6 +23,7 @@ type Task = {
   status: string;
   priority: string;
   due_date: string | null;
+  due_time?: string | null;
 };
 
 type PendingApprovalUser = {
@@ -100,6 +101,15 @@ function relativeDate(iso: string) {
   return target.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatTaskDue(date: string, time?: string | null) {
+  const base = relativeDate(date);
+  if (!time) return base;
+  const [hh, mm] = time.split(":");
+  const t = new Date();
+  t.setHours(Number(hh), Number(mm), 0, 0);
+  return `${base}, ${t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
+
 function cardMeta(item: DashboardCardItem) {
   if (item.kind === "todo") return SOURCE_META.todo ?? DEFAULT_SOURCE_META;
   if (item.kind === "reminder") return SOURCE_META.calendar ?? DEFAULT_SOURCE_META;
@@ -130,7 +140,16 @@ export default function DashboardPage() {
   const [cardItems, setCardItems] = useState<DashboardCardItem[]>([]);
   const [sparkline, setSparkline] = useState<number[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
+  const [recentTab, setRecentTab] = useState<"all" | "mine">("mine");
   const [approvalBusyId, setApprovalBusyId] = useState<number | null>(null);
+
+  const loadRecentTasks = useCallback(() => {
+    const params = new URLSearchParams({ page_size: "5" });
+    if (recentTab === "mine") params.set("mine", "1");
+    api<{ results: Task[] } | Task[]>(`/api/tasks?${params}`)
+      .then((d) => setRecentTasks(Array.isArray(d) ? d : d.results))
+      .catch(() => setRecentTasks([]));
+  }, [recentTab]);
 
   const load = useCallback(() => {
     api<Summary>("/api/dashboard/summary").then(setSummary).catch(() => {});
@@ -142,15 +161,9 @@ export default function DashboardPage() {
     )
       .then((d) => setSparkline(d.series.slice(-14).map((p) => p.completed)))
       .catch(() => {});
-    if (isSuperadmin) {
-      api<Task[]>("/api/dashboard/today-tasks").then(setRecentTasks).catch(() => {});
-    } else {
-      api<{ results: Task[] } | Task[]>("/api/tasks?page_size=5")
-        .then((d) => setRecentTasks(Array.isArray(d) ? d : d.results))
-        .catch(() => {});
-    }
+    loadRecentTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperadmin]);
+  }, [isSuperadmin, loadRecentTasks]);
 
   useEffect(load, [load]);
 
@@ -291,15 +304,33 @@ export default function DashboardPage() {
 
         <Reveal index={4}>
           <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="card-title" style={{ margin: 0 }}>{isSuperadmin ? "Today's Tasks" : "Recent Tasks"}</span>
-              <a href="/tasks" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
-                View All <i className="bi bi-arrow-right" />
-              </a>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <span className="card-title" style={{ margin: 0 }}>Recent Tasks</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    className={recentTab === "all" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+                    onClick={() => setRecentTab("all")}
+                  >
+                    All Tasks
+                  </button>
+                  <button
+                    type="button"
+                    className={recentTab === "mine" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+                    onClick={() => setRecentTab("mine")}
+                  >
+                    My Tasks
+                  </button>
+                </div>
+                <a href="/tasks" className="muted" style={{ fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
+                  View All <i className="bi bi-arrow-right" />
+                </a>
+              </div>
             </div>
             {recentTasks.length === 0 && (
               <p className="muted" style={{ marginTop: 16 }}>
-                {isSuperadmin ? "Nothing due or added today." : "No tasks yet."}
+                {recentTab === "mine" ? "No tasks assigned to you yet." : "No tasks yet."}
               </p>
             )}
             {recentTasks.length > 0 && (
@@ -308,7 +339,7 @@ export default function DashboardPage() {
                   <thead>
                     <tr>
                       <th>Task</th>
-                      {isSuperadmin && <th>Assignee</th>}
+                      {recentTab === "all" && isSuperadmin && <th>Assignee</th>}
                       <th>Priority</th>
                       <th>Status</th>
                       <th>Due</th>
@@ -317,8 +348,17 @@ export default function DashboardPage() {
                   <tbody>
                     {recentTasks.map((t) => (
                       <tr key={t.id}>
-                        <td>{t.title}</td>
-                        {isSuperadmin && <td>{t.assignee_name || "—"}</td>}
+                        <td
+                          style={{
+                            textDecoration: t.status === "published" ? "line-through" : undefined,
+                            opacity: t.status === "published" ? 0.7 : 1,
+                            cursor: "pointer",
+                          }}
+                          onClick={() => router.push(`/tasks/${t.id}`)}
+                        >
+                          {t.title}
+                        </td>
+                        {recentTab === "all" && isSuperadmin && <td>{t.assignee_name || "—"}</td>}
                         <td>
                           <span className={`badge ${TASK_PRIORITY_BADGE[t.priority] ?? "badge-muted"}`}>
                             {t.priority}
@@ -329,7 +369,9 @@ export default function DashboardPage() {
                             {t.status.replace("_", " ")}
                           </span>
                         </td>
-                        <td className="muted">{t.due_date ? relativeDate(t.due_date) : "—"}</td>
+                        <td className="muted">
+                          {t.status === "published" || !t.due_date ? "—" : formatTaskDue(t.due_date, t.due_time)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

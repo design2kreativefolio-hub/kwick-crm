@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Kwick Employee User Guide</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 20mm 16mm;
+      @bottom-center {
+        content: "Kwick · Kreativefolio · Employee guide  ·  " counter(page);
+        font-size: 9px;
+        color: #6b7280;
+      }
+    }
+    body {
+      font-family: "Segoe UI", "Carlito", "Calibri", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.45;
+      color: #1f2937;
+    }
+    h1 {
+      font-size: 22pt;
+      margin: 0 0 6px;
+      color: #0f2744;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      color: #4b5563;
+      margin: 0 0 4px;
+      font-size: 11pt;
+    }
+    .site a { color: #b8860b; text-decoration: none; font-weight: 600; }
+    .intro { margin: 14px 0 18px; }
+    h2 {
+      font-size: 13.5pt;
+      color: #0f2744;
+      border-bottom: 2px solid #c9a227;
+      padding-bottom: 4px;
+      margin: 22px 0 10px;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 11.5pt;
+      color: #1e3a5f;
+      margin: 14px 0 6px;
+      page-break-after: avoid;
+    }
+    p, li { margin: 4px 0; }
+    ul, ol { padding-left: 1.25em; margin: 6px 0 10px; }
+    strong { color: #111827; }
+    a { color: #8a6d12; }
+    blockquote {
+      margin: 10px 0;
+      padding: 8px 12px;
+      background: #fff8e7;
+      border-left: 4px solid #c9a227;
+      color: #374151;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 7px 9px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #0f2744;
+      color: #fff;
+      font-weight: 600;
+    }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .header-bar {
+      background: linear-gradient(90deg, #0f2744, #1e4a7a);
+      color: #fff;
+      padding: 16px 18px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 11px;
+      display: block;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    }
+    .brand-text {
+      font-size: 26pt;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #fff;
+      line-height: 1;
+    }
+    .header-bar h1 { color: #fff; font-size: 16pt; margin: 0 0 4px; font-weight: 600; }
+    .header-bar .subtitle { color: #e5e7eb; }
+    .header-bar .site a { color: #f0d78c; }
+    .footer-note {
+      margin-top: 28px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 9.5pt;
+      color: #6b7280;
+      font-style: italic;
+      text-align: center;
+    }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9.5pt;
+      background: #f3f4f6;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-bar">
+    <div class="brand-row">
+      <img class="brand-mark" src="kwick-mark.png" alt="Kwick" width="44" height="44" />
+      <span class="brand-text">Kwick</span>
+    </div>
+    <h1>Employee User Guide</h1>
+    <p class="subtitle">Kreativefolio — Internal CRM</p>
+    <p class="site">Live site: <a href="https://kwick.kreativefolio.com">https://kwick.kreativefolio.com</a></p>
+  </div>
+
+  <p class="intro">This guide is for <strong>employees</strong>. It covers how to get access, sign in, and use the tools you’ll need day to day.</p>
+
+  <h2>1. Getting access (first time)</h2>
+
+  <h3>Option A — Register yourself</h3>
+  <ol>
+    <li>Open <a href="https://kwick.kreativefolio.com/register">https://kwick.kreativefolio.com/register</a></li>
+    <li>Enter your <strong>full name</strong>, <strong>work email</strong>, and a <strong>strong password</strong> (then confirm it)</li>
+    <li>Submit the form</li>
+    <li>Your account stays <strong>pending</strong> until a company admin (superadmin) <strong>approves</strong> you</li>
+    <li>After approval you usually get an email with a <strong>Set password</strong> link — open it, choose your password, then go to Login</li>
+    <li>Sign in with your email and password</li>
+  </ol>
+  <blockquote>Tip: If login says you’re not approved yet, wait for your manager/admin to approve you on the Dashboard.</blockquote>
+
+  <h3>Option B — You already have an account</h3>
+  <ol>
+    <li>Open <a href="https://kwick.kreativefolio.com/login">https://kwick.kreativefolio.com/login</a></li>
+    <li>Enter <strong>email</strong> and <strong>password</strong></li>
+    <li>Click <strong>Sign in</strong></li>
+  </ol>
+
+  <h3>Forgot password?</h3>
+  <ol>
+    <li>On the login page, click <strong>Forgot password?</strong></li>
+    <li>Enter your email and follow the reset link sent to you</li>
+    <li>Set a new password, then sign in again</li>
+  </ol>
+
+  <h2>2. After you log in — quick orientation</h2>
+  <table>
+    <thead><tr><th>Area</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Left sidebar</strong></td><td>Main menu (what you see depends on your role and module access)</td></tr>
+      <tr><td><strong>Top bar</strong></td><td>Search, theme, your profile avatar</td></tr>
+      <tr><td><strong>Dashboard</strong></td><td>Overview + <strong>Reminders</strong> card (things that need attention)</td></tr>
+      <tr><td><strong>Profile</strong></td><td>Your photo, leave requests, raise a ticket</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Important:</strong> Some menus (Sales, HR, Renewals, Reports) only appear if an admin gave you access. If you don’t see them, that’s normal.</p>
+
+  <h2>3. What to do every day (recommended routine)</h2>
+
+  <h3>Morning (or whenever you start)</h3>
+  <ol>
+    <li>Open <strong>Dashboard</strong></li>
+    <li>Check the <strong>Reminders</strong> card on the right
+      <ul>
+        <li>Open <strong>calendar reminders</strong> assigned to you</li>
+        <li>Your open <strong>to-dos</strong></li>
+        <li>Unread <strong>notifications</strong></li>
+      </ul>
+    </li>
+    <li>Open <strong>Tasks</strong> — work through items assigned to you</li>
+    <li>Open <strong>Calendar</strong> — see today’s reminders, to-dos, and deadlines</li>
+    <li>Skim <strong>Chat</strong> for teammate messages</li>
+    <li>Check <strong>Reminders</strong> (notification inbox) if anything important arrived overnight</li>
+  </ol>
+
+  <h3>During the day</h3>
+  <ul>
+    <li>Update <strong>task</strong> status as you work (<code>todo</code> → <code>in progress</code> → <code>completed</code>)</li>
+    <li>Add personal notes to <strong>To-Do</strong> (your private checklist)</li>
+    <li>Add timed <strong>Calendar reminders</strong> for meetings or follow-ups</li>
+    <li>Reply in <strong>Chat</strong> when teammates ping you</li>
+    <li>Use <strong>EDITH</strong> if you need a quick briefing, how-to, or help drafting text</li>
+  </ul>
+
+  <h3>End of day</h3>
+  <ul>
+    <li>Mark finished <strong>tasks</strong> / <strong>to-dos</strong> / <strong>reminders</strong> as done</li>
+    <li>Leave unfinished items clear so tomorrow’s Dashboard card stays accurate</li>
+  </ul>
+
+  <h2>4. Core tools (every employee)</h2>
+
+  <h3>Dashboard</h3>
+  <ul>
+    <li>See a snapshot of work and the <strong>Reminders</strong> card</li>
+    <li><strong>Tick</strong> on a card item = hide it from the card only (does <strong>not</strong> mark it done)</li>
+    <li><strong>Refresh</strong> (circular arrow) = bring dismissed pending items back</li>
+    <li>To clear something for real: mark it <strong>done</strong> on Calendar / To-Do, or mark the notification <strong>read</strong> on Reminders</li>
+  </ul>
+  <p>You’ll also get gentle nudges <strong>Mon–Sat</strong> around <strong>9:15 AM, 2:30 PM, and 5:00 PM</strong> (Dubai time) if you still have open reminders or to-dos. If you were offline, you’ll see them when you next log in. No nudges on Sundays.</p>
+
+  <h3>Tasks</h3>
+  <ul>
+    <li>Shared work items assigned to people</li>
+    <li>Open <strong>Tasks</strong>, find your items, update <strong>status</strong> and finish them when complete</li>
+    <li>This is <strong>not</strong> the same as To-Do or Calendar Reminders</li>
+  </ul>
+
+  <h3>To-Do</h3>
+  <ul>
+    <li>Your <strong>personal</strong> checklist</li>
+    <li>Add items (optional due date), tick when finished</li>
+    <li>To-dos can also show on your Calendar and Dashboard card</li>
+    <li>Creating a to-do does <strong>not</strong> create a Calendar reminder</li>
+  </ul>
+
+  <h3>Calendar</h3>
+  <ul>
+    <li>Your agenda: tasks, to-dos, reminders, and other dated items</li>
+    <li><strong>Add Reminder</strong> = timed reminder (you can assign teammates, add a meeting link, set recurrence)</li>
+    <li>Creating a reminder does <strong>not</strong> create a to-do</li>
+    <li>Mark reminders <strong>done</strong> when finished so they leave the Dashboard card</li>
+  </ul>
+
+  <h3>Reminders (notification page)</h3>
+  <ul>
+    <li>Inbox of in-app notifications</li>
+    <li>Separate from Calendar reminders</li>
+    <li>Mark as read when you’ve seen them</li>
+  </ul>
+
+  <h3>Chat</h3>
+  <ul>
+    <li>Message colleagues inside Kwick</li>
+    <li>This is <strong>team chat</strong> — not EDITH</li>
+  </ul>
+
+  <h3>EDITH (AI assistant)</h3>
+  <ul>
+    <li>Ask things like “What needs attention?”, “How do I request leave?”, or “Draft a short client follow-up”</li>
+    <li>EDITH can look up info (read-only) and help with writing/ideas</li>
+    <li>She cannot click buttons or change records for you — she tells you which screen to use</li>
+  </ul>
+
+  <h3>Projects</h3>
+  <ul>
+    <li><strong>Mini-Projects</strong> — jobs you’re on; update progress when asked</li>
+    <li><strong>Clients</strong> (under Projects) — delivery / content calendar for clients</li>
+    <li><strong>Artwork Generator</strong> — create artwork IDs when your workflow needs them</li>
+  </ul>
+
+  <h3>Profile (do this once, then as needed)</h3>
+  <ol>
+    <li>Open <strong>Profile</strong></li>
+    <li>Upload / crop your <strong>photo</strong> so teammates recognize you</li>
+    <li>Confirm your name and details</li>
+    <li>Use <strong>Leave Requests</strong> to apply for leave</li>
+    <li>Use <strong>Raise Ticket</strong> if something is broken or you need internal help</li>
+  </ol>
+
+  <h3>Support</h3>
+  <ul>
+    <li>External help: email <strong>design@kreativefolio.com</strong> or WhatsApp <strong>+971 50 521 1969</strong></li>
+    <li>Day-to-day internal issues → <strong>Profile → Raise Ticket</strong> or ask in <strong>Chat</strong></li>
+  </ul>
+
+  <h2>5. Common how-tos</h2>
+
+  <h3>Request leave</h3>
+  <ol>
+    <li><strong>Profile</strong> → <strong>Leave Requests</strong></li>
+    <li>Choose type (annual, sick, unpaid, other), dates, submit</li>
+    <li>Wait for HR/admin approval</li>
+  </ol>
+
+  <h3>Raise an internal ticket</h3>
+  <ol>
+    <li><strong>Profile</strong> → <strong>Raise Ticket</strong></li>
+    <li>Set urgency and describe the issue</li>
+    <li>Track replies / status as needed</li>
+  </ol>
+
+  <h3>Create a meeting reminder</h3>
+  <ol>
+    <li><strong>Calendar</strong> → <strong>Add Reminder</strong></li>
+    <li>Title, date/time, optional assignees and meeting link</li>
+    <li>Save — it appears on Calendar and the Dashboard card for you (and assignees)</li>
+  </ol>
+
+  <h3>Add a personal checklist item</h3>
+  <ol>
+    <li>Open <strong>To-Do</strong></li>
+    <li>Add text (and due date if useful)</li>
+    <li>Mark done when finished</li>
+  </ol>
+
+  <h3>Catch up on what’s pending</h3>
+  <ol>
+    <li>Open <strong>Dashboard</strong> → Reminders card</li>
+    <li>Or ask EDITH: <strong>“What needs attention?”</strong></li>
+  </ol>
+
+  <h2>6. Modules you may get later (if granted)</h2>
+  <p>Only if your admin enables them for you:</p>
+  <table>
+    <thead><tr><th>Module</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Sales</strong></td><td>Clients, proposals/estimates, invoices</td></tr>
+      <tr><td><strong>HR</strong></td><td>Staff list, HR documents (and approvals if you’re allowed)</td></tr>
+      <tr><td><strong>Renewals</strong></td><td>Domains, hosting, contracts, visas, etc.</td></tr>
+      <tr><td><strong>Reports</strong></td><td>Download employee/client PDF reports</td></tr>
+    </tbody>
+  </table>
+  <p>If you need one of these and don’t see it, ask your admin to grant module access.</p>
+
+  <h2>7. Good habits</h2>
+  <ul>
+    <li>Keep <strong>task status</strong> up to date so managers see real progress</li>
+    <li>Don’t confuse <strong>Tasks / To-Do / Calendar Reminder / Notifications</strong> — they are four different things</li>
+    <li>Prefer <strong>Chat</strong> for quick teammate questions; <strong>Ticket</strong> for formal issues; <strong>Support</strong> for external Kreativefolio contact</li>
+    <li>Use a strong unique password; use <strong>Forgot password</strong> if locked out</li>
+    <li>Sign out on shared computers</li>
+  </ul>
+
+  <h2>8. Quick links</h2>
+  <table>
+    <thead><tr><th>Page</th><th>URL</th></tr></thead>
+    <tbody>
+      <tr><td>Login</td><td><a href="https://kwick.kreativefolio.com/login">https://kwick.kreativefolio.com/login</a></td></tr>
+      <tr><td>Register</td><td><a href="https://kwick.kreativefolio.com/register">https://kwick.kreativefolio.com/register</a></td></tr>
+      <tr><td>Dashboard</td><td><a href="https://kwick.kreativefolio.com/dashboard">https://kwick.kreativefolio.com/dashboard</a></td></tr>
+      <tr><td>Tasks</td><td><a href="https://kwick.kreativefolio.com/tasks">https://kwick.kreativefolio.com/tasks</a></td></tr>
+      <tr><td>To-Do</td><td><a href="https://kwick.kreativefolio.com/todo">https://kwick.kreativefolio.com/todo</a></td></tr>
+      <tr><td>Calendar</td><td><a href="https://kwick.kreativefolio.com/calendar">https://kwick.kreativefolio.com/calendar</a></td></tr>
+      <tr><td>Chat</td><td><a href="https://kwick.kreativefolio.com/chat">https://kwick.kreativefolio.com/chat</a></td></tr>
+      <tr><td>EDITH</td><td><a href="https://kwick.kreativefolio.com/ai">https://kwick.kreativefolio.com/ai</a></td></tr>
+      <tr><td>Profile</td><td><a href="https://kwick.kreativefolio.com/profile">https://kwick.kreativefolio.com/profile</a></td></tr>
+      <tr><td>Support</td><td><a href="https://kwick.kreativefolio.com/support">https://kwick.kreativefolio.com/support</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>9. Need help?</h2>
+  <ol>
+    <li>Ask in <strong>Chat</strong></li>
+    <li>Ask <strong>EDITH</strong> (“How do I …?”)</li>
+    <li><strong>Profile → Raise Ticket</strong></li>
+    <li><strong>Support</strong>: design@kreativefolio.com · WhatsApp +971 50 521 1969</li>
+  </ol>
+
+  <p class="footer-note">Kwick · Kreativefolio · Employee guide</p>
+</body>
+</html>

@@ -5,7 +5,9 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
+import { DatePicker } from "@/components/DatePicker";
 import { Reveal } from "@/components/Reveal";
+import { Select } from "@/components/Select";
 import { api, ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 
@@ -71,6 +73,7 @@ const LEAVE_STATUS_BADGE: Record<string, string> = {
   pending: "badge-warning",
   approved: "badge-success",
   rejected: "badge-danger",
+  cancelled: "badge-muted",
 };
 const URGENCY_BADGE: Record<string, string> = {
   low: "badge-muted",
@@ -103,6 +106,14 @@ export default function StaffDetailPage() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [leaveForm, setLeaveForm] = useState({
+    leave_type: "annual",
+    start_date: "",
+    end_date: "",
+    reason: "",
+    status: "approved",
+  });
+  const [addingLeave, setAddingLeave] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -142,6 +153,35 @@ export default function StaffDetailPage() {
       load();
     } finally {
       setBusyKey(null);
+    }
+  };
+
+  const addLeave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leaveForm.start_date || !leaveForm.end_date) {
+      showToast("Pick start and end dates.", "error");
+      return;
+    }
+    setAddingLeave(true);
+    try {
+      await api("/api/hr/leaves", {
+        method: "POST",
+        body: JSON.stringify({
+          staff: Number(id),
+          leave_type: leaveForm.leave_type,
+          start_date: leaveForm.start_date,
+          end_date: leaveForm.end_date,
+          reason: leaveForm.reason,
+          status: leaveForm.status,
+        }),
+      });
+      setLeaveForm({ leave_type: "annual", start_date: "", end_date: "", reason: "", status: "approved" });
+      showToast(leaveForm.status === "approved" ? "Leave added to annual balance." : "Leave request logged.");
+      load();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't add leave." : err.message, "error");
+    } finally {
+      setAddingLeave(false);
     }
   };
 
@@ -298,60 +338,119 @@ export default function StaffDetailPage() {
         )}
 
         {tab === "leave" && (
-          <div className="card">
-            <span className="card-title">
-              Leave Requests
-              {pendingLeaves.length > 0 && <span className="badge badge-warning">{pendingLeaves.length} pending</span>}
-            </span>
-            <p className="muted" style={{ fontSize: 12.5, marginTop: -8 }}>
-              {leave_balance.remaining} of {leave_balance.annual_allowance} days remaining ({leave_balance.year})
-            </p>
-            {leaves.length === 0 && <p className="muted">No leave requests yet.</p>}
-            {leaves.length > 0 && (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {leaves.map((l) => (
-                  <li key={l.id} style={row}>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, textTransform: "capitalize" }}>
-                        {l.leave_type} · {l.days}d
-                      </div>
-                      <div className="muted" style={{ fontSize: 11.5 }}>
-                        {new Date(l.start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                        {" – "}
-                        {new Date(l.end_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                        {" · Submitted "}
-                        {submittedLabel(l.created_at)}
-                      </div>
-                      {l.reason && (
-                        <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                          {l.reason}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div className="card">
+              <span className="card-title">
+                Leave Requests
+                {pendingLeaves.length > 0 && <span className="badge badge-warning">{pendingLeaves.length} pending</span>}
+              </span>
+              <p style={{ fontSize: 12.5, marginTop: -8, marginBottom: 0, color: leave_balance.remaining < 0 ? "var(--danger)" : "var(--text-muted)" }}>
+                {leave_balance.used}/{leave_balance.annual_allowance} days used · {leave_balance.remaining} remaining ({leave_balance.year})
+                {leave_balance.remaining < 0 ? " · over allowance" : ""}
+              </p>
+              {leaves.length === 0 && <p className="muted">No leave requests yet.</p>}
+              {leaves.length > 0 && (
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {leaves.map((l) => (
+                    <li key={l.id} style={row}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, textTransform: "capitalize" }}>
+                          {l.leave_type} · {l.days}d
                         </div>
-                      )}
-                    </span>
-                    {l.status === "pending" ? (
-                      <span style={{ display: "flex", gap: 6 }}>
-                        <button
-                          className="btn btn-sm"
-                          disabled={busyKey === `leave-${l.id}`}
-                          onClick={() => decideLeave(l.id, "approved")}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          disabled={busyKey === `leave-${l.id}`}
-                          onClick={() => decideLeave(l.id, "rejected")}
-                        >
-                          Reject
-                        </button>
+                        <div className="muted" style={{ fontSize: 11.5 }}>
+                          {new Date(l.start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          {" – "}
+                          {new Date(l.end_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          {" · Submitted "}
+                          {submittedLabel(l.created_at)}
+                        </div>
+                        {l.reason && (
+                          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                            {l.reason}
+                          </div>
+                        )}
                       </span>
-                    ) : (
-                      <span className={`badge ${LEAVE_STATUS_BADGE[l.status] ?? ""}`}>{l.status}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
+                      {l.status === "pending" ? (
+                        <span style={{ display: "flex", gap: 6 }}>
+                          <button
+                            className="btn btn-sm"
+                            disabled={busyKey === `leave-${l.id}`}
+                            onClick={() => decideLeave(l.id, "approved")}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            disabled={busyKey === `leave-${l.id}`}
+                            onClick={() => decideLeave(l.id, "rejected")}
+                          >
+                            Reject
+                          </button>
+                        </span>
+                      ) : (
+                        <span className={`badge ${LEAVE_STATUS_BADGE[l.status] ?? ""}`}>{l.status}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <form className="card" onSubmit={addLeave}>
+              <span className="card-title">Add leave (already taken)</span>
+              <label className="field-label" style={{ marginTop: 0 }}>Leave type</label>
+              <Select
+                value={leaveForm.leave_type}
+                onChange={(v) => setLeaveForm((f) => ({ ...f, leave_type: v }))}
+                options={[
+                  { value: "annual", label: "Annual" },
+                  { value: "sick", label: "Sick" },
+                  { value: "unpaid", label: "Unpaid" },
+                  { value: "other", label: "Other" },
+                ]}
+                ariaLabel="Leave type"
+              />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label className="field-label">Start date</label>
+                  <DatePicker
+                    value={leaveForm.start_date}
+                    onChange={(v) => setLeaveForm((f) => ({ ...f, start_date: v }))}
+                    ariaLabel="Start date"
+                  />
+                </div>
+                <div>
+                  <label className="field-label">End date</label>
+                  <DatePicker
+                    value={leaveForm.end_date}
+                    onChange={(v) => setLeaveForm((f) => ({ ...f, end_date: v }))}
+                    min={leaveForm.start_date || undefined}
+                    ariaLabel="End date"
+                  />
+                </div>
+              </div>
+              <label className="field-label">Status</label>
+              <Select
+                value={leaveForm.status}
+                onChange={(v) => setLeaveForm((f) => ({ ...f, status: v }))}
+                options={[
+                  { value: "approved", label: "Approved (counts against annual leave)" },
+                  { value: "pending", label: "Pending" },
+                ]}
+                ariaLabel="Leave status"
+              />
+              <label className="field-label">Reason / note</label>
+              <textarea
+                className="input"
+                rows={2}
+                value={leaveForm.reason}
+                onChange={(e) => setLeaveForm((f) => ({ ...f, reason: e.target.value }))}
+                style={{ resize: "vertical", fontFamily: "inherit" }}
+              />
+              <button className="btn" style={{ marginTop: 14 }} disabled={addingLeave}>
+                {addingLeave ? "Saving…" : "Add leave"}
+              </button>
+            </form>
           </div>
         )}
 

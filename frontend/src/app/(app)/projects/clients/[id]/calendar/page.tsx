@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
+import { MonthYearSelect } from "@/components/MonthYearSelect";
+import { TimePicker } from "@/components/TimePicker";
 import { KpiCard } from "@/components/KpiCard";
 import { Modal } from "@/components/Modal";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -13,6 +15,7 @@ import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
+import { detectMeetingUrl } from "@/lib/meetingLinks";
 import { STATUS_BADGE, STATUS_COLOR } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 import { useShellFillHeight } from "@/lib/useShellFillHeight";
@@ -27,6 +30,7 @@ type ContentItem = {
   description: string;
   scheduled_date: string;
   deadline: string | null;
+  deadline_time: string | null;
   status: string;
   assignees: number[];
   assignee_names: { id: number; name: string }[];
@@ -52,6 +56,7 @@ const STATUSES = [
   { value: "planned", label: "To do" },
   { value: "in_progress", label: "In progress" },
   { value: "done", label: "Completed" },
+  { value: "published", label: "Published" },
 ];
 const DEFAULT_ACCENT = "#3673FC";
 
@@ -59,6 +64,18 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function toIso(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function formatCreatedAt(iso: string | null | undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 function startOfWeek(d: Date) {
   const x = new Date(d);
@@ -72,9 +89,18 @@ const emptyForm = {
   description: "",
   scheduled_date: "",
   deadline: "",
+  deadline_time: "",
   status: "planned",
   assignees: [] as number[],
 };
+
+function snapshotContentForm(f: typeof emptyForm, files: File[]) {
+  return JSON.stringify({
+    ...f,
+    assignees: [...f.assignees].sort((a, b) => a - b),
+    files: files.map((x) => `${x.name}:${x.size}`),
+  });
+}
 
 export default function ClientCalendarPage() {
   const params = useParams();
@@ -103,6 +129,7 @@ export default function ClientCalendarPage() {
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formBaseline = useRef("");
 
   const accent = client?.accent_color || DEFAULT_ACCENT;
 
@@ -140,10 +167,24 @@ export default function ClientCalendarPage() {
       description: item.description,
       scheduled_date: dayIso,
       deadline: dayIso,
+      deadline_time: item.deadline_time || "",
       status: item.status,
       assignees: item.assignees,
     });
     setAttachments([]);
+    formBaseline.current = snapshotContentForm(
+      {
+        content_type: item.content_type,
+        title: item.title,
+        description: item.description,
+        scheduled_date: dayIso,
+        deadline: dayIso,
+        deadline_time: item.deadline_time || "",
+        status: item.status,
+        assignees: item.assignees,
+      },
+      []
+    );
     setError(null);
     setModalOpen(true);
   }, [focusItemId, loading, items]);
@@ -186,6 +227,7 @@ export default function ClientCalendarPage() {
     () => ({
       total: items.length,
       done: items.filter((i) => i.status === "done").length,
+      published: items.filter((i) => i.status === "published").length,
       in_progress: items.filter((i) => i.status === "in_progress").length,
       planned: items.filter((i) => i.status === "planned").length,
     }),
@@ -207,38 +249,42 @@ export default function ClientCalendarPage() {
   const openCreate = (date: Date) => {
     resetForm();
     const day = toIso(date);
-    setForm((f) => ({
-      ...f,
-      // Calendar day = deadline (scheduled_date kept in sync for API/calendar).
+    const next = {
+      ...emptyForm,
       scheduled_date: day,
       deadline: day,
+      deadline_time: "",
       assignees: user?.id ? [user.id] : [],
-    }));
+    };
+    setForm(next);
+    formBaseline.current = snapshotContentForm(next, []);
     setModalOpen(true);
   };
 
   const openEdit = (item: ContentItem) => {
     setEditingId(item.id);
     const day = item.deadline || item.scheduled_date;
-    setForm({
+    const next = {
       content_type: item.content_type,
       title: item.title,
       description: item.description,
       scheduled_date: day,
       deadline: day,
+      deadline_time: item.deadline_time || "",
       status: item.status,
       assignees: item.assignees,
-    });
+    };
+    setForm(next);
+    formBaseline.current = snapshotContentForm(next, []);
     setAttachments([]);
     setError(null);
     setModalOpen(true);
   };
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const persistContent = async () => {
     if (!form.title.trim() || !form.deadline) {
       setError("Title and deadline are required.");
-      return;
+      return false;
     }
     setSaving(true);
     setError(null);
@@ -251,6 +297,8 @@ export default function ClientCalendarPage() {
       body.append("description", form.description);
       body.append("scheduled_date", day);
       body.append("deadline", day);
+      if (form.deadline_time) body.append("deadline_time", form.deadline_time);
+      else body.append("deadline_time", "");
       body.append("status", form.status);
       form.assignees.forEach((a) => body.append("assignees", String(a)));
       attachments.forEach((f) => body.append("attachments", f));
@@ -264,11 +312,34 @@ export default function ClientCalendarPage() {
       }
       closeModal();
       loadItems();
+      return true;
     } catch (err: any) {
       setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  const requestCloseModal = async () => {
+    if (saving) return;
+    if (snapshotContentForm(form, attachments) === formBaseline.current) {
+      closeModal();
+      return;
+    }
+    const result = await confirm("Save your changes, or exit without saving?", {
+      title: "Unsaved changes",
+      confirmLabel: "Save",
+      discardLabel: "Exit without saving",
+      cancelLabel: "Keep editing",
+    });
+    if (result === true) await persistContent();
+    else if (result === "discard") closeModal();
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await persistContent();
   };
 
   const remove = async () => {
@@ -295,22 +366,23 @@ export default function ClientCalendarPage() {
 
   const goPrev = () => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1));
   const goNext = () => setAnchor(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1));
-  const goToday = () => setAnchor(new Date());
+  const goToday = () => {
+    const t = new Date();
+    setAnchor(new Date(t.getFullYear(), t.getMonth(), 1));
+    setSelectedDate(t);
+  };
+  const jumpToMonth = (year: number, month: number) => {
+    setAnchor(new Date(year, month, 1));
+    const maxDay = new Date(year, month + 1, 0).getDate();
+    const day = Math.min(selectedDate.getDate(), maxDay);
+    setSelectedDate(new Date(year, month, day));
+  };
 
   const today = new Date();
   const editingItem = editingId ? items.find((i) => i.id === editingId) : null;
   const selectedItems = itemsByDate[toIso(selectedDate)] ?? [];
 
-  const detectMeeting = (text: string) => {
-    if (!text) return "";
-    for (const token of text.replace(/\n/g, " ").split(/\s+/)) {
-      const lower = token.toLowerCase().replace(/[.,);]+$/, "");
-      if (lower.includes("teams.microsoft.com") || lower.includes("meet.google.com")) {
-        return lower.startsWith("http") ? token.replace(/[.,);]+$/, "") : `https://${token.replace(/[.,);]+$/, "")}`;
-      }
-    }
-    return "";
-  };
+  const detectMeeting = (text: string) => detectMeetingUrl(text);
 
   const markDone = async (item: ContentItem) => {
     try {
@@ -355,16 +427,19 @@ export default function ClientCalendarPage() {
                 </span>
               )}
             </div>
-            <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>
-              Social media content calendar{client?.poc_name ? ` · POC: ${client.poc_name}` : ""}
-            </p>
+            {client?.poc_name ? (
+              <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>
+                POC: {client.poc_name}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, flexShrink: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, flexShrink: 0 }}>
         <KpiCard label="Total Items" value={counts.total} icon="bi-collection-fill" tone="blue" />
         <KpiCard label="Completed" value={counts.done} icon="bi-check-circle-fill" tone="mint" />
+        <KpiCard label="Published" value={counts.published} icon="bi-broadcast" tone="blue" />
         <KpiCard label="In Progress" value={counts.in_progress} icon="bi-hourglass-split" tone="amber" />
         <KpiCard label="To Do" value={counts.planned} icon="bi-calendar-event" tone="purple" />
       </div>
@@ -372,9 +447,13 @@ export default function ClientCalendarPage() {
       <div className="kwick-cal-layout">
         <div className="card" style={{ padding: 0, overflow: "hidden", minWidth: 0, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
           <div style={{ ...calHeader, background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)` }}>
-            <span style={{ fontSize: 17, fontWeight: 700 }}>
-              {anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-            </span>
+            <MonthYearSelect
+              light
+              month={anchor.getMonth()}
+              year={anchor.getFullYear()}
+              onMonthChange={(month) => jumpToMonth(anchor.getFullYear(), month)}
+              onYearChange={(year) => jumpToMonth(year, anchor.getMonth())}
+            />
             <div style={{ display: "flex", gap: 8 }}>
               <button className="icon-btn-anim" style={navBtn} onClick={goPrev} aria-label="Previous month">
                 <i className="bi bi-chevron-left" />
@@ -451,8 +530,8 @@ export default function ClientCalendarPage() {
                             ...itemChip,
                             background: `${STATUS_COLOR[it.status] ?? "var(--gold)"}1f`,
                             color: STATUS_COLOR[it.status] ?? "var(--gold)",
-                            textDecoration: it.status === "done" ? "line-through" : undefined,
-                            opacity: it.status === "done" ? 0.65 : 1,
+                            textDecoration: it.status === "published" ? "line-through" : undefined,
+                            opacity: it.status === "published" ? 0.65 : 1,
                             border: "none",
                             width: "100%",
                             textAlign: "left",
@@ -479,9 +558,6 @@ export default function ClientCalendarPage() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--navy)" }}>
                 {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
               </h2>
-            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
-              Content scheduled for this day
-            </p>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto", minHeight: 0 }}>
@@ -491,13 +567,14 @@ export default function ClientCalendarPage() {
             {selectedItems.map((it) => {
               const color = STATUS_COLOR[it.status] ?? accent;
               const meeting = detectMeeting(it.description || "");
-              const done = it.status === "done";
+              const finished = it.status === "published";
+              const completed = it.status === "done";
               return (
                 <div
                   key={it.id}
                   style={{
                     ...contentCard,
-                    opacity: done ? 0.72 : 1,
+                    opacity: finished ? 0.72 : 1,
                   }}
                 >
                   <div style={{ display: "flex", gap: 10 }}>
@@ -518,7 +595,7 @@ export default function ClientCalendarPage() {
                             fontSize: 13.5,
                             color: "var(--navy)",
                             cursor: "pointer",
-                            textDecoration: done ? "line-through" : undefined,
+                            textDecoration: finished ? "line-through" : undefined,
                             flex: 1,
                           }}
                           title="Edit content"
@@ -530,9 +607,9 @@ export default function ClientCalendarPage() {
                           className="btn btn-ghost btn-sm"
                           style={{ padding: "2px 8px", fontSize: 11 }}
                           onClick={() => markDone(it)}
-                          title={done ? "Mark as to do" : "Mark completed"}
+                          title={completed ? "Mark as to do" : "Mark completed"}
                         >
-                          <i className={`bi ${done ? "bi-arrow-counterclockwise" : "bi-check2"}`} />
+                          <i className={`bi ${completed ? "bi-arrow-counterclockwise" : "bi-check2"}`} />
                         </button>
                       </div>
                       <div className="muted" style={{ fontSize: 11.5, marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -543,6 +620,13 @@ export default function ClientCalendarPage() {
                           {statusLabel(it.status)}
                         </span>
                       </div>
+                      {(it.created_at || it.created_by_name) && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                          <i className="bi bi-clock" style={{ marginRight: 4 }} />
+                          Created {formatCreatedAt(it.created_at) || "—"}
+                          {it.created_by_name ? ` · ${it.created_by_name}` : ""}
+                        </div>
+                      )}
                       {it.assignee_names?.length > 0 && (
                         <div style={{ display: "flex", marginTop: 8 }}>
                           {it.assignee_names.slice(0, 5).map((a, i) => (
@@ -573,7 +657,7 @@ export default function ClientCalendarPage() {
                           style={joinBtn}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <i className="bi bi-camera-video-fill" /> Go to Meeting
+                          <i className="bi bi-camera-video-fill" /> Join Meeting
                         </a>
                       )}
                     </div>
@@ -591,7 +675,7 @@ export default function ClientCalendarPage() {
         </div>
       </div>
 
-      <Modal open={modalOpen} onClose={closeModal} wide>
+      <Modal open={modalOpen} onClose={requestCloseModal} wide>
         <form onSubmit={save}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span className="card-title" style={{ margin: 0 }}>
@@ -601,15 +685,26 @@ export default function ClientCalendarPage() {
               type="button"
               className="icon-btn-anim"
               style={closeBtn}
-              onClick={closeModal}
+              onClick={requestCloseModal}
               aria-label="Close"
             >
               <i className="bi bi-x-lg" />
             </button>
           </div>
+          {editingId && (() => {
+            const existing = items.find((i) => i.id === editingId);
+            if (!existing?.created_at && !existing?.created_by_name) return null;
+            return (
+              <p className="muted" style={{ fontSize: 12.5, margin: "8px 0 0" }}>
+                <i className="bi bi-clock" style={{ marginRight: 6 }} />
+                Created {formatCreatedAt(existing.created_at) || "—"}
+                {existing.created_by_name ? ` by ${existing.created_by_name}` : ""}
+              </p>
+            );
+          })()}
 
           <div className="kwick-form-wide" style={{ marginTop: 14 }}>
-            <div className="kwick-form-wide__row kwick-form-wide__row--3">
+            <div className="kwick-form-wide__row kwick-form-wide__row--2">
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Content type</label>
                 <Select
@@ -628,16 +723,29 @@ export default function ClientCalendarPage() {
                   ariaLabel="Status"
                 />
               </div>
-              <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Assign people</label>
-                <MultiSelect
-                  values={form.assignees.map(String)}
-                  onChange={(vals) => setForm((f) => ({ ...f, assignees: vals.map(Number) }))}
-                  options={assigneeOptions}
-                  placeholder="Select people…"
-                  ariaLabel="Assign people"
-                />
-              </div>
+            </div>
+
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Assign people</label>
+              <MultiSelect
+                values={form.assignees.map(String)}
+                onChange={(vals) => setForm((f) => ({ ...f, assignees: vals.map(Number) }))}
+                options={assigneeOptions}
+                placeholder="Select one or more people…"
+                ariaLabel="Assign people"
+              />
+              {form.assignees.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {form.assignees.map((id) => {
+                    const label = assigneeOptions.find((o) => o.value === String(id))?.label || `User ${id}`;
+                    return (
+                      <span key={id} className="badge badge-muted" style={{ fontSize: 12 }}>
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
@@ -662,7 +770,7 @@ export default function ClientCalendarPage() {
               />
             </div>
 
-            <div className="kwick-form-wide__row kwick-form-wide__row--2">
+            <div className="kwick-form-wide__row kwick-form-wide__row--3">
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Deadline</label>
                 <DatePicker
@@ -672,9 +780,19 @@ export default function ClientCalendarPage() {
                       ...f,
                       deadline: v,
                       scheduled_date: v,
+                      deadline_time: v ? f.deadline_time : "",
                     }))
                   }
                   ariaLabel="Deadline"
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Deadline time</label>
+                <TimePicker
+                  value={form.deadline_time}
+                  onChange={(v) => setForm((f) => ({ ...f, deadline_time: v }))}
+                  ariaLabel="Deadline time"
+                  disabled={!form.deadline}
                 />
               </div>
               <div>
@@ -735,7 +853,7 @@ export default function ClientCalendarPage() {
                 if (!existing.length || attachments.length > 0) return null;
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span className="muted" style={{ fontSize: 12 }}>Current attachments kept unless you choose new files:</span>
+                    <span className="muted" style={{ fontSize: 12 }}>Attachments</span>
                     {existing.map((url, i) => (
                       <a
                         key={url}
@@ -758,7 +876,7 @@ export default function ClientCalendarPage() {
                 <button className="btn" disabled={saving}>
                   {saving ? "Saving…" : editingId ? "Save changes" : "Add item"}
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={closeModal}>
+                <button type="button" className="btn btn-ghost" onClick={requestCloseModal}>
                   Cancel
                 </button>
                 {editingId && (

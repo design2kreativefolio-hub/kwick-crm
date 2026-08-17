@@ -3,8 +3,16 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from common.maintenance import (
+    SiteInMaintenance,
+    allowlist_emails,
+    is_allowlisted,
+    is_blocked_by_maintenance,
+    maintenance_enabled,
+    set_maintenance_enabled,
+)
 from common.permissions import IsActive, IsSuperadmin
 from common.services import log_activity
 from notifications.services import refresh_daily_reminder, stop_recurring_reminder
@@ -21,7 +29,7 @@ from .serializers import (
     UpdateProfileSerializer,
     UserSerializer,
 )
-from .tasks import send_approval_email
+from .tasks import dispatch_email_task, send_approval_email
 
 
 class RegisterView(APIView):
@@ -52,6 +60,68 @@ class RegisterView(APIView):
 
 class LoginView(TokenObtainPairView):
     serializer_class = KwickTokenObtainPairSerializer
+
+
+class KwickTokenRefreshView(TokenRefreshView):
+    """Reject leftover refresh tokens while maintenance is on."""
+
+    def post(self, request, *args, **kwargs):
+        if maintenance_enabled():
+            from rest_framework_simplejwt.exceptions import TokenError
+            from rest_framework_simplejwt.tokens import RefreshToken
+
+            raw = (request.data or {}).get("refresh")
+            if raw:
+                try:
+                    token = RefreshToken(raw)
+                    user = User.objects.filter(pk=token["user_id"]).first()
+                    if is_blocked_by_maintenance(user):
+                        raise SiteInMaintenance()
+                except TokenError:
+                    pass
+        return super().post(request, *args, **kwargs)
+
+
+class MaintenanceView(APIView):
+    """GET is public (login page banner). POST is the allowlisted developer."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        user = request.user if request.user and request.user.is_authenticated else None
+        return Response(
+            {
+                "enabled": maintenance_enabled(),
+                "can_bypass": is_allowlisted(user) if user else False,
+                "allowlist_configured": bool(allowlist_emails()),
+            }
+        )
+
+    def post(self, request):
+        user = request.user
+        if not user or not user.is_authenticated or not is_allowlisted(user):
+            return Response(
+                {"detail": "Only the developer account can change maintenance mode."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        enabled = request.data.get("enabled")
+        if enabled is None:
+            return Response({"detail": "Send {\"enabled\": true|false}."}, status=400)
+        try:
+            on = set_maintenance_enabled(bool(enabled))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        log_activity(
+            actor=user,
+            action=f"{'enabled' if on else 'disabled'} maintenance mode",
+        )
+        return Response(
+            {
+                "enabled": on,
+                "can_bypass": True,
+                "allowlist_configured": bool(allowlist_emails()),
+            }
+        )
 
 
 class MeView(APIView):
@@ -126,7 +196,7 @@ class ApproveUserView(APIView):
         # Approval email is email-only (no push) per spec §4. Self-registered
         # employees already have a password and just get notified; employees
         # added via HR (no password yet) get a set-password link instead.
-        send_approval_email.delay(user.id)
+        dispatch_email_task(send_approval_email, user.id)
         return Response({"id": user.id, "status": user.status})
 
 

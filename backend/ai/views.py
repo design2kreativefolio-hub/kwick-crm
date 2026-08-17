@@ -88,6 +88,7 @@ class AiChatView(APIView):
                 "title": conv.title,
                 "reply": result.get("reply") or "",
                 "links": result.get("links") or [],
+                "cards": result.get("cards") or {},
                 "attachments": result.get("attachments") or [],
                 "messages": ConversationDetailSerializer(conv).data["messages"],
             }

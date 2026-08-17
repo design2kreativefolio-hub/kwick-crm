@@ -18,8 +18,8 @@ from .services import build_agenda, detect_meeting_url
 class AgendaView(APIView):
     """GET /api/calendar/agenda?from=&to=&scope=
 
-    Personal calendar should always pass scope=self so each user (including
-    superadmin) only sees their own assignments / reminders / todos.
+    Personal calendar (scope=self) shows the user's own tasks/reminders/todos
+    plus every client's content-calendar item (company-wide).
     """
 
     permission_classes = [IsActive]

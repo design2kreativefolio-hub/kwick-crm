@@ -36,6 +36,7 @@ class Client(TimeStampedModel):
     # from the Projects > Clients directory (open to employees too, unlike
     # the rest of this model which stays manager-only via Sales).
     services = models.JSONField(default=list, blank=True)
+    other_service = models.CharField(max_length=200, blank=True, default="")
     # Per-client branding — lets the Projects > Clients list and each
     # client's content calendar carry that client's own color/logo instead
     # of one generic look, so clients are visually distinguishable at a
@@ -54,6 +55,33 @@ class Client(TimeStampedModel):
 
     class Meta:
         ordering = ["name"]
+
+    def apply_poc_from_first_executive(self, *, save: bool = False) -> bool:
+        """Default Projects > Clients POC from the first company executive
+        (name + phone). Returns True when fields were updated."""
+        first = next(
+            (
+                e
+                for e in (self.executives or [])
+                if isinstance(e, dict)
+                and ((e.get("name") or "").strip() or (e.get("phone") or "").strip())
+            ),
+            None,
+        )
+        if not first:
+            return False
+        new_name = (first.get("name") or "").strip()
+        new_phone = (first.get("phone") or "").strip()
+        changed = False
+        if new_name and self.poc_name != new_name:
+            self.poc_name = new_name
+            changed = True
+        if new_phone and self.contact_phone != new_phone:
+            self.contact_phone = new_phone
+            changed = True
+        if changed and save:
+            self.save(update_fields=["poc_name", "contact_phone", "updated_at"])
+        return changed
 
     def __str__(self):
         return self.name

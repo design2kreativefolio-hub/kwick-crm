@@ -30,3 +30,22 @@ class ActivityLog(models.Model):
 
     def __str__(self):
         return self.action
+
+
+class SiteConfig(models.Model):
+    """Singleton (pk=1) for deploy-wide flags such as maintenance mode."""
+
+    maintenance_mode = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Site config"
+        verbose_name_plural = "Site config"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+        SiteConfig.objects.exclude(pk=1).delete()
+
+    def __str__(self):
+        return "Site config"

@@ -18,6 +18,7 @@ type Client = {
   contact_phone: string;
   notes: string;
   services: string[];
+  other_service: string;
   accent_color: string;
   logo_url: string;
 };
@@ -43,6 +44,7 @@ const emptyForm = {
   contact_phone: "",
   notes: "",
   services: [] as string[],
+  other_service: "",
   accent_color: DEFAULT_ACCENT,
 };
 
@@ -64,7 +66,10 @@ export default function ProjectClientsPage() {
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingServices, setEditingServices] = useState<string[]>([]);
+  const [editingOtherService, setEditingOtherService] = useState("");
   const [editingAccent, setEditingAccent] = useState(DEFAULT_ACCENT);
+  const [editingPocName, setEditingPocName] = useState("");
+  const [editingPocPhone, setEditingPocPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -80,10 +85,11 @@ export default function ProjectClientsPage() {
   useEffect(load, []);
 
   const toggleFormService = (value: string) => {
-    setForm((f) => ({
-      ...f,
-      services: f.services.includes(value) ? f.services.filter((v) => v !== value) : [...f.services, value],
-    }));
+    setForm((f) => {
+      const on = f.services.includes(value);
+      const services = on ? f.services.filter((v) => v !== value) : [...f.services, value];
+      return { ...f, services, other_service: value === "other" && on ? "" : f.other_service };
+    });
   };
 
   const addClient = async (e: React.FormEvent) => {
@@ -101,6 +107,7 @@ export default function ProjectClientsPage() {
           contact_phone: form.contact_phone.trim(),
           notes: form.notes.trim(),
           services: form.services,
+          other_service: form.services.includes("other") ? form.other_service.trim() : "",
           accent_color: form.accent_color,
         }),
       });
@@ -120,13 +127,20 @@ export default function ProjectClientsPage() {
   const startEdit = (c: Client) => {
     setEditingId(c.id);
     setEditingServices(c.services || []);
+    setEditingOtherService(c.other_service || "");
     setEditingAccent(c.accent_color || DEFAULT_ACCENT);
+    setEditingPocName(c.poc_name || "");
+    setEditingPocPhone(c.contact_phone || "");
   };
 
   const closeEdit = () => setEditingId(null);
 
   const toggleService = (value: string) => {
-    setEditingServices((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+    setEditingServices((prev) => {
+      const on = prev.includes(value);
+      if (value === "other" && on) setEditingOtherService("");
+      return on ? prev.filter((v) => v !== value) : [...prev, value];
+    });
   };
 
   const saveClientEdits = async () => {
@@ -135,7 +149,13 @@ export default function ProjectClientsPage() {
     try {
       await api(`/api/projects/clients/${editingId}`, {
         method: "PATCH",
-        body: JSON.stringify({ services: editingServices, accent_color: editingAccent }),
+        body: JSON.stringify({
+          services: editingServices,
+          other_service: editingServices.includes("other") ? editingOtherService.trim() : "",
+          accent_color: editingAccent,
+          poc_name: editingPocName.trim(),
+          contact_phone: editingPocPhone.trim(),
+        }),
       });
       showToast("Client updated.");
       closeEdit();
@@ -168,9 +188,6 @@ export default function ProjectClientsPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Clients</h1>
-          <p className="muted" style={{ marginTop: 4 }}>
-            Current clients and which services we provide them.
-          </p>
         </div>
         <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
           <i className="bi bi-plus-lg" /> Add Client
@@ -205,7 +222,6 @@ export default function ProjectClientsPage() {
                 <label className="field-label" style={{ marginTop: 0 }}>Point of Contact — name</label>
                 <input
                   className="input"
-                  placeholder="Person's name"
                   value={form.poc_name}
                   onChange={(e) => setForm((f) => ({ ...f, poc_name: e.target.value }))}
                 />
@@ -214,7 +230,6 @@ export default function ProjectClientsPage() {
                 <label className="field-label" style={{ marginTop: 0 }}>Point of Contact — number</label>
                 <input
                   className="input"
-                  placeholder="Phone number"
                   value={form.contact_phone}
                   onChange={(e) => setForm((f) => ({ ...f, contact_phone: e.target.value }))}
                 />
@@ -225,7 +240,6 @@ export default function ProjectClientsPage() {
               <textarea
                 className="input"
                 rows={3}
-                placeholder="What does this client need from us?"
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 style={{ resize: "vertical" }}
@@ -233,9 +247,6 @@ export default function ProjectClientsPage() {
             </div>
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Accent color</label>
-              <p className="muted" style={{ fontSize: 12, marginTop: -2, marginBottom: 8 }}>
-                Shown on this client's card and their content calendar so it's easy to tell apart from others.
-              </p>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <input
                   type="color"
@@ -261,6 +272,17 @@ export default function ProjectClientsPage() {
                   </label>
                 ))}
               </div>
+              {form.services.includes("other") && (
+                <div style={{ marginTop: 10 }}>
+                  <label className="field-label" style={{ marginTop: 0 }}>Other service</label>
+                  <input
+                    className="input"
+                    value={form.other_service}
+                    onChange={(e) => setForm((f) => ({ ...f, other_service: e.target.value }))}
+                    placeholder="Describe the other service…"
+                  />
+                </div>
+              )}
             </div>
 
             {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
@@ -311,10 +333,11 @@ export default function ProjectClientsPage() {
                   <div style={tileBody}>
                     <div className="muted" style={{ fontSize: 12.5, display: "flex", flexDirection: "column", gap: 4 }}>
                       <span><i className="bi bi-calendar3" style={{ marginRight: 6, color: accent }} />Started {formatDate(c.start_date)}</span>
-                      {c.poc_name && (
+                      {(c.poc_name || c.contact_phone) && (
                         <span>
                           <i className="bi bi-person-fill" style={{ marginRight: 6, color: accent }} />
-                          {c.poc_name}{c.contact_phone ? ` · ${c.contact_phone}` : ""}
+                          {c.poc_name || "POC"}
+                          {c.contact_phone ? ` · ${c.contact_phone}` : ""}
                         </span>
                       )}
                     </div>
@@ -323,7 +346,7 @@ export default function ProjectClientsPage() {
                       {c.services.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No services set.</span>}
                       {c.services.map((s) => (
                         <span key={s} className="badge badge-muted">
-                          {SERVICE_LABEL[s] ?? s}
+                          {s === "other" ? (c.other_service || SERVICE_LABEL[s]) : (SERVICE_LABEL[s] ?? s)}
                         </span>
                       ))}
                     </div>
@@ -352,6 +375,26 @@ export default function ProjectClientsPage() {
               <button type="button" className="icon-btn-anim" style={closeBtn} onClick={closeEdit} aria-label="Close">
                 <i className="bi bi-x-lg" />
               </button>
+            </div>
+
+            <label className="field-label" style={{ marginTop: 16 }}>Point of contact</label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Name</label>
+                <input
+                  className="input"
+                  value={editingPocName}
+                  onChange={(e) => setEditingPocName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Phone number</label>
+                <input
+                  className="input"
+                  value={editingPocPhone}
+                  onChange={(e) => setEditingPocPhone(e.target.value)}
+                />
+              </div>
             </div>
 
             <label className="field-label" style={{ marginTop: 16 }}>Accent color</label>
@@ -396,7 +439,18 @@ export default function ProjectClientsPage() {
                   {s.label}
                 </label>
               ))}
-            </div>
+              </div>
+              {editingServices.includes("other") && (
+                <div style={{ marginTop: 10 }}>
+                  <label className="field-label" style={{ marginTop: 0 }}>Other service</label>
+                  <input
+                    className="input"
+                    value={editingOtherService}
+                    onChange={(e) => setEditingOtherService(e.target.value)}
+                    placeholder="Describe the other service…"
+                  />
+                </div>
+              )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
               <button className="btn" disabled={saving} onClick={saveClientEdits}>

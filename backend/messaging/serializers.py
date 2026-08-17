@@ -1,10 +1,13 @@
 from rest_framework import serializers
 
+from common.media_urls import user_avatar_url
+
 from .models import Conversation, Message
 
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_name = serializers.CharField(source="sender.full_name", read_only=True, default="")
+    sender_avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -13,6 +16,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "conversation",
             "sender",
             "sender_name",
+            "sender_avatar_url",
             "body",
             "is_system",
             "attachment_url",
@@ -22,12 +26,25 @@ class MessageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "sender",
+            "sender_avatar_url",
             "is_system",
             "attachment_url",
             "attachment_type",
             "attachment_name",
             "created_at",
         ]
+
+    def get_sender_avatar_url(self, obj):
+        return user_avatar_url(obj.sender)
+
+
+def _participant_payload(user):
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "avatar_url": user_avatar_url(user),
+    }
 
 
 class ConversationSerializer(serializers.ModelSerializer):
@@ -52,7 +69,7 @@ class ConversationSerializer(serializers.ModelSerializer):
         read_only_fields = ["participants", "is_group"]
 
     def get_last_message(self, obj):
-        msg = obj.messages.last()
+        msg = obj.messages.select_related("sender__profile").last()
         return MessageSerializer(msg).data if msg else None
 
     def get_other_participant(self, obj):
@@ -61,10 +78,10 @@ class ConversationSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request:
             return None
-        other = obj.participants.exclude(pk=request.user.pk).first()
+        other = obj.participants.select_related("profile").exclude(pk=request.user.pk).first()
         if not other:
             return None
-        return {"id": other.id, "full_name": other.full_name, "email": other.email}
+        return _participant_payload(other)
 
     def get_unread_count(self, obj):
         request = self.context.get("request")
@@ -81,5 +98,6 @@ class ConversationSerializer(serializers.ModelSerializer):
         if not obj.is_group:
             return None
         return [
-            {"id": p.id, "full_name": p.full_name, "email": p.email} for p in obj.participants.all()
+            _participant_payload(p)
+            for p in obj.participants.select_related("profile").all()
         ]

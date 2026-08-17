@@ -79,7 +79,7 @@ def _add_team(ctx: dict, user) -> None:
             qs = qs.exclude(id=user.id)
 
         people = []
-        for u in qs[:25]:
+        for u in qs[:80]:
             row = {
                 "id": u.id,
                 "name": _person_name(u),
@@ -116,16 +116,24 @@ def _add_tasks(ctx: dict, user) -> None:
     try:
         from tasks.models import Task
 
+        terminal = (Task.Status.COMPLETED, Task.Status.PUBLISHED)
         task_qs = (
-            Task.objects.exclude(status=Task.Status.COMPLETED)
+            Task.objects.exclude(status__in=terminal)
             .select_related("assignee", "project")
+            .prefetch_related("assignees")
             .order_by("due_date", "title")
         )
         if not is_superadmin(user):
-            task_qs = task_qs.filter(assignee=user)
+            task_qs = task_qs.filter(Q(assignee=user) | Q(assignees=user)).distinct()
 
         rows = []
-        for t in task_qs[:20]:
+        for t in task_qs[:40]:
+            extra = [_person_name(u) for u in t.assignees.all()]
+            assignee = _person_name(t.assignee)
+            names = []
+            for n in [assignee, *extra]:
+                if n and n not in names and n != "Unassigned":
+                    names.append(n)
             rows.append(
                 {
                     "id": t.id,
@@ -133,8 +141,9 @@ def _add_tasks(ctx: dict, user) -> None:
                     "status": t.status,
                     "priority": t.priority,
                     "due_date": t.due_date.isoformat() if t.due_date else None,
-                    "assignee": _person_name(t.assignee),
+                    "assignee": assignee,
                     "assignee_id": t.assignee_id,
+                    "assignees": names or [assignee],
                     "project": t.project.name if t.project_id else None,
                     "client_name": t.client_name or None,
                 }
@@ -142,11 +151,11 @@ def _add_tasks(ctx: dict, user) -> None:
         ctx["open_tasks_count"] = task_qs.count()
         ctx["open_tasks"] = rows
 
-        # Compact “who is doing what” rollup for managers
         if is_superadmin(user):
             by_person: dict[str, int] = {}
             for t in rows:
-                by_person[t["assignee"]] = by_person.get(t["assignee"], 0) + 1
+                for n in t.get("assignees") or [t["assignee"]]:
+                    by_person[n] = by_person.get(n, 0) + 1
             ctx["workload"] = [
                 {"person": name, "open_tasks": n}
                 for name, n in sorted(by_person.items(), key=lambda x: (-x[1], x[0]))

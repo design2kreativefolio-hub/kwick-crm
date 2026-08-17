@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EdithOrb } from "@/components/EdithOrb";
+import { useMaintenanceGate } from "@/components/MaintenanceBar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserAvatar } from "@/components/UserAvatar";
 import { api } from "@/lib/api";
@@ -39,6 +40,7 @@ export function Topbar({
 }) {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { status: maintenance, busy: maintenanceBusy, toggle: toggleMaintenance } = useMaintenanceGate();
   const { notifUnread: unread } = useLiveUpdates();
   const { perm, enable, needsPrompt } = useNotificationPermissionState();
   const { showToast } = useToast();
@@ -287,6 +289,19 @@ export function Topbar({
                   <Link href="/logs" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                     <i className="bi bi-clock-history" /> Logs
                   </Link>
+                )}
+                {maintenance?.can_bypass && (
+                  <button
+                    style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}
+                    disabled={maintenanceBusy}
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      await toggleMaintenance();
+                    }}
+                  >
+                    <i className={`bi ${maintenance.enabled ? "bi-unlock-fill" : "bi-tools"}`} />
+                    {maintenance.enabled ? "End maintenance" : "Start maintenance"}
+                  </button>
                 )}
                 <button
                   style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}

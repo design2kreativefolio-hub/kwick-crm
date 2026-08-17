@@ -10,12 +10,16 @@ class ClientSerializer(serializers.ModelSerializer):
         model = Client
         fields = [
             "id",
+            "client_id",
             "name",
             "contact_email",
             "contact_phone",
             "company",
             "notes",
+            "start_date",
+            "poc_name",
             "services",
+            "other_service",
             "website",
             "address",
             "trade_license_url",
@@ -27,20 +31,52 @@ class ClientSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["logo_url"]
+        read_only_fields = ["client_id", "logo_url"]
 
     def _sync_company(self, validated_data):
-        # Sales treats company name and name as the same identity field.
+        # Sales treats client name and company as the same identity field.
         name = validated_data.get("name")
         if name is not None:
             validated_data["company"] = name
         return validated_data
 
+    def _sync_poc_from_executives(self, validated_data, instance=None):
+        """First company executive → Projects POC name + number."""
+        executives = validated_data.get("executives", None)
+        if executives is None and instance is not None:
+            executives = instance.executives
+        first = next(
+            (
+                e
+                for e in (executives or [])
+                if isinstance(e, dict)
+                and ((e.get("name") or "").strip() or (e.get("phone") or "").strip())
+            ),
+            None,
+        )
+        if not first:
+            return validated_data
+        name = (first.get("name") or "").strip()
+        phone = (first.get("phone") or "").strip()
+        if name:
+            validated_data["poc_name"] = name
+        if phone:
+            validated_data["contact_phone"] = phone
+        return validated_data
+
     def create(self, validated_data):
-        return super().create(self._sync_company(validated_data))
+        from sales.services import generate_client_id
+
+        validated_data = self._sync_company(validated_data)
+        validated_data = self._sync_poc_from_executives(validated_data)
+        if not (validated_data.get("client_id") or "").strip():
+            validated_data["client_id"] = generate_client_id()
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        return super().update(instance, self._sync_company(validated_data))
+        validated_data = self._sync_company(validated_data)
+        validated_data = self._sync_poc_from_executives(validated_data, instance)
+        return super().update(instance, validated_data)
 
 
 class ProposalSerializer(serializers.ModelSerializer):
@@ -65,17 +101,23 @@ class ProposalSerializer(serializers.ModelSerializer):
     def get_client_name(self, obj):
         if obj.client_id:
             return obj.client.name
-        return (obj.content or {}).get("home", {}).get("client_name", "")
+        home = (obj.content or {}).get("home")
+        if isinstance(home, dict):
+            return home.get("client_name", "") or ""
+        return ""
 
     def _synced_title(self, content, fallback):
-        title = (content or {}).get("home", {}).get("title", "").strip()
+        home = (content or {}).get("home") if isinstance(content, dict) else None
+        if not isinstance(home, dict):
+            return fallback
+        title = (home.get("title") or "").strip()
         return title or fallback
 
     def create(self, validated_data):
         # Always store a fully-shaped content object (defaults filled in),
         # regardless of what the client posted — every section key is then
         # guaranteed present for the builder/preview/exports to read.
-        content = merged_content(validated_data.get("content"))
+        content = merged_content(validated_data.get("content") or {})
         validated_data["content"] = content
         # CRM/list/PDF-filename title is independent of the cover heading
         # (content.home.title). Default from cover only when none is supplied.

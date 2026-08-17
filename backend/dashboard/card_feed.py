@@ -11,14 +11,23 @@ SOURCE_HREF = {
     "renewal": "/renewals",
     "calendar": "/calendar",
     "task": "/tasks",
+    "content_calendar": "/tasks",
     "leave_request": "/hr/staff",
     "ticket": "/support",
     "document": "/hr/documents",
     "staff_renewal": "/hr/staff",
     "registration": "/hr/staff",
     "project": "/projects",
-    "content_calendar": "/projects/clients",
 }
+
+
+def _notification_href(ev: NotificationEvent) -> str:
+    ref = ev.object_ref or ""
+    if ref.startswith("task:"):
+        parts = ref.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return f"/tasks/{parts[1]}"
+    return SOURCE_HREF.get(ev.source, "/tasks" if ev.source in ("task", "content_calendar") else "")
 
 
 def _dismissed_ids(user, kind: str) -> set[int]:
@@ -99,7 +108,7 @@ def build_dashboard_card_items(user, *, limit: int = 24) -> list[dict]:
                 "title": ev.title,
                 "body": (ev.body or "")[:180],
                 "source": ev.source,
-                "href": SOURCE_HREF.get(ev.source, ""),
+                "href": _notification_href(ev),
                 "at": (ev.sent_at or ev.created_at).isoformat(),
                 "created_at": ev.created_at.isoformat(),
                 "read_at": ev.read_at.isoformat() if ev.read_at else None,

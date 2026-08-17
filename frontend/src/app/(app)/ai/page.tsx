@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EdithOrb } from "@/components/EdithOrb";
 import { EdithPlexus } from "@/components/EdithPlexus";
+import { EdithVisualCards, type EdithCards } from "@/components/EdithVisualCards";
 import { Logo } from "@/components/Logo";
 import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -21,6 +22,7 @@ type ChatMsg = {
   role: "user" | "assistant";
   content: string;
   links?: LinkItem[];
+  cards?: EdithCards;
   attachments?: Attachment[];
 };
 type ConversationSummary = {
@@ -148,6 +150,7 @@ export default function EdithPage() {
           role: "user" | "assistant";
           content: string;
           links?: LinkItem[];
+          cards?: EdithCards;
           attachments?: Attachment[];
         }[];
       }>(`/api/ai/conversations/${id}`);
@@ -158,6 +161,7 @@ export default function EdithPage() {
           role: m.role,
           content: m.content,
           links: m.links,
+          cards: m.cards,
           attachments: m.attachments,
         }))
       );
@@ -216,11 +220,13 @@ export default function EdithPage() {
         title: string;
         reply: string;
         links?: LinkItem[];
+        cards?: EdithCards;
         messages: {
           id: number;
           role: "user" | "assistant";
           content: string;
           links?: LinkItem[];
+          cards?: EdithCards;
           attachments?: Attachment[];
         }[];
       }>("/api/ai/chat", {
@@ -238,6 +244,7 @@ export default function EdithPage() {
           role: m.role,
           content: m.content,
           links: m.links,
+          cards: m.cards,
           attachments: m.attachments,
         }))
       );
@@ -444,6 +451,25 @@ export default function EdithPage() {
                       </motion.div>
                     ))}
                   </div>
+
+                  <div className="edith-ai__chips">
+                    {[
+                      { label: "Show my tasks", icon: "bi-check2-square" },
+                      { label: "Who is doing what?", icon: "bi-people" },
+                      { label: "My to-dos", icon: "bi-list-check" },
+                    ].map((c) => (
+                      <button
+                        key={c.label}
+                        type="button"
+                        className="edith-ai__chip"
+                        disabled={busy}
+                        onClick={() => void send(c.label)}
+                      >
+                        <i className={`bi ${c.icon}`} />
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div
@@ -465,6 +491,7 @@ export default function EdithPage() {
                           <EdithOrb size="xs" />
                         </span>
                       )}
+                      <div className="edith-ai__stack">
                       <div className={`edith-ai__bubble edith-ai__bubble--${m.role}`}>
                         {m.role === "assistant" && (
                           <div className="edith-ai__bubble-head">
@@ -544,6 +571,8 @@ export default function EdithPage() {
                             )}
                           </div>
                         )}
+                      </div>
+                      {m.role === "assistant" ? <EdithVisualCards cards={m.cards} /> : null}
                       </div>
                     </motion.div>
                   ))}

@@ -71,9 +71,6 @@ export default function SalesClientsPage() {
       {ConfirmDialog}
       <div>
         <h1 style={{ margin: 0, fontSize: 22 }}>Clients</h1>
-        <p className="muted" style={{ marginTop: 4 }}>
-          Sales clients directory.
-        </p>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -101,7 +98,7 @@ export default function SalesClientsPage() {
             <table className="kwick-table">
               <thead>
                 <tr>
-                  <th>Company</th>
+                  <th>Client</th>
                   <th>Contact Email</th>
                   <th>Contact Phone</th>
                   <th>Website</th>
@@ -109,10 +106,50 @@ export default function SalesClientsPage() {
                 </tr>
               </thead>
               <tbody>
-                {clients.map((c) => (
+                {clients.map((c) => {
+                  const initial = (c.name || "?").trim().charAt(0).toUpperCase();
+                  const accent = c.accent_color || "#3673FC";
+                  return (
                   <tr key={c.id}>
                     <td>
-                      <Link href={`/sales/clients/${c.id}`} style={{ fontWeight: 600, color: "var(--navy)" }}>
+                      <Link
+                        href={`/sales/clients/${c.id}`}
+                        style={{
+                          fontWeight: 600,
+                          color: "var(--navy)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 10,
+                          textDecoration: "none",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 36,
+                            height: 36,
+                            minWidth: 36,
+                            borderRadius: "50%",
+                            overflow: "hidden",
+                            display: "grid",
+                            placeItems: "center",
+                            background: accent,
+                            color: "#fff",
+                            fontWeight: 700,
+                            fontSize: 14,
+                            boxShadow: `0 0 0 2px ${accent}33`,
+                          }}
+                        >
+                          {c.logo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={c.logo_url}
+                              alt=""
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          ) : (
+                            initial
+                          )}
+                        </span>
                         {c.name}
                       </Link>
                     </td>
@@ -138,7 +175,8 @@ export default function SalesClientsPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

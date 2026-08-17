@@ -100,16 +100,20 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _save_message(self, user_id, conversation_id, body):
+        from common.media_urls import user_avatar_url
+
         from .models import Message
 
         msg = Message.objects.create(
             conversation_id=conversation_id, sender_id=user_id, body=body
         )
+        msg = Message.objects.select_related("sender__profile").get(pk=msg.pk)
         return {
             "id": msg.id,
             "conversation": conversation_id,
             "sender": user_id,
             "sender_name": msg.sender.full_name,
+            "sender_avatar_url": user_avatar_url(msg.sender),
             "body": msg.body,
             "is_system": False,
             "attachment_url": "",

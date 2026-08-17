@@ -8,6 +8,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def dispatch_email_task(task, *args, **kwargs):
+    """Queue on Celery; if the broker is down, send inline so approvals still mail."""
+    try:
+        return task.delay(*args, **kwargs)
+    except Exception:
+        logger.exception("Celery queue failed for %s — sending synchronously", task.name)
+        return task(*args, **kwargs)
+
+
 def _send_user_email(*, subject: str, message: str, recipient: str) -> None:
     """Send mail and log failures — approval mail runs on Celery, so silent
     SMTP errors previously looked like 'email never sent' on localhost."""
@@ -21,6 +30,8 @@ def _send_user_email(*, subject: str, message: str, recipient: str) -> None:
         )
         if not sent:
             logger.error("Email to %s returned 0: %s", recipient, subject)
+        else:
+            logger.info("Email sent to %s: %s", recipient, subject)
     except Exception:
         logger.exception("Failed sending email to %s: %s", recipient, subject)
         raise

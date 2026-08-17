@@ -150,6 +150,8 @@ def merged_content(raw: dict) -> dict:
     label) comes back as that field's default instead of simply absent."""
     base = default_content()
     raw = raw or {}
+    if not isinstance(raw, dict):
+        return base
     for key, default_value in base.items():
         value = raw.get(key)
         if value is None:

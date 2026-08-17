@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
+import { UserAvatar } from "@/components/UserAvatar";
 import { api, ApiError, tokens, unwrapList } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
@@ -14,6 +15,7 @@ type Message = {
   conversation: number;
   sender: number;
   sender_name: string;
+  sender_avatar_url?: string;
   body: string;
   is_system?: boolean;
   attachment_url: string;
@@ -22,7 +24,7 @@ type Message = {
   created_at: string;
 };
 
-type Participant = { id: number; full_name: string; email: string };
+type Participant = { id: number; full_name: string; email: string; avatar_url?: string };
 
 type Conversation = {
   id: number;
@@ -36,13 +38,50 @@ type Conversation = {
   created_at: string;
 };
 
-type Contact = { id: number; full_name: string; email: string; role: string };
+type Contact = { id: number; full_name: string; email: string; role: string; avatar_url?: string };
 
 const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000";
 const MAX_ATTACHMENT_SIZE = 30 * 1024 * 1024; // 30MB — mirrors the backend limit
 
-function initials(name: string) {
-  return (name || "?").trim()[0]?.toUpperCase() || "?";
+function ChatAvatar({
+  name,
+  email,
+  avatarUrl,
+  size = 38,
+  group = false,
+  style,
+}: {
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  size?: number;
+  group?: boolean;
+  style?: React.CSSProperties;
+}) {
+  if (group) {
+    return (
+      <span
+        style={{
+          ...avatar,
+          width: size,
+          height: size,
+          minWidth: size,
+          background: "#7C4FE0",
+          color: "var(--on-brand)",
+          ...style,
+        }}
+      >
+        <i className="bi bi-people-fill" style={{ fontSize: Math.max(12, size * 0.4) }} />
+      </span>
+    );
+  }
+  return (
+    <UserAvatar
+      user={{ full_name: name || "", email: email || "", profile: { avatar_url: avatarUrl || "" } }}
+      size={size}
+      style={style}
+    />
+  );
 }
 function dateLabel(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -428,7 +467,7 @@ function ChatPageInner() {
   }, [contacts, newChatSearch]);
 
   const editGroupPeople = useMemo(() => {
-    const map = new Map<number, { id: number; full_name: string; email: string; role?: string }>();
+    const map = new Map<number, { id: number; full_name: string; email: string; role?: string; avatar_url?: string }>();
     for (const c of contacts) map.set(c.id, c);
     for (const p of selected?.participants_detail || []) {
       if (!map.has(p.id)) map.set(p.id, p);
@@ -438,6 +477,7 @@ function ChatPageInner() {
         id: user.id,
         full_name: user.full_name || "You",
         email: user.email || "",
+        avatar_url: user.profile?.avatar_url || "",
       });
     }
     const q = editGroupSearch.trim().toLowerCase();
@@ -462,7 +502,12 @@ function ChatPageInner() {
       {ConfirmDialog}
       <div className={`chat-list-pane${selected ? " chat-pane-hidden-mobile" : ""}`} style={leftPane}>
         <div style={ownHeader}>
-          <span style={avatar}>{initials(user?.full_name || user?.email || "?")}</span>
+          <ChatAvatar
+            name={user?.full_name}
+            email={user?.email}
+            avatarUrl={user?.profile?.avatar_url}
+            size={38}
+          />
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>
               {user?.full_name || "You"}
@@ -499,9 +544,13 @@ function ChatPageInner() {
             const name = conversationName(c);
             return (
               <button key={c.id} onClick={() => setSelectedId(c.id)} style={{ ...convoRow, background: selectedId === c.id ? "var(--gold-soft)" : "transparent" }}>
-                <span style={{ ...avatar, background: c.is_group ? "#7C4FE0" : "var(--brand-fill)", color: "var(--on-brand)" }}>
-                  {c.is_group ? <i className="bi bi-people-fill" style={{ fontSize: 15 }} /> : initials(name)}
-                </span>
+                <ChatAvatar
+                  name={c.is_group ? conversationName(c) : c.other_participant?.full_name}
+                  email={c.other_participant?.email}
+                  avatarUrl={c.other_participant?.avatar_url}
+                  group={c.is_group}
+                  size={38}
+                />
                 <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {name}
@@ -537,9 +586,13 @@ function ChatPageInner() {
               >
                 <i className="bi bi-arrow-left" />
               </button>
-              <span style={{ ...avatar, background: selected.is_group ? "#7C4FE0" : "var(--brand-fill)", color: "var(--on-brand)" }}>
-                {selected.is_group ? <i className="bi bi-people-fill" style={{ fontSize: 15 }} /> : initials(conversationName(selected))}
-              </span>
+              <ChatAvatar
+                name={selected.is_group ? conversationName(selected) : selected.other_participant?.full_name}
+                email={selected.other_participant?.email}
+                avatarUrl={selected.other_participant?.avatar_url}
+                group={selected.is_group}
+                size={38}
+              />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 15, fontWeight: 700, display: "block" }}>{conversationName(selected)}</span>
                 {selected.is_group && selected.participants_detail && (
@@ -599,7 +652,14 @@ function ChatPageInner() {
                     const own = m.sender === user?.id;
                     return (
                       <div key={m.id} style={{ display: "flex", justifyContent: own ? "flex-end" : "flex-start", marginBottom: 4 }}>
-                        {!own && <span style={{ ...avatar, width: 30, height: 30, minWidth: 30, fontSize: 12, marginRight: 8 }}>{initials(m.sender_name)}</span>}
+                        {!own && (
+                          <ChatAvatar
+                            name={m.sender_name}
+                            avatarUrl={m.sender_avatar_url}
+                            size={30}
+                            style={{ marginRight: 8 }}
+                          />
+                        )}
                         <div style={{ maxWidth: 380 }}>
                           {!own && selected.is_group && (
                             <div className="muted" style={{ fontSize: 11, marginBottom: 2 }}>{m.sender_name}</div>
@@ -725,9 +785,12 @@ function ChatPageInner() {
                       onChange={() => toggleGroupMember(contact.id)}
                     />
                   )}
-                  <span style={{ ...avatar, width: 32, height: 32, minWidth: 32, fontSize: 12 }}>
-                    {initials(contact.full_name || contact.email)}
-                  </span>
+                  <ChatAvatar
+                    name={contact.full_name}
+                    email={contact.email}
+                    avatarUrl={contact.avatar_url}
+                    size={32}
+                  />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 600 }}>{contact.full_name || contact.email}</div>
                     <div className="muted" style={{ fontSize: 11, textTransform: "capitalize" }}>{contact.role}</div>
@@ -800,9 +863,12 @@ function ChatPageInner() {
                       checked={editSelection.includes(person.id)}
                       onChange={() => toggleEditMember(person.id)}
                     />
-                    <span style={{ ...avatar, width: 32, height: 32, minWidth: 32, fontSize: 12 }}>
-                      {initials(person.full_name || person.email)}
-                    </span>
+                    <ChatAvatar
+                      name={person.full_name}
+                      email={person.email}
+                      avatarUrl={person.avatar_url}
+                      size={32}
+                    />
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 600 }}>
                         {person.full_name || person.email}
@@ -816,7 +882,7 @@ function ChatPageInner() {
             </div>
 
             <p className="muted" style={{ fontSize: 12, marginTop: 0, marginBottom: 12 }}>
-              Selected: {editSelection.length} · uncheck someone to remove them (WhatsApp-style notices appear in the chat).
+              {editSelection.length} selected
             </p>
 
             <button

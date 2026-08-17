@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from common.maintenance import SiteInMaintenance, is_blocked_by_maintenance
+
 from .models import ModuleAccess, Role, StaffProfile, User, UserStatus
 
 
@@ -84,12 +86,12 @@ class ForgotPasswordSerializer(serializers.Serializer):
         return email
 
     def save(self):
-        from .tasks import send_forgot_password_email
+        from .tasks import dispatch_email_task, send_forgot_password_email
 
         user = self.context.get("reset_user")
         if not user:
             user = User.objects.get(email__iexact=self.validated_data["email"])
-        send_forgot_password_email.delay(user.id)
+        dispatch_email_task(send_forgot_password_email, user.id)
 
 
 class SetPasswordSerializer(serializers.Serializer):
@@ -206,7 +208,9 @@ class AvatarUploadSerializer(serializers.Serializer):
         # Cache-bust so browsers/CDN pick up an overwrite at the same path.
         from time import time
 
-        base = request.build_absolute_uri(default_storage.url(saved_path))
+        from common.media_urls import absolute_media_url
+
+        base = absolute_media_url(request, default_storage.url(saved_path))
         profile.avatar_url = f"{base}{'&' if '?' in base else '?'}v={int(time())}"
         profile.save(update_fields=["avatar_url", "updated_at"])
         return profile.avatar_url
@@ -221,6 +225,8 @@ class KwickTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise serializers.ValidationError(
                 "Account is not active yet. The superadmin must approve it before you can log in."
             )
+        if is_blocked_by_maintenance(self.user):
+            raise SiteInMaintenance()
         data["user"] = UserSerializer(self.user).data
         return data
 

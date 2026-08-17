@@ -1,23 +1,32 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export type SelectOption = { value: string; label: string };
 
+const OPTION_ROW_HEIGHT = 38;
+const PANEL_PADDING = 12;
+
+type SelectProps = {
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  /** Narrower, auto-width trigger — for inline controls like chart scope pickers. */
+  compact?: boolean;
+  ariaLabel?: string;
+  /** Max rows visible before the panel scrolls (e.g. 6 for month/year pickers). */
+  maxVisibleOptions?: number;
+  /** Light trigger for colored calendar headers. */
+  variant?: "default" | "light";
+  /** Minimum trigger/panel width in px. */
+  minPanelWidth?: number;
+};
+
 /**
- * Custom dropdown replacing native <select> — the browser's own popup can't
- * be styled (that's the "basic" look), so this renders the whole thing
- * ourselves: button trigger + an animated floating panel of options.
- *
- * The panel is rendered through a portal into document.body and positioned
- * with `fixed` coordinates computed from the trigger's own bounding box —
- * NOT as a CSS-absolute child of the trigger. A plain absolute child gets
- * silently clipped by any scrollable/overflow-hidden ancestor (e.g. a modal
- * with overflowY: auto) once the trigger sits near that ancestor's edge;
- * portaling to body escapes that entirely, the same fix real dropdown
- * libraries (Radix, Headless UI, etc.) use for this exact problem.
+ * Custom dropdown replacing native <select> — portaled to document.body so
+ * options are never clipped by overflow-hidden ancestors (modals, cards, etc.).
  */
 export function Select({
   value,
@@ -25,14 +34,10 @@ export function Select({
   options,
   compact = false,
   ariaLabel,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: SelectOption[];
-  /** Narrower, auto-width trigger — for inline controls like chart scope pickers. */
-  compact?: boolean;
-  ariaLabel?: string;
-}) {
+  maxVisibleOptions,
+  variant = "default",
+  minPanelWidth = 148,
+}: SelectProps) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -41,19 +46,28 @@ export function Select({
   const panelRef = useRef<HTMLUListElement>(null);
   const selected = options.find((o) => o.value === value);
 
+  const panelMaxHeight = useMemo(() => {
+    if (!maxVisibleOptions) return undefined;
+    const rows = Math.min(options.length, maxVisibleOptions);
+    return rows * OPTION_ROW_HEIGHT + PANEL_PADDING;
+  }, [maxVisibleOptions, options.length]);
+
   useEffect(() => setMounted(true), []);
 
   const reposition = () => {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    // Prefer opening downward; if near the viewport edge, keep the panel
-    // on-screen horizontally (minWidth follows the trigger so short
-    // compact status pickers can still fit labels like "Accepted").
-    const minWidth = Math.max(r.width, 148);
+    const minWidth = Math.max(r.width, minPanelWidth);
     const maxLeft = Math.max(8, window.innerWidth - minWidth - 8);
+    const visibleRows = maxVisibleOptions ? Math.min(options.length, maxVisibleOptions) : options.length;
+    const estimatedHeight = visibleRows * OPTION_ROW_HEIGHT + PANEL_PADDING;
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+
     setRect({
-      top: r.bottom + 6,
+      top: openUp ? Math.max(8, r.top - estimatedHeight - 6) : r.bottom + 6,
       left: Math.min(r.left, maxLeft),
       width: minWidth,
     });
@@ -61,9 +75,10 @@ export function Select({
 
   useLayoutEffect(() => {
     if (open) reposition();
-  }, [open]);
+  }, [open, options.length, maxVisibleOptions]);
 
   useEffect(() => {
+    if (!open) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as Node;
       const insideTrigger = containerRef.current?.contains(target);
@@ -73,8 +88,6 @@ export function Select({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    // Close when the page/modal scrolls so the floating panel doesn't drift —
-    // but ignore scroll that happens *inside* the panel itself (option list).
     const onScroll = (e: Event) => {
       const target = e.target as Node | null;
       if (panelRef.current && target && (target === panelRef.current || panelRef.current.contains(target))) {
@@ -92,7 +105,7 @@ export function Select({
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
-  }, []);
+  }, [open]);
 
   const panel = open && rect && (
     <motion.ul
@@ -103,10 +116,8 @@ export function Select({
       exit={{ opacity: 0, y: -6, scale: 0.98 }}
       transition={{ duration: 0.14, ease: "easeOut" }}
       className="select-panel"
-      // z-index inline (not just the CSS class) since this is portaled to
-      // document.body — it must out-rank every modal/overlay in the app
-      // (currently up to z-index 50), not just whatever ambient value the
-      // class happens to declare.
+      onWheel={(e) => e.stopPropagation()}
+      onScroll={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
         top: rect.top,
@@ -114,8 +125,11 @@ export function Select({
         minWidth: rect.width,
         width: "max-content",
         maxWidth: 320,
+        maxHeight: panelMaxHeight,
+        overflowY: maxVisibleOptions && options.length > maxVisibleOptions ? "auto" : undefined,
         right: "auto",
-        zIndex: 1000,
+        zIndex: 1100,
+        padding: 6,
       }}
     >
       {options.map((o) => (
@@ -146,8 +160,8 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        className="select-trigger"
-        style={compact ? { width: "auto", padding: "7px 12px", fontSize: 12.5 } : undefined}
+        className={`select-trigger${variant === "light" ? " select-trigger--light" : ""}`}
+        style={compact ? { width: "auto", minWidth: minPanelWidth, padding: "7px 12px", fontSize: 12.5 } : undefined}
       >
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {selected?.label ?? "Select…"}
@@ -156,7 +170,7 @@ export function Select({
           className="bi bi-chevron-down"
           style={{
             fontSize: 11,
-            color: "var(--text-muted)",
+            color: variant === "light" ? "rgba(255,255,255,0.85)" : "var(--text-muted)",
             transition: "transform 0.15s ease",
             transform: open ? "rotate(180deg)" : "none",
           }}

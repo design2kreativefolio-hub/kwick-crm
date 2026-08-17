@@ -25,7 +25,8 @@ export type Module =
   | "sales_proposals"
   | "sales_invoices"
   | "renewals"
-  | "reports";
+  | "reports"
+  | "passwords";
 
 const MODULE_CHILDREN: Partial<Record<Module, Module[]>> = {
   hr: ["hr_documents", "hr_staff"],
