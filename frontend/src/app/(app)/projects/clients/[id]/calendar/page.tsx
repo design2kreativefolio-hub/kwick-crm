@@ -436,7 +436,7 @@ export default function ClientCalendarPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, flexShrink: 0 }}>
+      <div className="client-cal-kpis">
         <KpiCard label="Total Items" value={counts.total} icon="bi-collection-fill" tone="blue" />
         <KpiCard label="Completed" value={counts.done} icon="bi-check-circle-fill" tone="mint" />
         <KpiCard label="Published" value={counts.published} icon="bi-broadcast" tone="blue" />
@@ -466,15 +466,19 @@ export default function ClientCalendarPage() {
               </button>
             </div>
           </div>
-          <div style={weekHeaderRow}>
+          <div className="client-cal-weekdays" style={weekHeaderRow}>
             {WEEKDAYS.map((d) => (
-              <div key={d} style={weekHeaderCell}>{d}</div>
+              <div key={d} className="client-cal-weekday" style={weekHeaderCell}>
+                <span className="client-cal-weekday-full">{d}</span>
+                <span className="client-cal-weekday-short">{d.charAt(0)}</span>
+              </div>
             ))}
           </div>
           {loading ? (
             <p className="muted" style={{ padding: 20 }}>Loading…</p>
           ) : (
             <div
+              className="client-cal-month"
               style={{
                 ...monthGrid,
                 flex: 1,
@@ -491,6 +495,7 @@ export default function ClientCalendarPage() {
                 return (
                   <div
                     key={iso}
+                    className="client-cal-day"
                     onClick={() => setSelectedDate(d)}
                     style={{
                       ...dayCell,

@@ -3611,3 +3611,111 @@ html[data-theme="dark"] .edith-task-card__pri {
     padding-right: 10px;
   }
 }
+
+/* Cards, KPIs, calendar, charts — shrink to the phone width */
+.dashboard-grid,
+.dashboard-hero-row,
+.dashboard-charts-row,
+.stack-on-mobile,
+.card,
+.kpi-card,
+.hero {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.client-cal-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  flex-shrink: 0;
+}
+.client-cal-weekday-short,
+.client-cal-weekday-short {
+  display: none;
+}
+@media (max-width: 900px) {
+  .stack-on-mobile,
+  .stack-on-mobile {
+    grid-template-columns: 1fr !important;
+    width: 100%;
+  }
+  .dashboard-hero-row.stack-on-mobile,
+  .dashboard-hero-row.stack-on-mobile {
+    grid-template-columns: 1fr !important;
+  }
+  .client-cal-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .client-cal-kpis .kpi-card {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .client-cal-kpis .kpi-card-icon-circle {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    font-size: 13px;
+  }
+  .kwick-client-cal {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .kwick-client-cal .kwick-cal-layout {
+    height: auto !important;
+    min-height: 520px;
+    overflow: visible;
+  }
+  .client-cal-weekday-full,
+  .client-cal-weekday-full {
+    display: none;
+  }
+  .client-cal-weekday-short,
+  .client-cal-weekday-short {
+    display: inline;
+  }
+  .hero-title,
+  .hero-text {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .kpi-card-trend .muted {
+    display: none;
+  }
+  .kpi-spark {
+    display: none;
+  }
+  .client-cal-day {
+    padding: 4px 2px !important;
+  }
+  .client-cal-month {
+    min-height: 360px;
+  }
+  .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    display: block;
+  }
+  table.kwick-table {
+    min-width: 520px;
+  }
+  .page-transition,
+  .shell-content > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+@media (max-width: 480px) {
+  .client-cal-kpis {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 900px) {
+  .fit-mobile {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}

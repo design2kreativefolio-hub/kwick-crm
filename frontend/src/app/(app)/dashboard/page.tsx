@@ -203,10 +203,10 @@ export default function DashboardPage() {
   const completedTrend = summary ? trendPct(completed ?? 0, completedPrev ?? 0) : null;
 
   return (
-    <div className="dashboard-grid" style={{ display: "grid", gap: 22, alignItems: "start" }}>
+    <div className="dashboard-grid fit-mobile" style={{ display: "grid", gap: 22, alignItems: "start" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
         <Reveal index={0}>
-          <div className="dashboard-hero-row" style={heroRow}>
+          <div className="dashboard-hero-row fit-mobile" style={heroRow}>
             <HeroBanner
               compact
               name={user?.full_name?.split(" ")[0] || "there"}
@@ -289,7 +289,7 @@ export default function DashboardPage() {
         )}
 
         <Reveal index={2}>
-          <div className="dashboard-charts-row" style={{ display: "grid", gap: 22 }}>
+          <div className="dashboard-charts-row fit-mobile" style={{ display: "grid", gap: 22 }}>
             <PerformanceChart
               canScopeCompany={isSuperadmin}
               headlineValue={completed ?? 0}

@@ -6,7 +6,7 @@ import { Area, AreaChart, ResponsiveContainer } from "recharts";
 export function Sparkline({ data, color }: { data: number[]; color: string }) {
   const points = data.map((value, i) => ({ i, value }));
   return (
-    <div style={{ width: 72, height: 34 }}>
+    <div className="kpi-spark" style={{ width: 72, height: 34 }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={points} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
           <defs>
