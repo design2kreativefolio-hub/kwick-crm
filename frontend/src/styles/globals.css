@@ -3892,3 +3892,98 @@ html[data-theme="dark"] .edith-task-card__pri {
     display: none !important;
   }
 }
+
+.mobile-tabbar {
+  display: none;
+}
+@media (max-width: 900px) {
+  .mobile-tabbar {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    z-index: 45;
+    flex-shrink: 0;
+    align-items: stretch;
+    justify-content: space-around;
+    min-height: 56px;
+    padding: 4px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(16, 19, 63, 0.08);
+  }
+  .mobile-tabbar__item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 10px;
+    font-weight: 650;
+    padding: 4px 2px;
+  }
+  .mobile-tabbar__item.is-active {
+    color: var(--navy);
+  }
+  .mobile-tabbar__icon {
+    position: relative;
+    font-size: 20px;
+    line-height: 1;
+  }
+  .mobile-tabbar__badge {
+    position: absolute;
+    top: -6px;
+    right: -10px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+  }
+  .shell.is-mobile-app .shell-content {
+    padding-bottom: 8px !important;
+  }
+  .shell.is-mobile-app .topbar-powered-by,
+  .shell.is-mobile-app .edith-topbar-btn,
+  .shell.is-mobile-app .theme-toggle,
+  .shell.is-mobile-app .topbar-alert-btn,
+  .shell.is-mobile-app .topbar-support,
+  .shell.is-mobile-app .topbar-profile-meta,
+  .shell.is-mobile-app .topbar-profile-caret {
+    display: none !important;
+  }
+  .dashboard-hero-row,
+  .dashboard-hero-row.fit-mobile {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  .client-cal-dots {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    margin-top: 4px;
+    min-height: 6px;
+  }
+  .client-cal-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .client-cal-chips {
+    display: none !important;
+  }
+}
+@media (min-width: 901px) {
+  .client-cal-dots {
+    display: none;
+  }
+}

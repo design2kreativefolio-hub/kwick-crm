@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { MaintenanceBar, MaintenanceProvider } from "@/components/MaintenanceBar";
+import { MobileTabBar } from "@/components/MobileTabBar";
 import { PageTransition } from "@/components/PageTransition";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
@@ -56,7 +57,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <LiveUpdatesProvider>
       <MaintenanceProvider>
-        <div className="shell">
+        <div className={`shell${isMobile ? " is-mobile-app" : ""}`}>
           <Sidebar
             role={user.role}
             collapsed={isMobile ? false : collapsed}
@@ -74,6 +75,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <main className="shell-content">
               <PageTransition>{children}</PageTransition>
             </main>
+            {isMobile && (
+              <MobileTabBar moreOpen={mobileNavOpen} onMore={() => setMobileNavOpen((v) => !v)} />
+            )}
           </div>
         </div>
       </MaintenanceProvider>

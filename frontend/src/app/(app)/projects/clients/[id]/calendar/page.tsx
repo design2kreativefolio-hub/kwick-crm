@@ -524,7 +524,16 @@ export default function ClientCalendarPage() {
                         <i className="bi bi-plus-lg" style={{ fontSize: 10.5 }} />
                       </button>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
+                    <div className="client-cal-dots" aria-hidden>
+                      {dayItems.slice(0, 3).map((it) => (
+                        <span
+                          key={`dot-${it.id}`}
+                          className="client-cal-dot"
+                          style={{ background: STATUS_COLOR[it.status] ?? "var(--gold)" }}
+                        />
+                      ))}
+                    </div>
+                    <div className="client-cal-chips" style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
                       {dayItems.slice(0, 3).map((it) => (
                         <button
                           key={it.id}
