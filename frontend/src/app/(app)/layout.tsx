@@ -15,10 +15,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("nav-open", isMobile && mobileNavOpen);
+    return () => document.documentElement.classList.remove("nav-open");
+  }, [isMobile, mobileNavOpen]);
 
   if (loading || !user) {
     return (
@@ -45,13 +59,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="shell">
           <Sidebar
             role={user.role}
-            collapsed={collapsed}
+            collapsed={isMobile ? false : collapsed}
             mobileOpen={mobileNavOpen}
             onNavigate={() => setMobileNavOpen(false)}
           />
           <div className="shell-main">
             <MaintenanceBar />
-            <Topbar collapsed={collapsed} onToggleCollapsed={toggleNav} />
+            <Topbar
+              collapsed={collapsed}
+              mobileNavOpen={mobileNavOpen}
+              isMobile={isMobile}
+              onToggleCollapsed={toggleNav}
+            />
             <main className="shell-content">
               <PageTransition>{children}</PageTransition>
             </main>

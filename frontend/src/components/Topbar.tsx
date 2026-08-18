@@ -33,9 +33,13 @@ function normalize(s: string) {
 
 export function Topbar({
   collapsed,
+  mobileNavOpen = false,
+  isMobile = false,
   onToggleCollapsed,
 }: {
   collapsed: boolean;
+  mobileNavOpen?: boolean;
+  isMobile?: boolean;
   onToggleCollapsed: () => void;
 }) {
   const router = useRouter();
@@ -50,13 +54,20 @@ export function Topbar({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        const el = e.target as HTMLElement;
+        if (!el.closest(".topbar-search-toggle, .topbar-search-toggle")) {
+          setSearchOpen(false);
+          setMobileSearchOpen(false);
+        }
+      }
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -102,16 +113,38 @@ export function Topbar({
     setQuery("");
     setResults([]);
     setSearchOpen(false);
+    setMobileSearchOpen(false);
   };
 
   return (
     <div className="topbar-wrap">
       <header className="topbar-bar">
-        <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
-          <button onClick={onToggleCollapsed} className="icon-btn-anim" style={circleBtn} aria-label="Toggle sidebar">
-            <i className={`bi ${collapsed ? "bi-list" : "bi-x-lg"}`} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+          <button
+            onClick={() => {
+              setMobileSearchOpen(false);
+              onToggleCollapsed();
+            }}
+            className="icon-btn-anim topbar-menu-btn"
+            style={circleBtn}
+            aria-label={isMobile ? (mobileNavOpen ? "Close menu" : "Open menu") : "Toggle sidebar"}
+          >
+            <i className={`bi ${isMobile ? (mobileNavOpen ? "bi-x-lg" : "bi-list") : collapsed ? "bi-list" : "bi-layout-sidebar-inset"}`} />
           </button>
-          <div ref={searchRef} className="topbar-search" style={{ position: "relative", width: 300, maxWidth: "36vw" }}>
+          <button
+            type="button"
+            className="icon-btn-anim topbar-search-toggle"
+            style={circleBtn}
+            aria-label="Search"
+            onClick={() => setMobileSearchOpen((v) => !v)}
+          >
+            <i className="bi bi-search" />
+          </button>
+          <div
+            ref={searchRef}
+            className={`topbar-search${mobileSearchOpen ? " is-mobile-open" : ""}`}
+            style={{ position: "relative", width: 300, maxWidth: "36vw" }}
+          >
             <div style={searchWrap}>
               <i className="bi bi-search" style={{ color: "var(--text-muted)" }} />
               <input
@@ -211,7 +244,7 @@ export function Topbar({
           {(needsPrompt || perm === "denied") && (
             <button
               type="button"
-              className="icon-btn-anim"
+              className="icon-btn-anim topbar-alert-btn"
               style={{
                 ...circleBtn,
                 width: "auto",
@@ -256,7 +289,7 @@ export function Topbar({
               aria-label="Account menu"
             >
               <UserAvatar user={user} size={36} />
-              <span style={{ textAlign: "left", lineHeight: 1.2 }}>
+              <span className="topbar-profile-meta" style={{ textAlign: "left", lineHeight: 1.2 }}>
                 <span style={{ display: "block", fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
                   {user?.full_name || user?.email}
                 </span>
@@ -264,7 +297,7 @@ export function Topbar({
                   {user?.role}
                 </span>
               </span>
-              <i className="bi bi-chevron-down" style={{ fontSize: 11, color: "var(--text-muted)" }} />
+              <i className="bi bi-chevron-down topbar-profile-caret" style={{ fontSize: 11, color: "var(--text-muted)" }} />
             </button>
             {menuOpen && (
               <div style={dropdown}>

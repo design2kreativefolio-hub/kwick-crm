@@ -131,9 +131,11 @@ export function Sidebar({
 
   return (
     <>
-      {mobileOpen && <div className="sidebar-mobile-backdrop" onClick={onNavigate} />}
+      {mobileOpen && (
+        <div className="sidebar-mobile-backdrop sidebar-mobile-backdrop" onClick={onNavigate} />
+      )}
       <aside
-        className={`app-sidebar${mobileOpen ? " sidebar-mobile-open" : ""}`}
+        className={`app-sidebar app-sidebar${mobileOpen ? " sidebar-mobile-open sidebar-mobile-open" : ""}`}
         style={aside(collapsed)}
       >
       <div style={brand(collapsed)}>{collapsed ? <Logo icon height={26} /> : <Logo height={26} light />}</div>

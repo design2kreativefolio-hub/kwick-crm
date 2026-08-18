@@ -121,8 +121,8 @@ export default function TodoPage() {
   return (
     <Reveal index={0}>
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={layout}>
-          <div style={sidebar}>
+        <div className="todo-layout" style={layout}>
+          <div className="todo-filters" style={sidebar}>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>To-Do</div>
             {(
               [
@@ -152,7 +152,7 @@ export default function TodoPage() {
             ))}
           </div>
 
-          <div style={main}>
+          <div className="todo-main" style={main}>
             <div style={mainHeader}>
               <button
                 onClick={markAll}
