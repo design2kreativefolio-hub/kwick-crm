@@ -427,7 +427,9 @@ h1, h2, h3, h4 {
 .shell {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   overflow: hidden;
 }
 .shell-main {
@@ -772,6 +774,9 @@ html.nav-open body {
   }
   .shell-content {
     padding: 12px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .topbar-wrap {
     position: sticky;
@@ -3874,9 +3879,11 @@ html[data-theme="dark"] .edith-task-card__pri {
     flex: none !important;
   }
   .client-cal-month {
-    min-height: 260px !important;
-    max-height: 320px !important;
-    overflow: hidden !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    grid-auto-rows: minmax(44px, auto) !important;
   }
   .client-cal-day {
     overflow: hidden !important;

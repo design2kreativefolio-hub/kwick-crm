@@ -486,7 +486,7 @@ export default function ClientCalendarPage() {
                 ...monthGrid,
                 flex: 1,
                 minHeight: 0,
-                gridTemplateRows: `repeat(${Math.ceil(monthDays.length / 7)}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${Math.ceil(monthDays.length / 7)}, minmax(44px, auto))`,
               }}
             >
               {monthDays.map((d) => {
