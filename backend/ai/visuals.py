@@ -119,10 +119,14 @@ def wants_task_cards(query: str, ctx: dict) -> bool:
         )
         if identity:
             return False
+        if _contains(q, ["content", "write", "draft", "caption", "brainstorm", "ideas", "reel", "script"]):
+            return False
         if _contains(q, _PERSON_WORK_HINTS):
             return True
-        # “Jane?” / “tell me about Jane” — still show their open work.
-        return True
+        # Short “Jane?” / “Jane's tasks” — show their open work.
+        if len(q.split()) <= 5:
+            return True
+        return False
     if _contains(
         q,
         [

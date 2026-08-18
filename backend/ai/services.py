@@ -80,8 +80,9 @@ def chat(
     ctx = build_crm_context(user)
     last = cleaned[-1]["content"]
 
-    # Task/to-do cards come from CRM data — don't wait on Gemini.
-    if wants_todo_cards(last) or wants_task_cards(last, ctx):
+    # Visual task/to-do cards skip the LLM only for list questions — not for
+    # writing/brainstorming ("give me content for Kreativefolio").
+    if not _wants_writing(last) and (wants_todo_cards(last) or wants_task_cards(last, ctx)):
         local = _local_reply(last, ctx)
         local["links"] = local.get("links") or _suggested_links(last, ctx)
         local["attachments"] = []
@@ -95,32 +96,41 @@ def chat(
         return report_result
 
     if getattr(settings, "AI_API_KEY", ""):
-        try:
-            reply = _llm_reply(ctx, cleaned)
-            return _finalize_reply(
-                last,
-                ctx,
-                {
-                    "reply": reply,
-                    "links": _suggested_links(last, ctx),
-                    "attachments": [],
-                    "user_attachments": images,
-                },
-            )
-        except Exception as exc:
-            import logging
+        last_error = None
+        for attempt in (1, 2):
+            try:
+                reply = _llm_reply(ctx, cleaned)
+                return _finalize_reply(
+                    last,
+                    ctx,
+                    {
+                        "reply": reply,
+                        "links": _suggested_links(last, ctx),
+                        "attachments": [],
+                        "user_attachments": images,
+                    },
+                )
+            except Exception as exc:
+                last_error = exc
+                import logging
 
-            logging.getLogger(__name__).warning("EDITH LLM failed, using local reply: %s", exc)
-            local = _local_reply(last, ctx)
-            if images:
-                local["reply"] = (
-                    "I received your image(s), but image analysis needs the AI model online. "
-                    + (local.get("reply") or "")
-                ).strip()
-            local["links"] = _suggested_links(last, ctx)
-            local["attachments"] = []
-            local["user_attachments"] = images
-            return _finalize_reply(last, ctx, local)
+                logging.getLogger(__name__).warning(
+                    "EDITH LLM attempt %s failed: %s", attempt, exc
+                )
+        local = _local_reply(last, ctx)
+        if not _is_crm_query(last, ctx) or _wants_writing(last):
+            local["reply"] = (
+                "The AI model hiccuped just now — send the same question once more and I’ll answer properly."
+            )
+        if images:
+            local["reply"] = (
+                "I received your image(s), but image analysis needs the AI model online. "
+                + (local.get("reply") or "")
+            ).strip()
+        local["links"] = _suggested_links(last, ctx)
+        local["attachments"] = []
+        local["user_attachments"] = images
+        return _finalize_reply(last, ctx, local)
 
     local = _local_reply(last, ctx)
     if images:
@@ -794,11 +804,49 @@ def _match(q: str, words: list[str]) -> bool:
     return any(w in q for w in words)
 
 
+def _wants_writing(q: str) -> bool:
+    """True when they want copy, ideas, or analysis — not a CRM list."""
+    ql = (q or "").lower()
+    if "content calendar" in ql:
+        return False
+    if "content" in ql and _match(ql, ["give me", "write", "create", "make", "draft", "for them", "for kreative"]):
+        return True
+    return _match(
+        ql,
+        [
+            "content for",
+            "give me some content",
+            "give me content",
+            "write",
+            "draft",
+            "caption",
+            "brainstorm",
+            "ideas for",
+            "reel",
+            "script",
+            "hashtag",
+            "headline",
+            "copy for",
+            "analyse what we",
+            "analyze what we",
+            "analyse what we do",
+            "what we do for",
+        ],
+    )
+
+
 def _is_crm_query(q: str, ctx: dict | None = None) -> bool:
     """True when the user is asking about Kwick data / screens (vs pure general knowledge)."""
     ql = (q or "").lower()
-    if ctx and named_person(ql, ctx):
-        return True
+    if _wants_writing(ql):
+        return False
+    if ctx and named_person(ql, ctx) and not _wants_writing(ql):
+        # A name in a writing brief is not a "show their tasks" question.
+        if _match(ql, ["task", "todo", "to-do", "assigned", "workload", "doing"]):
+            return True
+        if len(ql.split()) <= 5:
+            return True
+        return False
     general_markers = [
         "brainstorm",
         "caption",
@@ -867,7 +915,6 @@ def _is_crm_query(q: str, ctx: dict | None = None) -> bool:
         "notification",
         "what needs",
         "pending leave",
-        "kreativefolio",
         "mini-project",
         "assignee",
     ]
@@ -1071,7 +1118,7 @@ def _llm_reply(ctx: dict, messages: list[dict]) -> str:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")[:300]
