@@ -161,8 +161,8 @@ class StaffViewSet(viewsets.ViewSet):
             user = User.objects.get(pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True)
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        user.set_unusable_password()
-        user.save(update_fields=["password", "updated_at"])
+        # Keep the current password until they complete the email link.
+        # Wiping it first locked people out when SMTP failed.
         dispatch_email_task(send_password_reset_email, user.id)
         return Response({"detail": "Password reset link sent to the employee."})
 

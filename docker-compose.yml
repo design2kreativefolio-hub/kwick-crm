@@ -57,6 +57,8 @@ services:
     env_file: .env
     environment:
       CONTAINER_ROLE: web
+    extra_hosts:
+      - "${EMAIL_EXTRA_HOSTS:-localhost:127.0.0.1}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,6 +80,8 @@ services:
     env_file: .env
     environment:
       CONTAINER_ROLE: worker
+    extra_hosts:
+      - "${EMAIL_EXTRA_HOSTS:-localhost:127.0.0.1}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,6 +107,8 @@ services:
     env_file: .env
     environment:
       CONTAINER_ROLE: worker
+    extra_hosts:
+      - "${EMAIL_EXTRA_HOSTS:-localhost:127.0.0.1}"
     depends_on:
       postgres:
         condition: service_healthy

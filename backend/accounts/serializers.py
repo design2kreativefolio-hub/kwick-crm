@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from common.maintenance import SiteInMaintenance, is_blocked_by_maintenance
@@ -217,18 +218,37 @@ class AvatarUploadSerializer(serializers.Serializer):
 
 
 class KwickTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """JWT login that also blocks non-active users and returns role/status."""
+    """JWT login with clear errors — SimpleJWT's default 'No active account'
+    is shown for wrong passwords too, which looks like the user is disabled."""
 
     def validate(self, attrs):
-        data = super().validate(attrs)
-        if not self.user.can_login:
-            raise serializers.ValidationError(
-                "Account is not active yet. The superadmin must approve it before you can log in."
+        email = (attrs.get(self.username_field) or "").strip()
+        password = attrs.get("password") or ""
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise AuthenticationFailed("No account found for this email.")
+
+        if not user.has_usable_password():
+            raise AuthenticationFailed(
+                "This account has no password set yet. Use Forgot password, or ask an admin to send a setup link."
             )
-        if is_blocked_by_maintenance(self.user):
+        if not user.check_password(password):
+            raise AuthenticationFailed("Incorrect email or password.")
+        if not user.can_login:
+            raise AuthenticationFailed(
+                "This account is not active. Ask a superadmin to enable it in HR → Staff."
+            )
+        if is_blocked_by_maintenance(user):
             raise SiteInMaintenance()
-        data["user"] = UserSerializer(self.user).data
-        return data
+
+        self.user = user
+        refresh = self.get_token(user)
+        return {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": UserSerializer(user).data,
+        }
 
     @classmethod
     def get_token(cls, user):

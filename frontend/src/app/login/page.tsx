@@ -8,6 +8,7 @@ import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { Logo } from "@/components/Logo";
 import { MaintenanceNotice } from "@/components/MaintenanceNotice";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { fetchMaintenance, isMaintenanceError } from "@/lib/maintenance";
 
@@ -37,7 +38,7 @@ export default function LoginPage() {
         setMaintenance(true);
         setError("Kwick is under maintenance. Only the developer account can sign in.");
       } else {
-        setError(err.message ?? "Login failed.");
+        setError(err instanceof ApiError ? formatApiError(err.data) : (err.message ?? "Login failed."));
       }
     } finally {
       setBusy(false);
