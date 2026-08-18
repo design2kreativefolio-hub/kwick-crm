@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 from accounts.models import Module, Role, StaffProfile, UserStatus
 from accounts.tasks import (
     dispatch_email_task,
+    send_admin_changed_password_email,
     send_password_reset_email,
     send_status_change_email,
     send_welcome_email,
@@ -155,16 +156,32 @@ class StaffViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=["post"])
     def reset_password(self, request, pk=None):
-        """Manager forces a password reset — emails the employee a one-time
-        set-password link rather than a plaintext password (spec follow-up)."""
+        """Email a set-password link. Current password stays valid until they use it."""
         try:
             user = User.objects.get(pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True)
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        # Keep the current password until they complete the email link.
-        # Wiping it first locked people out when SMTP failed.
         dispatch_email_task(send_password_reset_email, user.id)
-        return Response({"detail": "Password reset link sent to the employee."})
+        return Response({"detail": "Password reset link sent. The current password still works until they use the link."})
+
+    @action(detail=True, methods=["post"])
+    def set_password(self, request, pk=None):
+        """Admin sets a new password now (no current password required) and emails the employee."""
+        try:
+            user = User.objects.get(pk=pk, role=Role.EMPLOYEE, purged_at__isnull=True)
+        except User.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        password = (request.data.get("password") or "").strip()
+        if len(password) < 8:
+            return Response({"detail": "Password must be at least 8 characters."}, status=400)
+        user.set_password(password)
+        user.save(update_fields=["password", "updated_at"])
+        dispatch_email_task(send_admin_changed_password_email, user.id)
+        log_activity(
+            actor=request.user,
+            action=f"set a new password for {user.full_name or user.email}",
+        )
+        return Response({"detail": "Password updated. A notification email was sent to the employee."})
 
     @action(detail=True, methods=["post"])
     def set_status(self, request, pk=None):

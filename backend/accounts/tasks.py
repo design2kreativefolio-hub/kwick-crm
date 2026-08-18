@@ -119,13 +119,40 @@ def send_password_reset_email(user_id: int):
     link = f"{settings.FRONTEND_URL}/set-password?uid={uid}&token={token}"
     body = (
         f"Hi {user.full_name or user.email},\n\n"
-        "A manager has reset your Kwick password. Set a new one here:\n\n"
+        "A manager asked you to set a new Kwick password. Your current password "
+        "still works until you finish this link:\n\n"
         f"{link}\n\n"
-        "If you didn't expect this, contact your manager.\n\n"
+        "If you didn't expect this, contact your manager — you can ignore the "
+        "link and keep using your current password.\n\n"
         "— Kwick"
     )
     _send_user_email(
-        subject="Your Kwick password was reset",
+        subject="Set a new Kwick password",
+        message=body,
+        recipient=user.email,
+    )
+
+
+@shared_task
+def send_admin_changed_password_email(user_id: int):
+    """Admin set a new password from HR — notify the employee (no plaintext)."""
+    from .models import User
+
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return
+
+    body = (
+        f"Hi {user.full_name or user.email},\n\n"
+        "A manager has set a new password for your Kwick account.\n"
+        f"Sign in at {settings.FRONTEND_URL}/login with your email and the new "
+        "password they shared with you.\n\n"
+        "If you didn't expect this, contact your manager immediately.\n\n"
+        "— Kwick"
+    )
+    _send_user_email(
+        subject="Your Kwick password was changed",
         message=body,
         recipient=user.email,
     )

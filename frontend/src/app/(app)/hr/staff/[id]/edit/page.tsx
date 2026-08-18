@@ -66,6 +66,9 @@ export default function StaffEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [togglingStatus, setTogglingStatus] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -129,14 +132,49 @@ export default function StaffEditPage() {
   };
 
   const resetPassword = async () => {
+    const ok = await confirm(
+      "Send a password reset link? Their current password will keep working until they set a new one from the email.",
+      { confirmLabel: "Send link" }
+    );
+    if (!ok) return;
     setResetting(true);
     try {
       await api(`/api/hr/staff/${id}/reset_password`, { method: "POST" });
-      showToast("Password reset link emailed to the employee.");
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't reset password." : err.message, "error");
+      showToast("Reset link emailed. Current password still works until they use it.");
+    } catch (err: unknown) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : "Couldn't send reset link.", "error");
     } finally {
       setResetting(false);
+    }
+  };
+
+  const setStaffPassword = async () => {
+    if (newPassword.length < 8) {
+      showToast("Password must be at least 8 characters.", "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast("Passwords don't match.", "error");
+      return;
+    }
+    const ok = await confirm(
+      "Set this new password now? They can sign in with it immediately, and they'll get an email notice (the password itself is not in the email).",
+      { confirmLabel: "Set password" }
+    );
+    if (!ok) return;
+    setSettingPassword(true);
+    try {
+      await api(`/api/hr/staff/${id}/set_password`, {
+        method: "POST",
+        body: JSON.stringify({ password: newPassword }),
+      });
+      setNewPassword("");
+      setConfirmPassword("");
+      showToast("Password updated. Notification emailed to the employee.");
+    } catch (err: unknown) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : "Couldn't set password.", "error");
+    } finally {
+      setSettingPassword(false);
     }
   };
 
@@ -352,9 +390,40 @@ export default function StaffEditPage() {
               </span>
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+              <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+                Send a link — current password stays until they change it from the email.
+              </p>
               <button className="btn btn-ghost btn-sm" onClick={resetPassword} disabled={resetting} style={{ justifyContent: "flex-start" }}>
-                <i className="bi bi-key-fill" /> {resetting ? "Sending…" : "Reset password"}
+                <i className="bi bi-envelope-fill" /> {resetting ? "Sending…" : "Email reset link"}
               </button>
+              <label className="field-label" style={{ marginTop: 8 }}>Set a new password</label>
+              <input
+                className="input"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password (min 8 characters)"
+                autoComplete="new-password"
+              />
+              <input
+                className="input"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                autoComplete="new-password"
+              />
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={setStaffPassword}
+                disabled={settingPassword || !newPassword}
+                style={{ justifyContent: "flex-start" }}
+              >
+                <i className="bi bi-key-fill" /> {settingPassword ? "Saving…" : "Change password"}
+              </button>
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+                Takes effect immediately. Employee is emailed that it changed (password is not in the mail).
+              </p>
               <button
                 className="btn btn-sm"
                 onClick={toggleStatus}
