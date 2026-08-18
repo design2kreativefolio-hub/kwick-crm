@@ -10,6 +10,7 @@ class TaskSerializer(serializers.ModelSerializer):
     content_client_id = serializers.IntegerField(
         source="content_item.client_id", read_only=True, allow_null=True, default=None
     )
+    from_todo = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -25,6 +26,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "assignee_ids",
             "content_item",
             "content_client_id",
+            "from_todo",
             "status",
             "priority",
             "due_date",
@@ -42,6 +44,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_at",
             "content_item",
             "content_client_id",
+            "from_todo",
             "assignee_name",
             "assignee_ids",
         ]
@@ -56,6 +59,14 @@ class TaskSerializer(serializers.ModelSerializer):
         if ids:
             return ids
         return [obj.assignee_id] if obj.assignee_id else []
+
+    def get_from_todo(self, obj):
+        annotated = getattr(obj, "from_todo", None)
+        if annotated is not None:
+            return bool(annotated)
+        from todos.models import TodoItem
+
+        return TodoItem.objects.filter(linked_task_id=obj.id).exists()
 
     def get_assignee_name(self, obj):
         names = []

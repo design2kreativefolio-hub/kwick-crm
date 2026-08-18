@@ -157,3 +157,26 @@ def clear_task_reminders(task_id: int) -> None:
 def tasks_for_user(user):
     """Tasks assigned to a user via primary assignee or M2M assignees."""
     return Task.objects.filter(Q(assignee=user) | Q(assignees=user)).distinct()
+
+
+def sync_todo_from_task(task: Task) -> None:
+    """If this task was created from a personal to-do, keep that to-do in sync.
+
+    To-do-sourced tasks only use todo / completed. Completing the task marks
+    the to-do done (and the list view then hides it from Tasks).
+    """
+    from todos.models import TodoItem
+
+    todo = TodoItem.objects.filter(linked_task_id=task.id).first()
+    if not todo:
+        return
+    done = task.status in (Task.Status.COMPLETED, Task.Status.PUBLISHED)
+    wanted_status = Task.Status.COMPLETED if done else Task.Status.TODO
+    wanted_board = Task.BoardStatus.DONE if done else Task.BoardStatus.TODO
+    if task.status != wanted_status or task.board_status != wanted_board:
+        task.status = wanted_status
+        task.board_status = wanted_board
+        task.save()
+    if todo.done != done:
+        todo.done = done
+        todo.save()

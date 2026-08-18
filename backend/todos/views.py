@@ -7,6 +7,19 @@ from .models import TodoItem
 from .serializers import TodoItemSerializer
 
 
+def sync_task_from_todo(todo: TodoItem) -> None:
+    """Keep the mirrored Tasks row in line with the personal to-do."""
+    task = todo.linked_task
+    if not task:
+        return
+    task.title = todo.text
+    if todo.due_date:
+        task.due_date = todo.due_date
+    task.status = Task.Status.COMPLETED if todo.done else Task.Status.TODO
+    task.board_status = Task.BoardStatus.DONE if todo.done else Task.BoardStatus.TODO
+    task.save()
+
+
 class TodoItemViewSet(viewsets.ModelViewSet):
     serializer_class = TodoItemSerializer
     permission_classes = [IsActive]
@@ -16,27 +29,20 @@ class TodoItemViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         todo = serializer.save(owner=self.request.user)
-        # Mirror onto the owner's own Kanban board — self-assigned, no picker
-        # needed, matches how personal to-dos are meant to show up there.
+        # Incomplete to-dos appear on Tasks; completed ones stay on /todo only.
         task = Task.objects.create(
             title=todo.text,
             assignee=self.request.user,
+            due_date=todo.due_date,
+            status=Task.Status.TODO,
             board_status=Task.BoardStatus.TODO,
         )
         todo.linked_task = task
         todo.save(update_fields=["linked_task", "updated_at"])
 
     def perform_update(self, serializer):
-        was_done = serializer.instance.done
         todo = serializer.save()
-        if todo.linked_task and todo.done != was_done:
-            todo.linked_task.board_status = (
-                Task.BoardStatus.DONE if todo.done else Task.BoardStatus.TODO
-            )
-            todo.linked_task.save(update_fields=["board_status", "updated_at"])
-        if todo.linked_task and "text" in serializer.validated_data:
-            todo.linked_task.title = todo.text
-            todo.linked_task.save(update_fields=["title", "updated_at"])
+        sync_task_from_todo(todo)
 
     def perform_destroy(self, instance):
         if instance.linked_task_id:

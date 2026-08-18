@@ -28,6 +28,7 @@ type Task = {
   content_item: number | null;
   content_client_id: number | null;
   status: "todo" | "in_progress" | "completed" | "published";
+  from_todo?: boolean;
   priority: "low" | "medium" | "high";
   due_date: string | null;
   due_time: string | null;
@@ -43,6 +44,11 @@ const STATUS_OPTIONS = [
   { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Completed" },
   { value: "published", label: "Published" },
+];
+
+const TODO_STATUS_OPTIONS = [
+  { value: "todo", label: "To do" },
+  { value: "completed", label: "Completed" },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -136,7 +142,9 @@ export default function TasksPage() {
     if (tab === "mine") params.set("mine", "1");
     const qs = params.toString();
     api<Task[] | { results: Task[] }>(`/api/tasks${qs ? `?${qs}` : ""}`)
-      .then((d) => setTasks(unwrapList(d)))
+      .then((d) =>
+        setTasks(unwrapList(d).filter((t) => !(t.from_todo && t.status === "completed"))),
+      )
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -255,10 +263,15 @@ export default function TasksPage() {
 
   const changeStatus = async (task: Task, status: string) => {
     setBusyId(task.id);
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: status as Task["status"] } : t)));
+    const hide = Boolean(task.from_todo && status === "completed");
+    setTasks((prev) =>
+      hide
+        ? prev.filter((t) => t.id !== task.id)
+        : prev.map((t) => (t.id === task.id ? { ...t, status: status as Task["status"] } : t)),
+    );
     try {
       await api(`/api/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
-      showToast("Task updated.");
+      showToast(hide ? "Marked complete — removed from Tasks." : "Task updated.");
       load();
     } catch {
       showToast("Couldn't update task.", "error");
@@ -388,7 +401,7 @@ export default function TasksPage() {
                   <Select
                     value={form.status}
                     onChange={(v) => setForm((f) => ({ ...f, status: v }))}
-                    options={STATUS_OPTIONS}
+                    options={editingTask?.from_todo ? TODO_STATUS_OPTIONS : STATUS_OPTIONS}
                     ariaLabel="Status"
                   />
                 </div>
@@ -564,7 +577,7 @@ export default function TasksPage() {
                             <Select
                               value={t.status}
                               onChange={(v) => changeStatus(t, v)}
-                              options={STATUS_OPTIONS}
+                              options={t.from_todo ? TODO_STATUS_OPTIONS : STATUS_OPTIONS}
                               compact
                               ariaLabel={`Change status for ${t.title}`}
                             />

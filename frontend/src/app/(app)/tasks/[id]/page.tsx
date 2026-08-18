@@ -24,6 +24,7 @@ type Task = {
   content_item: number | null;
   content_client_id?: number | null;
   status: "todo" | "in_progress" | "completed" | "published";
+  from_todo?: boolean;
   priority: "low" | "medium" | "high";
   due_date: string | null;
   due_time: string | null;
@@ -38,6 +39,11 @@ const STATUS_OPTIONS = [
   { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Completed" },
   { value: "published", label: "Published" },
+];
+
+const TODO_STATUS_OPTIONS = [
+  { value: "todo", label: "To do" },
+  { value: "completed", label: "Completed" },
 ];
 const PRIORITY_OPTIONS = [
   { value: "low", label: "Low" },
@@ -138,6 +144,11 @@ export default function TaskDetailPage() {
     setBusy(true);
     try {
       const updated = await api<Task>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      if (updated.from_todo && updated.status === "completed") {
+        showToast("Marked complete — removed from Tasks.");
+        router.push("/tasks");
+        return;
+      }
       setTask(updated);
       showToast("Task updated.");
     } catch (err: any) {
@@ -241,7 +252,7 @@ export default function TaskDetailPage() {
             <Select
               value={task.status}
               onChange={(v) => updateField({ status: v })}
-              options={STATUS_OPTIONS}
+              options={task.from_todo ? TODO_STATUS_OPTIONS : STATUS_OPTIONS}
               ariaLabel="Status"
             />
             {isSynced && task.content_client_id && (

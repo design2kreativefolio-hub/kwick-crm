@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,6 +13,7 @@ from .services import (
     clear_task_reminders,
     notify_task_assignment,
     sync_task_reminders,
+    sync_todo_from_task,
 )
 
 
@@ -29,8 +30,15 @@ class TaskViewSet(viewsets.ModelViewSet):
     search_fields = ["title", "description", "client_name"]
 
     def get_queryset(self):
-        qs = Task.objects.select_related("project", "assignee", "content_item__client").prefetch_related(
-            "assignees"
+        from todos.models import TodoItem
+
+        from_todo = Exists(TodoItem.objects.filter(linked_task_id=OuterRef("pk")))
+        done_todo = Exists(TodoItem.objects.filter(linked_task_id=OuterRef("pk"), done=True))
+        qs = (
+            Task.objects.select_related("project", "assignee", "content_item__client")
+            .prefetch_related("assignees")
+            .annotate(from_todo=from_todo, todo_completed=done_todo)
+            .exclude(todo_completed=True)
         )
         if not is_superadmin(self.request.user):
             qs = qs.filter(
@@ -88,6 +96,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         sync_task_reminders(task)
         if task.content_item_id and task.status != before_status:
             self._sync_content_item_status(task)
+        sync_todo_from_task(task)
 
     def perform_destroy(self, instance):
         clear_task_reminders(instance.id)
@@ -135,11 +144,17 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def my(self, request):
         """GET /api/tasks/my — the requesting user's own tasks (spec §8)."""
+        from todos.models import TodoItem
+
+        done_todo = Exists(TodoItem.objects.filter(linked_task_id=OuterRef("pk"), done=True))
+        from_todo = Exists(TodoItem.objects.filter(linked_task_id=OuterRef("pk")))
         qs = (
             Task.objects.filter(Q(assignee=request.user) | Q(assignees=request.user))
             .distinct()
             .select_related("project", "assignee", "content_item__client")
             .prefetch_related("assignees")
+            .annotate(from_todo=from_todo, todo_completed=done_todo)
+            .exclude(todo_completed=True)
         )
         page = self.paginate_queryset(qs)
         serializer = TaskSerializer(page if page is not None else qs, many=True, context={"request": request})
