@@ -13,6 +13,13 @@ export function useShellFillHeight(ref: RefObject<HTMLElement | null>, bottomGap
     if (!el) return;
 
     const update = () => {
+      const mobile = window.matchMedia("(max-width: 900px)").matches;
+      if (mobile) {
+        el.style.removeProperty("height");
+        el.style.removeProperty("max-height");
+        el.style.removeProperty("min-height");
+        return;
+      }
       const sidebar = document.querySelector(".app-sidebar") as HTMLElement | null;
       const top = el.getBoundingClientRect().top;
       // Prefer matching the sidebar's bottom edge exactly when available.
