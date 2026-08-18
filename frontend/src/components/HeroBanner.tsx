@@ -22,7 +22,7 @@ export function HeroBanner({
 }) {
   return (
     <div className={`hero ${compact ? "hero-compact" : ""}`}>
-      <div>
+      <div className="hero-copy">
         <div className="hero-title">
           {greeting()}, {name} 👋
         </div>

@@ -460,6 +460,8 @@ const heroRow: React.CSSProperties = {
   display: "grid",
   gap: 16,
   alignItems: "stretch",
+  width: "100%",
+  minWidth: 0,
 };
 const approvalRow: React.CSSProperties = {
   display: "flex",
