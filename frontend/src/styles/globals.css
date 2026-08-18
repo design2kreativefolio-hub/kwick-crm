@@ -3898,18 +3898,25 @@ html[data-theme="dark"] .edith-task-card__pri {
 }
 @media (max-width: 900px) {
   .mobile-tabbar {
-    display: flex;
-    position: sticky;
-    bottom: 0;
-    z-index: 45;
+    display: block;
     flex-shrink: 0;
-    align-items: stretch;
-    justify-content: space-around;
-    min-height: 56px;
-    padding: 4px 4px calc(6px + env(safe-area-inset-bottom, 0px));
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -8px 24px rgba(16, 19, 63, 0.08);
+    z-index: 45;
+    padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: transparent;
+    pointer-events: none;
+  }
+  .mobile-tabbar__inner {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    border: 1px solid var(--border);
+    box-shadow: 0 10px 32px rgba(16, 19, 63, 0.16);
+    backdrop-filter: blur(16px);
   }
   .mobile-tabbar__item {
     flex: 1;
@@ -3917,29 +3924,40 @@ html[data-theme="dark"] .edith-task-card__pri {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 3px;
     border: none;
     background: none;
     color: var(--text-muted);
     text-decoration: none;
     font-size: 10px;
     font-weight: 650;
-    padding: 4px 2px;
+    letter-spacing: 0.01em;
+    padding: 4px 2px 2px;
+    min-width: 0;
   }
   .mobile-tabbar__item.is-active {
     color: var(--navy);
   }
   .mobile-tabbar__icon {
     position: relative;
-    font-size: 20px;
+    width: 42px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
     line-height: 1;
+    border-radius: 12px;
+  }
+  .mobile-tabbar__item.is-active .mobile-tabbar__icon {
+    background: var(--gold-soft);
+    color: var(--navy);
   }
   .mobile-tabbar__badge {
     position: absolute;
-    top: -6px;
-    right: -10px;
-    min-width: 16px;
-    height: 16px;
+    top: 0;
+    right: 2px;
+    min-width: 15px;
+    height: 15px;
     padding: 0 4px;
     border-radius: 999px;
     background: var(--danger);
@@ -3949,8 +3967,60 @@ html[data-theme="dark"] .edith-task-card__pri {
     display: grid;
     place-items: center;
   }
-  .shell.is-mobile-app .shell-content {
-    padding-bottom: 8px !important;
+
+  /* Phone app: main pane is the only scroller. Desktop calendar fill is unchanged. */
+  .shell.is-mobile-app .shell-main {
+    overflow: hidden;
+    min-height: 0;
+  }
+  .shell.is-mobile-app .shell-content,
+  .shell.is-mobile-app .shell-content:has(.kwick-client-cal),
+  .shell.is-mobile-app .shell-content:has(.kwick-personal-cal),
+  .shell.is-mobile-app .shell-content:has(.edith-ai) {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    display: block !important;
+    padding: 12px 12px 8px !important;
+  }
+  .shell.is-mobile-app .shell-content > .page-transition {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    flex: none !important;
+  }
+  .shell.is-mobile-app .kwick-client-cal,
+  .shell.is-mobile-app .kwick-personal-cal,
+  .shell.is-mobile-app .edith-ai {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  .shell.is-mobile-app .kwick-client-cal .kwick-cal-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    overflow: visible !important;
+    grid-template-columns: 1fr !important;
+  }
+  .shell.is-mobile-app .kwick-client-cal .kwick-cal-layout > .card,
+  .shell.is-mobile-app .client-cal-board {
+    height: auto !important;
+    overflow: hidden !important;
+  }
+  .shell.is-mobile-app .client-cal-month {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    grid-auto-rows: 46px !important;
   }
   .shell.is-mobile-app .topbar-powered-by,
   .shell.is-mobile-app .edith-topbar-btn,
@@ -3980,6 +4050,15 @@ html[data-theme="dark"] .edith-task-card__pri {
   }
   .client-cal-chips {
     display: none !important;
+  }
+  .shell.is-mobile-app .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .shell.is-mobile-app .page-header {
+    align-items: stretch;
   }
 }
 @media (min-width: 901px) {
