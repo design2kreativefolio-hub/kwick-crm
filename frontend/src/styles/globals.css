@@ -4066,3 +4066,92 @@ html[data-theme="dark"] .edith-task-card__pri {
     display: none;
   }
 }
+
+/* Phone-only: list tables become cards; todo/chat/calendar stack. Desktop unchanged. */
+@media (max-width: 900px) {
+  .shell.is-mobile-app .todo-layout,
+  .shell.is-mobile-app .todo-layout {
+    grid-template-columns: 1fr !important;
+    min-height: 0 !important;
+  }
+  .shell.is-mobile-app .todo-filters,
+  .shell.is-mobile-app .todo-filters {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding: 12px !important;
+  }
+  .shell.is-mobile-app .todo-main,
+  .shell.is-mobile-app .todo-main {
+    padding: 14px !important;
+  }
+  .shell.is-mobile-app .chat-shell {
+    height: calc(100dvh - 220px) !important;
+    min-height: 280px !important;
+    width: 100% !important;
+  }
+  .shell.is-mobile-app .kwick-personal-cal {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .shell.is-mobile-app .kwick-personal-cal .kwick-cal-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    overflow: visible !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .shell.is-mobile-app .table-wrap {
+    overflow: visible;
+  }
+  .shell.is-mobile-app table.kwick-table {
+    min-width: 0 !important;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 10px;
+  }
+  .shell.is-mobile-app table.kwick-table thead {
+    display: none;
+  }
+  .shell.is-mobile-app table.kwick-table tbody {
+    display: block;
+  }
+  .shell.is-mobile-app table.kwick-table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 10px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    align-items: center;
+  }
+  .shell.is-mobile-app table.kwick-table td {
+    display: block;
+    border: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  .shell.is-mobile-app table.kwick-table td:first-child {
+    grid-column: 1 / -1;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .shell.is-mobile-app table.kwick-table td:last-child {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    padding-top: 6px !important;
+  }
+  .shell.is-mobile-app .page-header,
+  .shell.is-mobile-app .card > div[style*="space-between"] {
+    gap: 10px;
+  }
+}

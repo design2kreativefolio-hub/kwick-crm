@@ -400,7 +400,7 @@ export default function CalendarPage() {
       className="kwick-personal-cal"
       style={pageRoot}
     >
-      <div className="kwick-cal-layout" style={layout}>
+      <div className="kwick-cal-layout cal-stack-mobile" style={layout}>
         <div className="card" style={calCard}>
           <div style={calHeader}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
