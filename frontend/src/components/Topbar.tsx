@@ -277,7 +277,7 @@ export function Topbar({
             <i className="bi bi-bell-fill" style={{ fontSize: 17 }} />
             {unread > 0 && <span style={dot}>{unread > 9 ? "9+" : unread}</span>}
           </Link>
-          <Link href="/support" className="icon-btn-anim" style={circleBtn} aria-label="Support">
+          <Link href="/support" className="icon-btn-anim topbar-support" style={circleBtn} aria-label="Support">
             <i className="bi bi-headset" style={{ fontSize: 17 }} />
           </Link>
 

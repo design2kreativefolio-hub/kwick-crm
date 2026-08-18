@@ -447,8 +447,8 @@ export default function ClientCalendarPage() {
         <KpiCard label="To Do" value={counts.planned} icon="bi-calendar-event" tone="purple" />
       </div>
 
-      <div className="kwick-cal-layout">
-        <div className="card" style={{ padding: 0, overflow: "hidden", minWidth: 0, display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <div className="kwick-cal-layout cal-stack-mobile">
+        <div className="card client-cal-board" style={{ padding: 0, overflow: "hidden", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ ...calHeader, background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)` }}>
             <MonthYearSelect
               light

@@ -3798,4 +3798,55 @@ html[data-theme="dark"] .edith-task-card__pri {
     min-width: 0 !important;
     max-width: 100% !important;
   }
+  .topbar-support {
+    display: none !important;
+  }
+  .cal-stack-mobile,
+  .kwick-client-cal .kwick-cal-layout.cal-stack-mobile,
+  .kwick-client-cal .kwick-cal-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    gap: 12px !important;
+  }
+  .cal-stack-mobile > .card,
+  .client-cal-board {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .client-cal-kpis > :last-child {
+    grid-column: 1 / -1;
+  }
+  .client-cal-weekdays,
+  .client-cal-month {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+  .client-cal-month {
+    min-height: 280px !important;
+    max-height: 360px;
+  }
+  .client-cal-weekday {
+    padding: 6px 0 !important;
+    font-size: 11px !important;
+  }
+  .month-year-select {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .kwick-client-cal .kwick-cal-layout.cal-stack-mobile,
+  .kwick-client-cal .kwick-cal-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
 }
