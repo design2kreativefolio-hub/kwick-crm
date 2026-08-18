@@ -436,7 +436,10 @@ export default function ClientCalendarPage() {
         </div>
       </div>
 
-      <div className="client-cal-kpis">
+      <div
+        className="client-cal-kpis"
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 8 }}
+      >
         <KpiCard label="Total Items" value={counts.total} icon="bi-collection-fill" tone="blue" />
         <KpiCard label="Completed" value={counts.done} icon="bi-check-circle-fill" tone="mint" />
         <KpiCard label="Published" value={counts.published} icon="bi-broadcast" tone="blue" />
@@ -508,7 +511,7 @@ export default function ClientCalendarPage() {
                       <span style={{ fontSize: 12, fontWeight: isToday || isSelected ? 700 : 500 }}>{d.getDate()}</span>
                       <button
                         type="button"
-                        className="icon-btn-anim"
+                        className="icon-btn-anim client-cal-add"
                         style={{ ...addDayBtn, background: `${accent}22`, color: accent }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -526,6 +529,7 @@ export default function ClientCalendarPage() {
                         <button
                           key={it.id}
                           type="button"
+                          className="client-cal-chip"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedDate(d);
@@ -544,7 +548,7 @@ export default function ClientCalendarPage() {
                           }}
                           title={it.title}
                         >
-                          {it.title}
+                          <span className="client-cal-chip-title">{it.title}</span>
                         </button>
                       ))}
                       {dayItems.length > 3 && (

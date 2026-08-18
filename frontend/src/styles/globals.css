@@ -1249,6 +1249,8 @@ html.nav-open body {
   flex-direction: column;
   justify-content: space-between;
   height: 100%;
+  min-width: 0;
+  overflow: hidden;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 .kpi-card:hover {
@@ -3665,9 +3667,10 @@ html[data-theme="dark"] .edith-task-card__pri {
 }
 .client-cal-kpis {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 8px;
   flex-shrink: 0;
+  width: 100%;
 }
 .client-cal-weekday-short,
 .client-cal-weekday-short {
@@ -3684,17 +3687,22 @@ html[data-theme="dark"] .edith-task-card__pri {
     grid-template-columns: 1fr !important;
   }
   .client-cal-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)) !important;
   }
-  .client-cal-kpis .kpi-card {
-    min-width: 0;
-    overflow: hidden;
+  .kpi-card-icon-circle {
+    display: none;
   }
-  .client-cal-kpis .kpi-card-icon-circle {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    font-size: 13px;
+  .client-cal-add {
+    display: none !important;
+  }
+  .client-cal-chip {
+    height: 7px !important;
+    min-height: 7px !important;
+    padding: 0 !important;
+    border-radius: 4px !important;
+  }
+  .client-cal-chip-title {
+    display: none;
   }
   .kwick-client-cal {
     overflow-x: hidden;
@@ -3745,9 +3753,42 @@ html[data-theme="dark"] .edith-task-card__pri {
     max-width: 100%;
   }
 }
-@media (max-width: 480px) {
+@media (max-width: 900px) {
+  .shell,
+  .shell-main,
+  .shell-content,
+  .kwick-client-cal,
+  .kwick-personal-cal,
+  .dashboard-grid,
+  .fit-mobile {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .kwick-client-cal .kwick-cal-layout,
+  .kwick-personal-cal .kwick-cal-layout {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
   .client-cal-kpis {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .kpi-card {
+    overflow: hidden !important;
+  }
+  .kpi-card-icon-circle,
+  .kwick-client-cal .kpi-card-icon-circle {
+    display: none !important;
+  }
+  .client-cal-add {
+    display: none !important;
+  }
+  .client-cal-chip-title {
+    display: none !important;
+  }
+  .client-cal-chip {
+    height: 8px !important;
+    padding: 0 !important;
+    min-height: 8px !important;
   }
 }
 @media (max-width: 900px) {
