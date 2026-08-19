@@ -1,6 +1,6 @@
 """HTTP gates: maintenance mode, and a /media/ auth cookie for <img> tags."""
 from common.maintenance import is_allowlisted, maintenance_enabled, maintenance_response
-from common.media_auth import media_user, set_media_auth_cookie, user_from_jwt
+from common.media_auth import user_from_jwt
 
 _EXEMPT_EXACT = {
     "/api/auth/login",
@@ -51,21 +51,3 @@ class MaintenanceMiddleware:
         if is_allowlisted(user):
             return self.get_response(request)
         return maintenance_response()
-
-
-class MediaAuthCookieMiddleware:
-    """Mint/refresh the HttpOnly /media/ cookie on authenticated API responses.
-
-    <img src> cannot send Authorization, so avatars and attachments load with
-    this cookie instead. Path is /media/ only — it is not sent to /api/.
-    """
-
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        response = self.get_response(request)
-        user = media_user(request)
-        if user is not None:
-            set_media_auth_cookie(response, user, request)
-        return response

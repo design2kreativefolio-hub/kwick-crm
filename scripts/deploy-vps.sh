@@ -7,9 +7,6 @@ cd "$ROOT"
 
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 
-echo "==> Migrating database..."
-$COMPOSE exec -T backend python manage.py migrate
-
 echo "==> Rebuilding backend, workers, and frontend..."
 $COMPOSE up -d --build backend frontend celery-worker celery-beat
 

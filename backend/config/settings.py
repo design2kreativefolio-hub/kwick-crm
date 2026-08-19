@@ -100,7 +100,6 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "common.middleware.MaintenanceMiddleware",
-    "common.middleware.MediaAuthCookieMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -136,7 +135,9 @@ DATABASES = {
         "PASSWORD": env("POSTGRES_PASSWORD", "kwick"),
         "HOST": env("POSTGRES_HOST", "127.0.0.1"),
         "PORT": env("POSTGRES_PORT", "5432"),
-        "CONN_MAX_AGE": 60,  # persistent connections, kept modest for max_connections~50
+        # ASGI + WebSockets leak persistent connections and exhaust
+        # Postgres max_connections (50). Close after each request.
+        "CONN_MAX_AGE": int(env("CONN_MAX_AGE", "0")),
     }
 }
 

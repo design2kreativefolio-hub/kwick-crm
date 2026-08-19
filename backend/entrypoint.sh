@@ -12,8 +12,7 @@ echo "[entrypoint] Postgres is up."
 
 if [ "$ROLE" = "web" ]; then
   echo "[entrypoint] running migrations..."
-  python manage.py makemigrations --noinput
-  python manage.py migrate --noinput
+  python manage.py migrate --noinput --skip-checks
   echo "[entrypoint] collecting static..."
   python manage.py collectstatic --noinput || true
 fi

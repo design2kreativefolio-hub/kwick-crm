@@ -34,6 +34,9 @@ def is_allowlisted(user) -> bool:
     return bool(email) and email in allowlist_emails()
 
 
+_MAINT_CACHE_KEY = "kwick:maintenance_on"
+
+
 def get_site_config():
     from common.models import SiteConfig
 
@@ -47,10 +50,17 @@ def get_site_config():
 def maintenance_enabled() -> bool:
     if not allowlist_emails():
         return False
+    from django.core.cache import cache
+
+    cached = cache.get(_MAINT_CACHE_KEY)
+    if cached is not None:
+        return bool(cached)
     try:
-        return bool(get_site_config().maintenance_mode)
+        on = bool(get_site_config().maintenance_mode)
     except Exception:
-        return bool(getattr(settings, "MAINTENANCE_MODE", False))
+        on = bool(getattr(settings, "MAINTENANCE_MODE", False))
+    cache.set(_MAINT_CACHE_KEY, on, 5)
+    return on
 
 
 def set_maintenance_enabled(on: bool) -> bool:
@@ -61,6 +71,9 @@ def set_maintenance_enabled(on: bool) -> bool:
     cfg = get_site_config()
     cfg.maintenance_mode = bool(on)
     cfg.save(update_fields=["maintenance_mode", "updated_at"])
+    from django.core.cache import cache
+
+    cache.set(_MAINT_CACHE_KEY, bool(on), 5)
     return cfg.maintenance_mode
 
 

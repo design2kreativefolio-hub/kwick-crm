@@ -12,16 +12,20 @@ from django.contrib.auth.models import AnonymousUser
 
 @database_sync_to_async
 def _get_user(token: str):
+    from django.db import close_old_connections
     from rest_framework_simplejwt.exceptions import TokenError
     from rest_framework_simplejwt.tokens import AccessToken
 
     from accounts.models import User
 
+    close_old_connections()
     try:
         access = AccessToken(token)
         return User.objects.get(pk=access["user_id"])
     except (TokenError, KeyError, User.DoesNotExist):
         return AnonymousUser()
+    finally:
+        close_old_connections()
 
 
 @database_sync_to_async
