@@ -146,14 +146,17 @@ class ClientDirectoryViewSet(viewsets.ModelViewSet):
 
         from django.core.files.storage import default_storage
 
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "png"
+        from common.media_urls import persist_storage_url, sign_media_url
+        from common.uploads import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, validated_extension
+
+        ext = validated_extension(upload, allowed=IMAGE_EXTENSIONS, max_bytes=MAX_IMAGE_BYTES)
         key = f"client-logos/{client.pk}.{ext}"
         if default_storage.exists(key):
             default_storage.delete(key)
         saved_path = default_storage.save(key, upload)
-        client.logo_url = request.build_absolute_uri(default_storage.url(saved_path))
+        client.logo_url = persist_storage_url(request, saved_path)
         client.save(update_fields=["logo_url"])
-        return Response({"logo_url": client.logo_url})
+        return Response({"logo_url": sign_media_url(client.logo_url)})
 
 
 class ContentCalendarItemViewSet(viewsets.ModelViewSet):

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { api, tokens } from "./api";
+import { api, ApiError, tokens } from "./api";
 
 export type StaffProfile = {
   job_title: string;
@@ -93,8 +93,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await api<User>("/api/auth/me");
         setUser(me);
-      } catch {
-        tokens.clear();
+      } catch (err) {
+        const status = err instanceof ApiError ? err.status : 0;
+        if (status === 401) tokens.clear();
       } finally {
         setLoading(false);
       }
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    void api("/api/auth/logout", { method: "POST", auth: false }).catch(() => {});
     tokens.clear();
     setUser(null);
     router.push("/login");

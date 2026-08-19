@@ -21,8 +21,10 @@ from accounts.tasks import (
     send_status_change_email,
     send_welcome_email,
 )
+from common.media_urls import persist_storage_url, sign_media_url
 from common.permissions import HasModuleAccess, IsActive, has_module_access
 from common.services import log_activity
+from common.uploads import HR_FILE_EXTENSIONS, IMAGE_EXTENSIONS, MAX_FILE_BYTES, MAX_IMAGE_BYTES, validated_extension
 from notifications.services import (
     notify_user,
     start_recurring_reminder,
@@ -233,19 +235,19 @@ class StaffAvatarUploadView(APIView):
             return Response({"detail": "file is required."}, status=400)
 
         profile, _ = StaffProfile.objects.get_or_create(user=staff)
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "jpg"
+        ext = validated_extension(upload, allowed=IMAGE_EXTENSIONS, max_bytes=MAX_IMAGE_BYTES)
         key = f"avatars/{staff.pk}.{ext}"
         if default_storage.exists(key):
             default_storage.delete(key)
         saved_path = default_storage.save(key, upload)
         from time import time
 
-        from common.media_urls import absolute_media_url
+        from common.media_urls import unsigned_absolute_media_url
 
-        base = absolute_media_url(request, default_storage.url(saved_path))
+        base = unsigned_absolute_media_url(request, default_storage.url(saved_path))
         profile.avatar_url = f"{base}{'&' if '?' in base else '?'}v={int(time())}"
         profile.save(update_fields=["avatar_url", "updated_at"])
-        return Response({"avatar_url": profile.avatar_url})
+        return Response({"avatar_url": sign_media_url(profile.avatar_url)})
 
 
 class EmployeeCollateralView(APIView):
@@ -294,7 +296,7 @@ class EmployeeCollateralUploadView(APIView):
         except (User.DoesNotExist, ValueError, TypeError):
             return Response({"detail": "Invalid staff."}, status=400)
 
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "pdf"
+        ext = validated_extension(upload, allowed=HR_FILE_EXTENSIONS, max_bytes=MAX_FILE_BYTES)
         key = f"collaterals/{staff.pk}/{doc_type}-{uuid.uuid4().hex}.{ext}"
         saved_path = default_storage.save(key, upload)
 
@@ -303,7 +305,7 @@ class EmployeeCollateralUploadView(APIView):
             doc_type=doc_type,
             generated_by=request.user,
             generated_at=timezone.now(),
-            file_url=request.build_absolute_uri(default_storage.url(saved_path)),
+            file_url=persist_storage_url(request, saved_path),
         )
         _notify_document(collateral)
         return Response(
@@ -347,7 +349,7 @@ class EmployeeRecordUploadView(APIView):
         except (User.DoesNotExist, ValueError, TypeError):
             return Response({"detail": "Invalid staff."}, status=400)
 
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "pdf"
+        ext = validated_extension(upload, allowed=HR_FILE_EXTENSIONS, max_bytes=MAX_FILE_BYTES)
         key = f"employee-records/{staff.pk}/{uuid.uuid4().hex}.{ext}"
         saved_path = default_storage.save(key, upload)
 
@@ -355,7 +357,7 @@ class EmployeeRecordUploadView(APIView):
             staff=staff,
             title=title,
             uploaded_by=request.user,
-            file_url=request.build_absolute_uri(default_storage.url(saved_path)),
+            file_url=persist_storage_url(request, saved_path),
         )
         notify_user(
             user=staff,
@@ -622,7 +624,9 @@ class HrLetterViewSet(viewsets.ModelViewSet):
 
         letter = self.get_object()
         url = render_letter_pdf(letter, request)
-        letter.file_url = url
+        from common.media_urls import scrub_media_url
+
+        letter.file_url = scrub_media_url(url)
         letter.status = HrLetter.Status.ISSUED
         letter.save(update_fields=["file_url", "status", "updated_at"])
         if letter.staff_id and letter.doc_type != HrLetter.DocType.OFFER:

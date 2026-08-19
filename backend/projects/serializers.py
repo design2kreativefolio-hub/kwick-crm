@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from common.media_urls import persist_storage_url, sign_media_url
+from common.uploads import CALENDAR_FILE_EXTENSIONS, MAX_FILE_BYTES, validated_extension
 from sales.models import Client
 
 from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient
@@ -123,7 +125,10 @@ class ClientDirectorySerializer(serializers.ModelSerializer):
         # empty POC (so Projects cards show the same person Sales added).
         if not (instance.poc_name or "").strip():
             instance.apply_poc_from_first_executive(save=True)
-        return super().to_representation(instance)
+        data = super().to_representation(instance)
+        if data.get("logo_url"):
+            data["logo_url"] = sign_media_url(data["logo_url"])
+        return data
 
 
 class ContentCalendarItemSerializer(serializers.ModelSerializer):
@@ -188,9 +193,11 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
         urls = list(instance.attachment_urls or [])
         if not urls and instance.attachment_url:
             urls = [instance.attachment_url]
-        data["attachment_urls"] = urls
-        if urls and not data.get("attachment_url"):
-            data["attachment_url"] = urls[0]
+        data["attachment_urls"] = [sign_media_url(u) for u in urls]
+        if data["attachment_urls"] and not data.get("attachment_url"):
+            data["attachment_url"] = data["attachment_urls"][0]
+        elif data.get("attachment_url"):
+            data["attachment_url"] = sign_media_url(data["attachment_url"])
         return data
 
     def _save_attachments(self, instance, uploads):
@@ -202,12 +209,12 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             return
         urls = []
         for idx, upload in enumerate(files):
-            ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "bin"
+            ext = validated_extension(upload, allowed=CALENDAR_FILE_EXTENSIONS, max_bytes=MAX_FILE_BYTES)
             key = f"content-calendar/{instance.client_id}/{instance.pk}_{idx}.{ext}"
             if default_storage.exists(key):
                 default_storage.delete(key)
             saved_path = default_storage.save(key, upload)
-            urls.append(request.build_absolute_uri(default_storage.url(saved_path)))
+            urls.append(persist_storage_url(request, saved_path))
         instance.attachment_urls = urls
         instance.attachment_url = urls[0] if urls else ""
         instance.save(update_fields=["attachment_urls", "attachment_url"])

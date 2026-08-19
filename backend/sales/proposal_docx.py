@@ -9,7 +9,6 @@ sidesteps that entirely.
 """
 
 import io
-import urllib.request
 from html.parser import HTMLParser
 
 from docx import Document
@@ -35,13 +34,14 @@ def _asset_path(name: str) -> str:
 
 
 def _fetch_image(url: str):
-    if not url:
+    if not url or (url or "").startswith("data:"):
         return None
-    try:
-        with urllib.request.urlopen(url, timeout=12) as resp:
-            return io.BytesIO(resp.read())
-    except Exception:
-        return None
+    from common.media_urls import read_local_media_bytes
+
+    local = read_local_media_bytes(url)
+    if local:
+        return io.BytesIO(local)
+    return None
 
 
 def _shade(el, hex_color: str):
@@ -420,4 +420,6 @@ def render_proposal_docx(proposal, request) -> str:
     if default_storage.exists(key):
         default_storage.delete(key)
     saved_path = default_storage.save(key, ContentFile(buf.read()))
-    return request.build_absolute_uri(default_storage.url(saved_path))
+    from common.media_urls import deliver_storage_url
+
+    return deliver_storage_url(request, saved_path)

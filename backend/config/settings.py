@@ -8,6 +8,7 @@ DRF+JWT for HTTP, Celery for background work.
 from datetime import timedelta
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 import os
 
@@ -34,8 +35,21 @@ def env_list(key: str, default: str = "") -> list[str]:
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-SECRET_KEY = env("DJANGO_SECRET_KEY", "insecure-dev-key-change-me")
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
+_WEAK_SECRET_KEYS = {
+    "",
+    "insecure-dev-key-change-me",
+    "change-me-generate-a-50-char-random-string",
+}
+SECRET_KEY = (env("DJANGO_SECRET_KEY") or "").strip()
+if SECRET_KEY in _WEAK_SECRET_KEYS:
+    if DEBUG:
+        SECRET_KEY = "insecure-dev-key-change-me"
+    else:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY is missing or using a known placeholder. "
+            "Set a unique value before running with DJANGO_DEBUG=0."
+        )
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "http://localhost:3000")
 
@@ -86,6 +100,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "common.middleware.MaintenanceMiddleware",
+    "common.middleware.MediaAuthCookieMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -212,6 +227,10 @@ STORAGES = {
 }
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "mediafiles"
+# nginx internal redirect (X-Accel-Redirect) — off for local runserver.
+USE_X_ACCEL_REDIRECT = env_bool("USE_X_ACCEL_REDIRECT", default=not DEBUG)
+# HttpOnly cookie on /media/ so <img> tags work without a JWT header.
+MEDIA_AUTH_MAX_AGE = int(env("MEDIA_AUTH_MAX_AGE", str(60 * 60 * 12)))
 
 S3_ENABLED = env_bool("S3_ENABLED", default=False)
 if S3_ENABLED:

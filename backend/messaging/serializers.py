@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from common.media_urls import user_avatar_url
+from common.media_urls import user_avatar_url, sign_media_url
 
 from .models import Conversation, Message
 
@@ -36,6 +36,12 @@ class MessageSerializer(serializers.ModelSerializer):
 
     def get_sender_avatar_url(self, obj):
         return user_avatar_url(obj.sender)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("attachment_url"):
+            data["attachment_url"] = sign_media_url(data["attachment_url"])
+        return data
 
 
 def _participant_payload(user):

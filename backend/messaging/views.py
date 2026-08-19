@@ -20,9 +20,6 @@ from .serializers import ConversationSerializer, MessageSerializer
 User = get_user_model()
 
 MAX_ATTACHMENT_SIZE = 30 * 1024 * 1024  # 30MB
-IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
-VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "m4v"}
-DOCUMENT_EXTENSIONS = {"pdf"}
 
 
 def _display_name(user):
@@ -370,28 +367,26 @@ class MessageAttachmentView(APIView):
         if upload.size > MAX_ATTACHMENT_SIZE:
             return Response({"detail": "File is too large (30MB limit)."}, status=400)
 
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else ""
+        from common.uploads import CHAT_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, validated_extension
+
+        ext = validated_extension(upload, allowed=CHAT_EXTENSIONS, max_bytes=MAX_ATTACHMENT_SIZE)
         if ext in IMAGE_EXTENSIONS:
             kind = Message.AttachmentType.IMAGE
         elif ext in VIDEO_EXTENSIONS:
             kind = Message.AttachmentType.VIDEO
-        elif ext in DOCUMENT_EXTENSIONS:
-            kind = Message.AttachmentType.DOCUMENT
         else:
-            return Response({"detail": "Unsupported file type."}, status=400)
+            kind = Message.AttachmentType.DOCUMENT
 
         key = f"chat_attachments/{convo.pk}/{uuid.uuid4().hex}.{ext}"
         saved_path = default_storage.save(key, upload)
+
+        from common.media_urls import persist_storage_url
 
         message = Message.objects.create(
             conversation=convo,
             sender=request.user,
             body="",
-            # default_storage.url() is host-relative for local FileSystemStorage
-            # (e.g. "/media/chat_attachments/..."), which resolves against the
-            # wrong origin when frontend/backend are on different ports/domains.
-            # build_absolute_uri() fixes that; no-op for already-absolute S3 URLs.
-            attachment_url=request.build_absolute_uri(default_storage.url(saved_path)),
+            attachment_url=persist_storage_url(request, saved_path),
             attachment_type=kind,
             attachment_name=upload.name,
         )

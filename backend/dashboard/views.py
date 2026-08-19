@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from accounts.models import Module, Role, UserStatus
 from common.models import ActivityLog
 from common.permissions import IsActive, IsSuperadmin, has_module_access, is_superadmin
+from common.uploads import IMAGE_EXTENSIONS, UploadRejected, check_upload
 from hr.models import HrLetter
 from projects.models import Project
 from renewals.models import Renewal
@@ -595,14 +596,10 @@ class SupportContactView(APIView):
                 status=400,
             )
         for f in files:
-            if f.size > MAX_SUPPORT_IMAGE_BYTES:
-                return Response(
-                    {"detail": f"{f.name} is too large (max 5 MB per image)."},
-                    status=400,
-                )
-            content_type = (getattr(f, "content_type", "") or "").lower()
-            if content_type and not content_type.startswith("image/"):
-                return Response({"detail": "Only image attachments are allowed."}, status=400)
+            try:
+                check_upload(f, allowed=IMAGE_EXTENSIONS, max_bytes=MAX_SUPPORT_IMAGE_BYTES)
+            except UploadRejected as exc:
+                return Response({"detail": str(exc)}, status=400)
 
         body = (
             f"Support request from Kwick\n"

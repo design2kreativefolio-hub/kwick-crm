@@ -6,8 +6,16 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from accounts.models import Module
+from common.media_urls import deliver_storage_url, persist_storage_url, sign_media_url
 from common.permissions import HasModuleAccess
 from common.services import log_activity
+from common.uploads import (
+    CLIENT_FILE_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    MAX_FILE_BYTES,
+    MAX_IMAGE_BYTES,
+    validated_extension,
+)
 
 from .models import Client, Estimate, Invoice, Proposal
 from .estimate_pdf import render_estimate_pdf
@@ -58,14 +66,13 @@ class ClientViewSet(viewsets.ModelViewSet):
         from django.core.files.storage import default_storage
         from common.duplicate import slug_filename
 
+        ext = validated_extension(upload, allowed=CLIENT_FILE_EXTENSIONS, max_bytes=MAX_FILE_BYTES)
         original = (upload.name or "file").replace("\\", "/").split("/")[-1]
-        stem, ext = (original.rsplit(".", 1) + ["bin"])[:2] if "." in original else (original, "bin")
-        ext = (ext or "bin").lower()[:8]
+        stem = original.rsplit(".", 1)[0] if "." in original else original
         slug = slug_filename(stem, fallback="file")
         key = f"client-files/{client.pk}/{uuid.uuid4().hex[:8]}_{slug}.{ext}"
         saved_path = default_storage.save(key, upload)
-        url = request.build_absolute_uri(default_storage.url(saved_path))
-        return Response({"url": url, "name": original})
+        return Response({"url": deliver_storage_url(request, saved_path), "name": original})
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def logo(self, request, pk=None):
@@ -78,14 +85,14 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         from django.core.files.storage import default_storage
 
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "png"
+        ext = validated_extension(upload, allowed=IMAGE_EXTENSIONS, max_bytes=MAX_IMAGE_BYTES)
         key = f"client-logos/{client.pk}.{ext}"
         if default_storage.exists(key):
             default_storage.delete(key)
         saved_path = default_storage.save(key, upload)
-        client.logo_url = request.build_absolute_uri(default_storage.url(saved_path))
+        client.logo_url = persist_storage_url(request, saved_path)
         client.save(update_fields=["logo_url"])
-        return Response({"logo_url": client.logo_url})
+        return Response({"logo_url": sign_media_url(client.logo_url)})
 
 
 class ProposalViewSet(viewsets.ModelViewSet):
@@ -129,10 +136,10 @@ class ProposalViewSet(viewsets.ModelViewSet):
 
         from django.core.files.storage import default_storage
 
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "png"
+        ext = validated_extension(upload, allowed=IMAGE_EXTENSIONS, max_bytes=MAX_IMAGE_BYTES)
         key = f"proposal-assets/{proposal.pk}/{uuid.uuid4().hex}.{ext}"
         saved_path = default_storage.save(key, upload)
-        return Response({"url": request.build_absolute_uri(default_storage.url(saved_path))})
+        return Response({"url": deliver_storage_url(request, saved_path)})
 
     @action(detail=True, methods=["post"])
     def pdf(self, request, pk=None):

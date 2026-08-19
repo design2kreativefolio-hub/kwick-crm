@@ -13,6 +13,7 @@ from common.maintenance import (
     maintenance_enabled,
     set_maintenance_enabled,
 )
+from common.media_auth import clear_media_auth_cookie, set_media_auth_cookie
 from common.permissions import IsActive, IsSuperadmin
 from common.services import log_activity
 from notifications.services import refresh_daily_reminder, stop_recurring_reminder
@@ -61,6 +62,24 @@ class RegisterView(APIView):
 class LoginView(TokenObtainPairView):
     serializer_class = KwickTokenObtainPairSerializer
 
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            user_data = (response.data or {}).get("user") or {}
+            user = User.objects.filter(pk=user_data.get("id")).first()
+            if user is None:
+                raw = (response.data or {}).get("access")
+                if raw:
+                    from rest_framework_simplejwt.tokens import AccessToken
+
+                    try:
+                        user = User.objects.filter(pk=AccessToken(raw)["user_id"]).first()
+                    except Exception:
+                        user = None
+            if user is not None:
+                set_media_auth_cookie(response, user, request)
+        return response
+
 
 class KwickTokenRefreshView(TokenRefreshView):
     """Reject leftover refresh tokens while maintenance is on."""
@@ -79,7 +98,31 @@ class KwickTokenRefreshView(TokenRefreshView):
                         raise SiteInMaintenance()
                 except TokenError:
                     pass
-        return super().post(request, *args, **kwargs)
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            raw = (request.data or {}).get("refresh") or (response.data or {}).get("refresh")
+            if raw:
+                from rest_framework_simplejwt.exceptions import TokenError
+                from rest_framework_simplejwt.tokens import RefreshToken
+
+                try:
+                    user = User.objects.filter(pk=RefreshToken(raw)["user_id"]).first()
+                    if user is not None:
+                        set_media_auth_cookie(response, user, request)
+                except TokenError:
+                    pass
+        return response
+
+
+class LogoutView(APIView):
+    """Drop the /media/ cookie. JWT itself is client-held (localStorage)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        response = Response({"detail": "Logged out."})
+        clear_media_auth_cookie(response)
+        return response
 
 
 class MaintenanceView(APIView):

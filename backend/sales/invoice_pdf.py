@@ -108,7 +108,9 @@ def render_invoice_pdf(invoice, request) -> str:
     if default_storage.exists(key):
         default_storage.delete(key)
     saved_path = default_storage.save(key, ContentFile(pdf_bytes))
-    return request.build_absolute_uri(default_storage.url(saved_path))
+    from common.media_urls import deliver_storage_url
+
+    return deliver_storage_url(request, saved_path)
 
 
 def ensure_invoice_number(invoice_number: str) -> str:

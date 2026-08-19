@@ -23,18 +23,62 @@ export const tokens = {
   },
 };
 
+function jwtExpMs(token: string | null): number | null {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One in-flight refresh so a page of parallel 401s does not rotate the token N times. */
+let refreshPromise: Promise<string | null> | null = null;
+
 async function refreshAccess(): Promise<string | null> {
-  const refresh = tokens.refresh;
-  if (!refresh) return null;
-  const res = await fetch(`${API_BASE}/api/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh }),
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const refresh = tokens.refresh;
+    if (!refresh) return null;
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh }),
+      });
+      if (!res.ok) {
+        if (res.status === 401) tokens.clear();
+        return null;
+      }
+      const data = await res.json();
+      if (!data.access) return null;
+      tokens.set(data.access, data.refresh || refresh);
+      return data.access as string;
+    } catch {
+      return null;
+    }
+  })().finally(() => {
+    refreshPromise = null;
   });
-  if (!res.ok) return null;
-  const data = await res.json();
-  tokens.set(data.access);
-  return data.access;
+  return refreshPromise;
+}
+
+/** Current access token, refreshing if it expires within 15s. Used by HTTP and WebSockets. */
+export async function ensureAccess(): Promise<string | null> {
+  const current = tokens.access;
+  const exp = jwtExpMs(current);
+  if (current && exp && exp - Date.now() > 15_000) return current;
+  if (current && !exp) return current;
+  return (await refreshAccess()) || current;
+}
+
+export function wsUrl(path: string, token: string): string {
+  const base = (process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000").replace(/\/$/, "");
+  const prefix = path.startsWith("/") ? path : `/${path}`;
+  const sep = prefix.includes("?") ? "&" : "?";
+  return `${base}${prefix}${sep}token=${encodeURIComponent(token)}`;
 }
 
 export async function api<T = any>(
@@ -48,6 +92,7 @@ export async function api<T = any>(
   const doFetch = async (token: string | null) => {
     return fetch(`${API_BASE}${path}`, {
       ...rest,
+      credentials: "include",
       headers: {
         ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
@@ -56,7 +101,7 @@ export async function api<T = any>(
     });
   };
 
-  let res = await doFetch(auth ? tokens.access : null);
+  let res = await doFetch(auth ? await ensureAccess() : null);
 
   // Transparent refresh on 401.
   if (res.status === 401 && auth) {

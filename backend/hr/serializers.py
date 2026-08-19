@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from accounts.models import Role, StaffProfile, UserStatus
+from common.media_urls import scrub_media_tree, sign_media_tree, sign_media_url
 
 from .models import EmployeeCollateral, EmployeeRecord, HrLetter, Leave, LeaveBalance, Ticket
 
@@ -55,6 +56,12 @@ class StaffListSerializer(serializers.ModelSerializer):
             "home_country_address",
             "home_country_number",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("avatar_url"):
+            data["avatar_url"] = sign_media_url(data["avatar_url"])
+        return data
 
 
 class StaffCreateSerializer(serializers.Serializer):
@@ -193,12 +200,24 @@ class EmployeeCollateralSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["category", "file_url", "generated_at", "generated_by", "created_at"]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("file_url"):
+            data["file_url"] = sign_media_url(data["file_url"])
+        return data
+
 
 class EmployeeRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeRecord
         fields = ["id", "staff", "title", "file_url", "uploaded_by", "created_at"]
         read_only_fields = ["file_url", "uploaded_by", "created_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("file_url"):
+            data["file_url"] = sign_media_url(data["file_url"])
+        return data
 
 
 class LeaveSerializer(serializers.ModelSerializer):
@@ -290,6 +309,20 @@ class HrLetterSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["created_by", "file_url", "created_at", "updated_at"]
+
+    def to_internal_value(self, data):
+        ret = super().to_internal_value(data)
+        if "content" in ret:
+            ret["content"] = scrub_media_tree(ret["content"])
+        return ret
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("file_url"):
+            data["file_url"] = sign_media_url(data["file_url"])
+        if data.get("content"):
+            data["content"] = sign_media_tree(data["content"])
+        return data
 
     def get_staff_name(self, obj):
         if not obj.staff_id:

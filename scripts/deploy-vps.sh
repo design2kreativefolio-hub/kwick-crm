@@ -10,8 +10,11 @@ COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
 echo "==> Migrating database..."
 $COMPOSE exec -T backend python manage.py migrate
 
-echo "==> Rebuilding backend + frontend..."
-$COMPOSE up -d --build backend frontend
+echo "==> Rebuilding backend, workers, and frontend..."
+$COMPOSE up -d --build backend frontend celery-worker celery-beat
+
+echo "==> Reloading nginx (picks up nginx.prod.conf bind mount)..."
+$COMPOSE exec -T nginx nginx -s reload
 
 echo "==> Status:"
 $COMPOSE ps

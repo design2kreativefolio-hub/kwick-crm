@@ -62,6 +62,7 @@ async function fetchElevenLabsAudio(text: string): Promise<Blob | null> {
   const doFetch = async (token: string | null) =>
     fetch(`${API_BASE}/api/ai/tts`, {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -75,6 +76,7 @@ async function fetchElevenLabsAudio(text: string): Promise<Blob | null> {
     if (refresh) {
       const refreshed = await fetch(`${API_BASE}/api/auth/refresh`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh }),
       });

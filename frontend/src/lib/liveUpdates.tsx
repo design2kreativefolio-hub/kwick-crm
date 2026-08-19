@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
-import { api, tokens, unwrapList } from "./api";
+import { api, ensureAccess, unwrapList, wsUrl } from "./api";
 import { useAuth } from "./auth";
 import { DEFAULT_SOURCE_META, SOURCE_META } from "./notifications";
 import { showDesktopNotification } from "./systemNotify";
@@ -24,8 +24,6 @@ const LiveUpdatesContext = createContext<LiveUpdatesContextValue>({
 export function useLiveUpdates() {
   return useContext(LiveUpdatesContext);
 }
-
-const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000";
 
 type ChatEvent = { kind: "chat_message"; conversation_id: number; sender_name: string; preview: string };
 type NotificationEventPush = { id: number; source: string; title: string; body: string; created_at: string };
@@ -75,7 +73,9 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
     api<{ read_at: string | null }[]>("/api/notifications")
       .then((items) => setNotifUnread(items.filter((n) => !n.read_at).length))
       .catch(() => {});
-    api<{ unread_count: number }[] | { results: { unread_count: number }[] }>("/api/messages/conversations")
+    api<{ unread_count: number }[] | { results: { unread_count: number }[] }>(
+      "/api/messages/conversations?page_size=200"
+    )
       .then((d) => setChatUnread(unwrapList(d).reduce((sum, c) => sum + (c.unread_count || 0), 0)))
       .catch(() => {});
   };
@@ -91,9 +91,11 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+    let attempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const socket = new WebSocket(`${WS_BASE}/ws/notifications/?token=${tokens.access ?? ""}`);
-    socket.onmessage = (e) => {
+    const handleMessage = (e: MessageEvent) => {
       let payload: ChatEvent | NotificationEventPush;
       try {
         payload = JSON.parse(e.data);
@@ -124,9 +126,34 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
         });
       }
     };
-    socketRef.current = socket;
+
+    const connect = async () => {
+      if (cancelled) return;
+      const token = await ensureAccess();
+      if (cancelled) return;
+      if (!token) {
+        reconnectTimer = setTimeout(() => void connect(), 4000);
+        return;
+      }
+      const socket = new WebSocket(wsUrl("/ws/notifications/", token));
+      socket.onmessage = handleMessage;
+      socket.onopen = () => {
+        attempt = 0;
+      };
+      socket.onclose = () => {
+        if (cancelled) return;
+        attempt += 1;
+        const delay = Math.min(15_000, 800 * 2 ** Math.min(attempt, 4));
+        reconnectTimer = setTimeout(() => void connect(), delay);
+      };
+      socketRef.current = socket;
+    };
+
+    void connect();
     return () => {
-      socket.close();
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socketRef.current?.close();
       socketRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

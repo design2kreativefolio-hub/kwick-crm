@@ -3,7 +3,6 @@ INSTRUCTIONS - KWICK.docx. See proposal_content.py for the content shape."""
 
 import base64
 import mimetypes
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -32,20 +31,20 @@ def _data_uri(filename: str) -> str:
 
 
 def _fetch_data_uri(url: str) -> str:
-    """Download a proposal image and inline it as a data URI. WeasyPrint
-    would otherwise fetch each <img src="https://..."> itself, serially,
-    during layout — with S3/OVH-hosted images that's one blocking network
-    round trip per image, and proposals easily reference a dozen. Fetching
-    them all up front, in parallel, turns that into one short concurrent
-    burst instead. Falls back to the original URL on any failure so
-    WeasyPrint gets a chance to fetch it itself rather than showing nothing."""
-    try:
-        with urllib.request.urlopen(url, timeout=15) as resp:
-            data = resp.read()
-            mime = resp.headers.get_content_type() or mimetypes.guess_type(url)[0] or "image/png"
-        return f"data:{mime};base64,{base64.b64encode(data).decode()}"
-    except Exception:
+    """Inline a proposal image as a data URI from local storage.
+
+    Remote URLs are not fetched (avoids SSRF now that /media/ is not a
+    public nginx alias). WeasyPrint never sees an http(s) src for these.
+    """
+    if (url or "").startswith("data:"):
         return url
+    from common.media_urls import read_local_media_bytes
+
+    local = read_local_media_bytes(url)
+    if local:
+        mime = mimetypes.guess_type(url)[0] or "image/png"
+        return f"data:{mime};base64,{base64.b64encode(local).decode()}"
+    return ""
 
 
 def _prefetch_images(content: dict) -> dict:
@@ -171,4 +170,6 @@ def render_proposal_pdf(proposal, request) -> str:
     if default_storage.exists(key):
         default_storage.delete(key)
     saved_path = default_storage.save(key, ContentFile(pdf_bytes))
-    return request.build_absolute_uri(default_storage.url(saved_path))
+    from common.media_urls import deliver_storage_url
+
+    return deliver_storage_url(request, saved_path)

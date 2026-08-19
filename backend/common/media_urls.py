@@ -1,6 +1,21 @@
-"""Helpers for absolute media URLs (avatars, chat attachments, logos)."""
+"""Helpers for absolute media URLs (avatars, chat attachments, logos).
+
+Local /media/ files are not publicly readable. API responses attach a short
+HMAC so <img> / window.open work; a login cookie or JWT is also accepted.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import mimetypes
+import time
+from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 
 from django.conf import settings
+from django.core.files.storage import default_storage
+
+_SIG_KEYS = {"exp", "sig"}
 
 
 def absolute_media_url(request, storage_url: str) -> str:
@@ -23,8 +38,141 @@ def absolute_media_url(request, storage_url: str) -> str:
     return path
 
 
+unsigned_absolute_media_url = absolute_media_url
+
+
+def persist_storage_url(request, saved_path: str) -> str:
+    """Unsigned URL to store on models (signatures are added on the way out)."""
+    return absolute_media_url(request, default_storage.url(saved_path))
+
+
+storage_file_url = persist_storage_url
+
+
+def deliver_storage_url(request, saved_path: str) -> str:
+    return sign_media_url(persist_storage_url(request, saved_path))
+
+
+def normalize_media_key(key: str) -> str:
+    """Reject path traversal. Empty string means invalid."""
+    cleaned = unquote(key or "").replace("\\", "/").lstrip("/")
+    parts = [p for p in cleaned.split("/") if p and p != "."]
+    if not parts or ".." in parts:
+        return ""
+    return "/".join(parts)
+
+
+def media_key_from_url(url: str) -> str:
+    """Extract a local storage key from a /media/… URL. Empty if not ours."""
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    path = unquote(parsed.path or "")
+    marker = "/media/"
+    if marker not in path:
+        if path.startswith("media/"):
+            return normalize_media_key(path[len("media/") :])
+        return ""
+    return normalize_media_key(path.split(marker, 1)[-1])
+
+
+def read_media_bytes(url: str) -> tuple[bytes, str] | None:
+    """Read a stored object without an HTTP round trip (PDF/DOCX inlining)."""
+    key = media_key_from_url(url)
+    if not key or not default_storage.exists(key):
+        return None
+    with default_storage.open(key, "rb") as handle:
+        data = handle.read()
+    mime = mimetypes.guess_type(key)[0] or "application/octet-stream"
+    return data, mime
+
+
+def read_local_media_bytes(url: str) -> bytes | None:
+    got = read_media_bytes(url)
+    return None if got is None else got[0]
+
+
+def _max_age() -> int:
+    return int(getattr(settings, "MEDIA_AUTH_MAX_AGE", 12 * 60 * 60))
+
+
+def _signature(key: str, expires: int) -> str:
+    secret = (settings.SECRET_KEY or "").encode("utf-8")
+    digest = hmac.new(secret, f"{key}:{expires}".encode("utf-8"), hashlib.sha256).hexdigest()
+    return digest[:32]
+
+
+def sign_media_url(url: str) -> str:
+    """Attach exp+sig so a browser can fetch /media/ without an Authorization header."""
+    if not url or not isinstance(url, str):
+        return url or ""
+    if url.startswith("http://") or url.startswith("https://"):
+        if "/media/" not in urlparse(url).path:
+            return url
+    key = media_key_from_url(url)
+    if not key:
+        return url
+    parsed = urlparse(url)
+    qs = {k: v[-1] for k, v in parse_qs(parsed.query, keep_blank_values=True).items() if k not in _SIG_KEYS}
+    expires = int(time.time()) + _max_age()
+    qs["exp"] = str(expires)
+    qs["sig"] = _signature(key, expires)
+    query = urlencode(qs)
+    rebuilt = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, query, parsed.fragment))
+    if rebuilt.startswith("http://") or rebuilt.startswith("https://"):
+        return rebuilt
+    return absolute_media_url(None, rebuilt if rebuilt.startswith("/") else f"/{rebuilt}")
+
+
+def verify_media_signature(key: str, expires: str, sig: str) -> bool:
+    try:
+        exp = int(expires)
+    except (TypeError, ValueError):
+        return False
+    if exp < int(time.time()):
+        return False
+    expected = _signature(key, exp)
+    return hmac.compare_digest(expected, sig or "")
+
+
+def scrub_media_url(url: str) -> str:
+    """Strip signature query params before persisting a URL the client sent back."""
+    if not url or not isinstance(url, str):
+        return url
+    if not media_key_from_url(url) and "/media/" not in url:
+        return url
+    parsed = urlparse(url)
+    qs = {k: v[-1] for k, v in parse_qs(parsed.query, keep_blank_values=True).items() if k not in _SIG_KEYS}
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(qs), parsed.fragment))
+
+
+def sign_media_tree(value):
+    if isinstance(value, str):
+        if "/media/" in value or value.startswith("media/"):
+            return sign_media_url(value)
+        return value
+    if isinstance(value, list):
+        return [sign_media_tree(item) for item in value]
+    if isinstance(value, dict):
+        return {k: sign_media_tree(v) for k, v in value.items()}
+    return value
+
+
+def scrub_media_tree(value):
+    if isinstance(value, str):
+        if "/media/" in value or value.startswith("media/"):
+            return scrub_media_url(value)
+        return value
+    if isinstance(value, list):
+        return [scrub_media_tree(item) for item in value]
+    if isinstance(value, dict):
+        return {k: scrub_media_tree(v) for k, v in value.items()}
+    return value
+
+
 def user_avatar_url(user) -> str:
     profile = getattr(user, "profile", None)
     if profile is None:
         return ""
-    return (getattr(profile, "avatar_url", None) or "").strip()
+    raw = (getattr(profile, "avatar_url", None) or "").strip()
+    return sign_media_url(raw) if raw else ""

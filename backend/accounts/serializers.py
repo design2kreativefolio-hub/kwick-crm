@@ -3,6 +3,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from common.maintenance import SiteInMaintenance, is_blocked_by_maintenance
+from common.media_urls import sign_media_url
 
 from .models import ModuleAccess, Role, StaffProfile, User, UserStatus
 
@@ -20,6 +21,12 @@ class StaffProfileSerializer(serializers.ModelSerializer):
             "insurance_renewal_date",
             "iloe_renewal_date",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("avatar_url"):
+            data["avatar_url"] = sign_media_url(data["avatar_url"])
+        return data
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -194,7 +201,9 @@ class AvatarUploadSerializer(serializers.Serializer):
         from django.core.files.storage import default_storage
 
         upload = self.validated_data["file"]
-        ext = upload.name.rsplit(".", 1)[-1].lower() if "." in upload.name else "jpg"
+        from common.uploads import IMAGE_EXTENSIONS, MAX_IMAGE_BYTES, validated_extension
+
+        ext = validated_extension(upload, allowed=IMAGE_EXTENSIONS, max_bytes=MAX_IMAGE_BYTES)
         key = f"avatars/{user.pk}.{ext}"
         # Overwrite any previous avatar file at the same deterministic path.
         if default_storage.exists(key):
@@ -209,12 +218,12 @@ class AvatarUploadSerializer(serializers.Serializer):
         # Cache-bust so browsers/CDN pick up an overwrite at the same path.
         from time import time
 
-        from common.media_urls import absolute_media_url
+        from common.media_urls import sign_media_url, unsigned_absolute_media_url
 
-        base = absolute_media_url(request, default_storage.url(saved_path))
+        base = unsigned_absolute_media_url(request, default_storage.url(saved_path))
         profile.avatar_url = f"{base}{'&' if '?' in base else '?'}v={int(time())}"
         profile.save(update_fields=["avatar_url", "updated_at"])
-        return profile.avatar_url
+        return sign_media_url(profile.avatar_url)
 
 
 class KwickTokenObtainPairSerializer(TokenObtainPairSerializer):

@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from common.media_urls import scrub_media_tree, sign_media_tree, sign_media_url
+
 from .models import Client, Estimate, Invoice, InvoiceLineItem, Proposal
 from .proposal_content import merged_content
 from .estimate_content import merged_content as merged_estimate_content
@@ -32,6 +34,24 @@ class ClientSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["client_id", "logo_url"]
+
+    def to_internal_value(self, data):
+        ret = super().to_internal_value(data)
+        for field in ("trade_license_url", "vat_registration_url"):
+            if ret.get(field):
+                ret[field] = scrub_media_tree(ret[field])
+        if "additional_fields" in ret:
+            ret["additional_fields"] = scrub_media_tree(ret["additional_fields"])
+        return ret
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        for field in ("logo_url", "trade_license_url", "vat_registration_url"):
+            if data.get(field):
+                data[field] = sign_media_url(data[field])
+        if data.get("additional_fields"):
+            data["additional_fields"] = sign_media_tree(data["additional_fields"])
+        return data
 
     def _sync_company(self, validated_data):
         # Sales treats client name and company as the same identity field.
@@ -106,6 +126,18 @@ class ProposalSerializer(serializers.ModelSerializer):
             return home.get("client_name", "") or ""
         return ""
 
+    def to_internal_value(self, data):
+        ret = super().to_internal_value(data)
+        if "content" in ret:
+            ret["content"] = scrub_media_tree(ret["content"])
+        return ret
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("content"):
+            data["content"] = sign_media_tree(data["content"])
+        return data
+
     def _synced_title(self, content, fallback):
         home = (content or {}).get("home") if isinstance(content, dict) else None
         if not isinstance(home, dict):
@@ -154,6 +186,18 @@ class EstimateSerializer(serializers.ModelSerializer):
         if obj.client_id:
             return obj.client.name
         return (obj.content or {}).get("bill_to", "")
+
+    def to_internal_value(self, data):
+        ret = super().to_internal_value(data)
+        if "content" in ret:
+            ret["content"] = scrub_media_tree(ret["content"])
+        return ret
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("content"):
+            data["content"] = sign_media_tree(data["content"])
+        return data
 
     def _synced_title(self, content, fallback):
         quote = (content or {}).get("quote_number", "").strip()
@@ -229,6 +273,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
             return content_title
         return obj.invoice_number or f"Invoice #{obj.pk}"
 
+    def to_internal_value(self, data):
+        ret = super().to_internal_value(data)
+        if "content" in ret:
+            ret["content"] = scrub_media_tree(ret["content"])
+        return ret
+
     def to_representation(self, instance):
         """Hydrate builder `content.items` from legacy InvoiceLineItem rows when
         content was never migrated (migration 0008 left content empty)."""
@@ -255,6 +305,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 if not (content.get("invoice_number") or "").strip():
                     content["invoice_number"] = instance.invoice_number or ""
                 data["content"] = content
+        if data.get("content"):
+            data["content"] = sign_media_tree(data["content"])
         return data
 
     def _apply_content(self, validated_data):

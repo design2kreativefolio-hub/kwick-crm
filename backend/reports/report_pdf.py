@@ -71,20 +71,6 @@ def render_report_pdf(report: dict, request=None) -> str:
     stamp = timezone.localtime().strftime("%Y%m%d%H%M%S")
     key = f"report-exports/{kind}/{slug}-{stamp}.pdf"
     saved_path = default_storage.save(key, ContentFile(pdf_bytes))
-    url = default_storage.url(saved_path)
-    if request is not None:
-        return request.build_absolute_uri(url)
-    if url.startswith("http"):
-        return url
-    # Absolute URL for EDITH chat links (browser needs a full host)
-    api_base = (getattr(settings, "PUBLIC_API_BASE", None) or "").rstrip("/")
-    if not api_base:
-        # Derive from FRONTEND_URL host → assume API on :8000 for local docker
-        front = (getattr(settings, "FRONTEND_URL", None) or "http://localhost:3000").rstrip("/")
-        if "localhost" in front or "127.0.0.1" in front:
-            api_base = "http://localhost:8000"
-        else:
-            api_base = front
-    if not url.startswith("/"):
-        url = f"/{url}"
-    return f"{api_base}{url}"
+    from common.media_urls import deliver_storage_url
+
+    return deliver_storage_url(request, saved_path)

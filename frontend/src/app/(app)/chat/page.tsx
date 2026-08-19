@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { UserAvatar } from "@/components/UserAvatar";
-import { api, ApiError, tokens, unwrapList } from "@/lib/api";
+import { api, ApiError, ensureAccess, unwrapList, wsUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
 import { useToast } from "@/lib/toast";
@@ -40,7 +40,6 @@ type Conversation = {
 
 type Contact = { id: number; full_name: string; email: string; role: string; avatar_url?: string };
 
-const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000";
 const MAX_ATTACHMENT_SIZE = 30 * 1024 * 1024; // 30MB — mirrors the backend limit
 
 function ChatAvatar({
@@ -161,7 +160,7 @@ function ChatPageInner() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadConversations = () => {
-    api<Conversation[] | { results: Conversation[] }>("/api/messages/conversations")
+    api<Conversation[] | { results: Conversation[] }>("/api/messages/conversations?page_size=200")
       .then((d) => setConversations(unwrapList(d)))
       .catch(() => {});
   };
@@ -184,12 +183,15 @@ function ChatPageInner() {
   useEffect(() => {
     if (!selectedId) return;
     let cancelled = false;
-    setMessages([]);
+    let attempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     setMenuOpen(false);
 
-    api<Message[]>(`/api/messages/conversations/${selectedId}/messages`).then((d) => {
-      if (!cancelled) setMessages(d);
-    });
+    api<Message[]>(`/api/messages/conversations/${selectedId}/messages`)
+      .then((d) => {
+        if (!cancelled) setMessages(Array.isArray(d) ? d : []);
+      })
+      .catch(() => {});
     api(`/api/messages/conversations/${selectedId}/read`, { method: "POST" })
       .then(() => {
         setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, unread_count: 0 } : c)));
@@ -197,8 +199,7 @@ function ChatPageInner() {
       })
       .catch(() => {});
 
-    const socket = new WebSocket(`${WS_BASE}/ws/messages/${selectedId}/?token=${tokens.access ?? ""}`);
-    socket.onmessage = (e) => {
+    const handleMessage = (e: MessageEvent) => {
       const data = JSON.parse(e.data);
       if (data?.event === "cleared") {
         setMessages([]);
@@ -232,11 +233,35 @@ function ChatPageInner() {
       setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
       setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, last_message: msg } : c)));
     };
-    wsRef.current = socket;
+
+    const connect = async () => {
+      if (cancelled) return;
+      const token = await ensureAccess();
+      if (cancelled) return;
+      if (!token) {
+        reconnectTimer = setTimeout(() => void connect(), 4000);
+        return;
+      }
+      const socket = new WebSocket(wsUrl(`/ws/messages/${selectedId}/`, token));
+      socket.onmessage = handleMessage;
+      socket.onopen = () => {
+        attempt = 0;
+      };
+      socket.onclose = () => {
+        if (cancelled) return;
+        attempt += 1;
+        const delay = Math.min(15_000, 800 * 2 ** Math.min(attempt, 4));
+        reconnectTimer = setTimeout(() => void connect(), delay);
+      };
+      wsRef.current = socket;
+    };
+
+    void connect();
 
     return () => {
       cancelled = true;
-      socket.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      wsRef.current?.close();
       wsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
