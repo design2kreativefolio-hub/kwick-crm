@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { api, ApiError, tokens } from "./api";
+import { api, ApiError } from "./api";
 
 export type StaffProfile = {
   job_title: string;
@@ -75,7 +75,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const refreshUser = async () => {
-    if (!tokens.access) return;
     try {
       const me = await api<User>("/api/auth/me");
       setUser(me);
@@ -86,16 +85,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      if (!tokens.access) {
-        setLoading(false);
-        return;
-      }
       try {
         const me = await api<User>("/api/auth/me");
         setUser(me);
       } catch (err) {
         const status = err instanceof ApiError ? err.status : 0;
-        if (status === 401) tokens.clear();
+        if (status === 401) setUser(null);
       } finally {
         setLoading(false);
       }
@@ -103,21 +98,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const data = await api<{ access: string; refresh: string; user: User }>("/api/auth/login", {
+    const data = await api<{ user: User }>("/api/auth/login", {
       method: "POST",
       auth: false,
       body: JSON.stringify({ email, password }),
     });
-    tokens.set(data.access, data.refresh);
     setUser(data.user);
     router.push("/dashboard");
   };
 
   const logout = () => {
-    void api("/api/auth/logout", { method: "POST", auth: false }).catch(() => {});
-    tokens.clear();
-    setUser(null);
-    router.push("/login");
+    void (async () => {
+      try {
+        await api("/api/auth/logout", { method: "POST", auth: false });
+      } catch {
+        /* cookies are HttpOnly — best-effort blacklist + clear */
+      }
+      setUser(null);
+      router.push("/login");
+    })();
   };
 
   return (

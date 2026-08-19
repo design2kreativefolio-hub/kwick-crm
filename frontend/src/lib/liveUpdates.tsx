@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
-import { api, ensureAccess, unwrapList, wsUrl } from "./api";
+import { api, refreshSession, unwrapList, wsUrl } from "./api";
 import { useAuth } from "./auth";
 import { DEFAULT_SOURCE_META, SOURCE_META } from "./notifications";
 import { showDesktopNotification } from "./systemNotify";
@@ -127,15 +127,9 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
       }
     };
 
-    const connect = async () => {
+    const connect = () => {
       if (cancelled) return;
-      const token = await ensureAccess();
-      if (cancelled) return;
-      if (!token) {
-        reconnectTimer = setTimeout(() => void connect(), 4000);
-        return;
-      }
-      const socket = new WebSocket(wsUrl("/ws/notifications/", token));
+      const socket = new WebSocket(wsUrl("/ws/notifications/"));
       socket.onmessage = handleMessage;
       socket.onopen = () => {
         attempt = 0;
@@ -144,7 +138,11 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
         if (cancelled) return;
         attempt += 1;
         const delay = Math.min(15_000, 800 * 2 ** Math.min(attempt, 4));
-        reconnectTimer = setTimeout(() => void connect(), delay);
+        reconnectTimer = setTimeout(() => {
+          void refreshSession().finally(() => {
+            if (!cancelled) connect();
+          });
+        }, delay);
       };
       socketRef.current = socket;
     };

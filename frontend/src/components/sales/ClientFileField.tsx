@@ -12,7 +12,7 @@ export function ClientFileField({
   value,
   onChange,
   label,
-  accept = ".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx",
+  accept = ".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx",
 }: {
   clientId: number | null;
   value: string;

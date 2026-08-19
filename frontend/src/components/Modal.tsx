@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
+import { Z_MODAL } from "@/lib/placeFixedPanel";
+
 /** Shared centered overlay/card shell — blurred backdrop, focus animation. */
 export function Modal({
   open,
@@ -85,7 +87,7 @@ const overlay: React.CSSProperties = {
   WebkitBackdropFilter: "blur(10px)",
   display: "grid",
   placeItems: "center",
-  zIndex: 200,
+  zIndex: Z_MODAL,
   padding: 16,
   overflowY: "auto",
 };

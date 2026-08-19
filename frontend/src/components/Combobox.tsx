@@ -4,6 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { Z_POPOVER, placeFixedPanel } from "@/lib/placeFixedPanel";
+
 /**
  * Free-text input with a custom-styled suggestions panel — for fields where
  * you can pick an existing value OR just type a new one (e.g. a project's
@@ -28,7 +30,7 @@ export function Combobox({
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLUListElement>(null);
@@ -45,12 +47,17 @@ export function Combobox({
     const el = inputRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setRect({ top: r.bottom + 6, left: r.left, width: r.width });
+    const estimated = filtered.length * 38 + 12;
+    const measured = panelRef.current?.offsetHeight || 0;
+    setRect(placeFixedPanel(r, { width: r.width, height: measured > 40 ? measured : estimated, minHeight: 80 }));
   };
 
   useLayoutEffect(() => {
-    if (open) reposition();
-  }, [open]);
+    if (!open) return;
+    reposition();
+    const id = requestAnimationFrame(() => reposition());
+    return () => cancelAnimationFrame(id);
+  }, [open, filtered.length]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -90,7 +97,16 @@ export function Combobox({
       exit={{ opacity: 0, y: -6, scale: 0.98 }}
       transition={{ duration: 0.14, ease: "easeOut" }}
       className="select-panel"
-      style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, right: "auto", zIndex: 1000 }}
+      style={{
+        position: "fixed",
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        maxHeight: rect.maxHeight,
+        overflowY: "auto",
+        right: "auto",
+        zIndex: Z_POPOVER,
+      }}
     >
       {filtered.map((o) => (
         <li

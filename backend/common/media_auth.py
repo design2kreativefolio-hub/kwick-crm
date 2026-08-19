@@ -42,10 +42,14 @@ def clear_media_auth_cookie(response):
 
 
 def user_from_jwt(request):
+    raw = ""
     header = request.META.get("HTTP_AUTHORIZATION") or ""
-    if not header.lower().startswith("bearer "):
-        return None
-    raw = header.split(" ", 1)[1].strip()
+    if header.lower().startswith("bearer "):
+        raw = header.split(" ", 1)[1].strip()
+    if not raw:
+        from common.jwt_cookies import ACCESS_COOKIE
+
+        raw = request.COOKIES.get(ACCESS_COOKIE) or ""
     if not raw:
         return None
     try:
@@ -54,7 +58,10 @@ def user_from_jwt(request):
         from accounts.models import User
 
         token = AccessToken(raw)
-        return User.objects.filter(pk=token["user_id"]).first()
+        user = User.objects.filter(pk=token["user_id"]).first()
+        if user is not None and not getattr(user, "can_login", False):
+            return None
+        return user
     except Exception:
         return None
 

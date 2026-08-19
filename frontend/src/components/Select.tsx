@@ -4,6 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { Z_POPOVER, placeFixedPanel } from "@/lib/placeFixedPanel";
+
 export type SelectOption = { value: string; label: string };
 
 const OPTION_ROW_HEIGHT = 38;
@@ -40,7 +42,7 @@ export function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLUListElement>(null);
@@ -59,22 +61,23 @@ export function Select({
     if (!el) return;
     const r = el.getBoundingClientRect();
     const minWidth = Math.max(r.width, minPanelWidth);
-    const maxLeft = Math.max(8, window.innerWidth - minWidth - 8);
     const visibleRows = maxVisibleOptions ? Math.min(options.length, maxVisibleOptions) : options.length;
     const estimatedHeight = visibleRows * OPTION_ROW_HEIGHT + PANEL_PADDING;
-    const spaceBelow = window.innerHeight - r.bottom - 8;
-    const spaceAbove = r.top - 8;
-    const openUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
-
-    setRect({
-      top: openUp ? Math.max(8, r.top - estimatedHeight - 6) : r.bottom + 6,
-      left: Math.min(r.left, maxLeft),
-      width: minWidth,
-    });
+    const measured = panelRef.current?.offsetHeight || 0;
+    setRect(
+      placeFixedPanel(r, {
+        width: minWidth,
+        height: measured > 40 ? measured : estimatedHeight,
+        minHeight: 80,
+      })
+    );
   };
 
   useLayoutEffect(() => {
-    if (open) reposition();
+    if (!open) return;
+    reposition();
+    const id = requestAnimationFrame(() => reposition());
+    return () => cancelAnimationFrame(id);
   }, [open, options.length, maxVisibleOptions]);
 
   useEffect(() => {
@@ -125,10 +128,10 @@ export function Select({
         minWidth: rect.width,
         width: "max-content",
         maxWidth: 320,
-        maxHeight: panelMaxHeight,
-        overflowY: maxVisibleOptions && options.length > maxVisibleOptions ? "auto" : undefined,
+        maxHeight: panelMaxHeight ? Math.min(panelMaxHeight, rect.maxHeight) : rect.maxHeight,
+        overflowY: "auto",
         right: "auto",
-        zIndex: 1100,
+        zIndex: Z_POPOVER,
         padding: 6,
       }}
     >

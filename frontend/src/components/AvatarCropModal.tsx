@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import Cropper, { Area } from "react-easy-crop";
 import "react-easy-crop/react-easy-crop.css";
 
+import { Z_MODAL } from "@/lib/placeFixedPanel";
+
 async function cropToBlob(imageSrc: string, pixelCrop: Area): Promise<Blob> {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
@@ -185,7 +187,7 @@ export function AvatarCropModal({
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  zIndex: 200,
+  zIndex: Z_MODAL,
   background: "rgba(5, 8, 18, 0.62)",
   backdropFilter: "blur(10px)",
   WebkitBackdropFilter: "blur(10px)",

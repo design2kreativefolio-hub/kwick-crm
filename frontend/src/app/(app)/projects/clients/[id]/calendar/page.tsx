@@ -821,6 +821,7 @@ export default function ClientCalendarPage() {
                     type="file"
                     multiple
                     hidden
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.png,.jpg,.jpeg,.webp,.gif"
                     onChange={(e) => {
                       const picked = Array.from(e.target.files || []);
                       e.target.value = "";

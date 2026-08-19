@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { CALENDAR_MONTHS, MonthYearSelect } from "@/components/MonthYearSelect";
+import { Z_POPOVER, placeFixedPanel } from "@/lib/placeFixedPanel";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
@@ -82,7 +83,7 @@ export function DatePicker({
   const selected = parseIso(value);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const [view, setView] = useState(() => {
     const base = selected ?? new Date();
     return { year: base.getFullYear(), month: base.getMonth() };
@@ -103,18 +104,18 @@ export function DatePicker({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const panelW = Math.max(r.width, 300);
-    const maxLeft = Math.max(8, window.innerWidth - panelW - 8);
-    setRect({
-      top: r.bottom + 6,
-      left: Math.min(r.left, maxLeft),
-      width: panelW,
-    });
+    const panelW = Math.min(320, Math.max(r.width, 280));
+    const measured = panelRef.current?.offsetHeight || 0;
+    const height = measured > 80 ? measured : 360;
+    setRect(placeFixedPanel(r, { width: panelW, height, minHeight: 240 }));
   };
 
   useLayoutEffect(() => {
-    if (open) reposition();
-  }, [open]);
+    if (!open) return;
+    reposition();
+    const id = requestAnimationFrame(() => reposition());
+    return () => cancelAnimationFrame(id);
+  }, [open, view.year, view.month]);
 
   useEffect(() => {
     if (!open) return;
@@ -179,7 +180,9 @@ export function DatePicker({
         left: rect.left,
         width: rect.width,
         maxWidth: 320,
-        zIndex: 1000,
+        maxHeight: rect.maxHeight,
+        overflowY: "auto",
+        zIndex: Z_POPOVER,
         padding: 12,
       }}
     >

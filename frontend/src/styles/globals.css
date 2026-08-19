@@ -1530,7 +1530,7 @@ input[type="checkbox"]:disabled {
      Select.tsx) since this is portaled to document.body with fixed
      coordinates — these are just the non-positional fallback/base values. */
   position: fixed;
-  z-index: 1000;
+  z-index: 1200;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1538,7 +1538,7 @@ input[type="checkbox"]:disabled {
   padding: 6px;
   margin: 0;
   list-style: none;
-  max-height: 260px;
+  max-height: min(260px, calc(100vh - 16px));
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -1546,8 +1546,9 @@ input[type="checkbox"]:disabled {
 }
 
 .date-picker-panel {
-  max-height: none;
-  overflow: visible;
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .month-year-select {

@@ -6,10 +6,11 @@ from django.core.files.images import get_image_dimensions
 
 IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
 VIDEO_EXTENSIONS = frozenset({"mp4", "mov", "webm", "m4v"})
-DOCUMENT_EXTENSIONS = frozenset({"pdf", "doc", "docx", "xls", "xlsx"})
+DOCUMENT_EXTENSIONS = frozenset({"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt"})
 CHAT_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | frozenset({"pdf"})
 CLIENT_FILE_EXTENSIONS = IMAGE_EXTENSIONS | DOCUMENT_EXTENSIONS
-CALENDAR_EXTENSIONS = IMAGE_EXTENSIONS | frozenset({"pdf"})
+# Content calendar attachments are briefs / refs — same office files as before lock-down.
+CALENDAR_EXTENSIONS = CLIENT_FILE_EXTENSIONS
 
 # Never store these, even if a caller forgets to pass an allowlist.
 BLOCKED_EXTENSIONS = frozenset(

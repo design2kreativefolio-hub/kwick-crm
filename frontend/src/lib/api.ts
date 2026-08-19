@@ -1,63 +1,36 @@
-// Thin API client for the Django/DRF backend. Handles JWT access/refresh.
+// Thin API client for the Django/DRF backend. Auth is HttpOnly cookies.
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
-const ACCESS_KEY = "kwick-access";
-const REFRESH_KEY = "kwick-refresh";
-
-export const tokens = {
-  get access() {
-    return typeof window !== "undefined" ? localStorage.getItem(ACCESS_KEY) : null;
-  },
-  get refresh() {
-    return typeof window !== "undefined" ? localStorage.getItem(REFRESH_KEY) : null;
-  },
-  set(access: string, refresh?: string) {
-    localStorage.setItem(ACCESS_KEY, access);
-    if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
-  },
-  clear() {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
-  },
-};
-
-function jwtExpMs(token: string | null): number | null {
-  if (!token) return null;
+function wipeLegacyTokenStorage() {
+  if (typeof window === "undefined") return;
   try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+    localStorage.removeItem("kwick-access");
+    localStorage.removeItem("kwick-refresh");
   } catch {
-    return null;
+    /* ignore */
   }
 }
 
-/** One in-flight refresh so a page of parallel 401s does not rotate the token N times. */
-let refreshPromise: Promise<string | null> | null = null;
+wipeLegacyTokenStorage();
 
-async function refreshAccess(): Promise<string | null> {
+/** One in-flight refresh so a page of parallel 401s does not rotate the cookie N times. */
+let refreshPromise: Promise<boolean> | null = null;
+
+export async function refreshSession(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
-    const refresh = tokens.refresh;
-    if (!refresh) return null;
     try {
       const res = await fetch(`${API_BASE}/api/auth/refresh`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
+        body: JSON.stringify({}),
       });
-      if (!res.ok) {
-        if (res.status === 401) tokens.clear();
-        return null;
-      }
-      const data = await res.json();
-      if (!data.access) return null;
-      tokens.set(data.access, data.refresh || refresh);
-      return data.access as string;
+      return res.ok;
     } catch {
-      return null;
+      return false;
     }
   })().finally(() => {
     refreshPromise = null;
@@ -65,20 +38,10 @@ async function refreshAccess(): Promise<string | null> {
   return refreshPromise;
 }
 
-/** Current access token, refreshing if it expires within 15s. Used by HTTP and WebSockets. */
-export async function ensureAccess(): Promise<string | null> {
-  const current = tokens.access;
-  const exp = jwtExpMs(current);
-  if (current && exp && exp - Date.now() > 15_000) return current;
-  if (current && !exp) return current;
-  return (await refreshAccess()) || current;
-}
-
-export function wsUrl(path: string, token: string): string {
+export function wsUrl(path: string): string {
   const base = (process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000").replace(/\/$/, "");
   const prefix = path.startsWith("/") ? path : `/${path}`;
-  const sep = prefix.includes("?") ? "&" : "?";
-  return `${base}${prefix}${sep}token=${encodeURIComponent(token)}`;
+  return `${base}${prefix}`;
 }
 
 export async function api<T = any>(
@@ -89,25 +52,23 @@ export async function api<T = any>(
   // FormData needs the browser to set its own multipart boundary — forcing
   // application/json here would silently break file uploads.
   const isFormData = typeof FormData !== "undefined" && rest.body instanceof FormData;
-  const doFetch = async (token: string | null) => {
+  const doFetch = async () => {
     return fetch(`${API_BASE}${path}`, {
       ...rest,
       credentials: "include",
       headers: {
         ...(isFormData ? {} : { "Content-Type": "application/json" }),
-        ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
         ...(headers ?? {}),
       },
     });
   };
 
-  let res = await doFetch(auth ? await ensureAccess() : null);
+  let res = await doFetch();
 
   // Transparent refresh on 401.
   if (res.status === 401 && auth) {
-    const newAccess = await refreshAccess();
-    if (newAccess) {
-      res = await doFetch(newAccess);
+    if (await refreshSession()) {
+      res = await doFetch();
     }
   }
 
@@ -148,13 +109,21 @@ export function formatApiError(data: any): string {
   if (typeof data === "string") return data;
   if (typeof data.detail === "string" && data.detail.trim()) return data.detail;
   if (Array.isArray(data.detail)) return data.detail.map(String).join(" ");
+  if (Array.isArray(data)) return data.map(String).join(" ");
   if (data.message) return data.message;
   const messages: string[] = [];
   for (const key of Object.keys(data)) {
     if (key === "detail") continue;
     const val = data[key];
-    if (Array.isArray(val)) messages.push(`${key}: ${val.join(" ")}`);
-    else if (typeof val === "string" && val.trim()) messages.push(`${key}: ${val}`);
+    const prefix = /^\d+$/.test(key) ? "" : `${key}: `;
+    if (Array.isArray(val)) messages.push(`${prefix}${val.join(" ")}`);
+    else if (typeof val === "string" && val.trim()) messages.push(`${prefix}${val}`);
+    else if (val && typeof val === "object") {
+      const nested = formatApiError(val);
+      if (nested && !nested.startsWith("Something went wrong")) {
+        messages.push(prefix ? `${prefix}${nested}` : nested);
+      }
+    }
   }
   if (messages.length) return messages.join(" ");
   return "Something went wrong. Please try again.";

@@ -1,10 +1,12 @@
 from rest_framework import status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from common.jwt_cookies import attach_auth_cookies, clear_jwt_cookies, refresh_token_from_request
 from common.maintenance import (
     SiteInMaintenance,
     allowlist_emails,
@@ -13,8 +15,9 @@ from common.maintenance import (
     maintenance_enabled,
     set_maintenance_enabled,
 )
-from common.media_auth import clear_media_auth_cookie, set_media_auth_cookie
+from common.media_auth import clear_media_auth_cookie
 from common.permissions import IsActive, IsSuperadmin
+from common.throttles import AuthAnonThrottle
 from common.services import log_activity
 from notifications.services import refresh_daily_reminder, stop_recurring_reminder
 
@@ -22,6 +25,7 @@ from .models import ModuleAccess, Role, User, UserStatus
 from .serializers import (
     AvatarUploadSerializer,
     ChangePasswordSerializer,
+    CookieTokenRefreshSerializer,
     ForgotPasswordSerializer,
     KwickTokenObtainPairSerializer,
     ModuleAccessSerializer,
@@ -35,6 +39,7 @@ from .tasks import dispatch_email_task, send_approval_email
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [AuthAnonThrottle]
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -61,66 +66,72 @@ class RegisterView(APIView):
 
 class LoginView(TokenObtainPairView):
     serializer_class = KwickTokenObtainPairSerializer
+    throttle_classes = [AuthAnonThrottle]
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
             user_data = (response.data or {}).get("user") or {}
             user = User.objects.filter(pk=user_data.get("id")).first()
-            if user is None:
-                raw = (response.data or {}).get("access")
-                if raw:
-                    from rest_framework_simplejwt.tokens import AccessToken
-
-                    try:
-                        user = User.objects.filter(pk=AccessToken(raw)["user_id"]).first()
-                    except Exception:
-                        user = None
-            if user is not None:
-                set_media_auth_cookie(response, user, request)
+            attach_auth_cookies(response, request, user=user)
         return response
 
 
 class KwickTokenRefreshView(TokenRefreshView):
-    """Reject leftover refresh tokens while maintenance is on."""
+    """Rotate refresh from cookie; reject leftover tokens while maintenance is on."""
+
+    serializer_class = CookieTokenRefreshSerializer
 
     def post(self, request, *args, **kwargs):
-        if maintenance_enabled():
+        raw = refresh_token_from_request(request)
+        if raw:
             from rest_framework_simplejwt.exceptions import TokenError
             from rest_framework_simplejwt.tokens import RefreshToken
 
-            raw = (request.data or {}).get("refresh")
-            if raw:
-                try:
-                    token = RefreshToken(raw)
-                    user = User.objects.filter(pk=token["user_id"]).first()
-                    if is_blocked_by_maintenance(user):
-                        raise SiteInMaintenance()
-                except TokenError:
-                    pass
+            try:
+                token = RefreshToken(raw)
+                user = User.objects.filter(pk=token["user_id"]).first()
+                if user is None or not user.can_login:
+                    raise AuthenticationFailed("Account is not active.")
+                if maintenance_enabled() and is_blocked_by_maintenance(user):
+                    raise SiteInMaintenance()
+            except TokenError:
+                pass
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
-            raw = (request.data or {}).get("refresh") or (response.data or {}).get("refresh")
-            if raw:
+            user = None
+            new_refresh = (response.data or {}).get("refresh") or raw
+            if new_refresh:
                 from rest_framework_simplejwt.exceptions import TokenError
                 from rest_framework_simplejwt.tokens import RefreshToken
 
                 try:
-                    user = User.objects.filter(pk=RefreshToken(raw)["user_id"]).first()
-                    if user is not None:
-                        set_media_auth_cookie(response, user, request)
+                    user = User.objects.filter(pk=RefreshToken(new_refresh)["user_id"]).first()
                 except TokenError:
-                    pass
+                    user = None
+            attach_auth_cookies(response, request, user=user)
         return response
 
 
 class LogoutView(APIView):
-    """Drop the /media/ cookie. JWT itself is client-held (localStorage)."""
+    """Blacklist the refresh token and drop auth cookies."""
 
     permission_classes = [AllowAny]
 
     def post(self, request):
+        raw = refresh_token_from_request(request)
+        if raw:
+            from rest_framework_simplejwt.exceptions import TokenError
+            from rest_framework_simplejwt.tokens import RefreshToken
+
+            try:
+                RefreshToken(raw).blacklist()
+            except TokenError:
+                pass
+            except AttributeError:
+                pass
         response = Response({"detail": "Logged out."})
+        clear_jwt_cookies(response)
         clear_media_auth_cookie(response)
         return response
 
@@ -312,6 +323,7 @@ class ForgotPasswordView(APIView):
     """Public: 'forgot my password' request from the login page."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [AuthAnonThrottle]
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)

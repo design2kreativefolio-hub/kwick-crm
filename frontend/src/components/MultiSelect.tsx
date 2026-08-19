@@ -4,6 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { Z_POPOVER, placeFixedPanel } from "@/lib/placeFixedPanel";
+
 export type MultiSelectOption = { value: string; label: string };
 
 /**
@@ -26,7 +28,7 @@ export function MultiSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -37,12 +39,17 @@ export function MultiSelect({
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setRect({ top: r.bottom + 6, left: r.left, width: r.width });
+    const estimated = Math.min(options.length * 38 + 12, 280);
+    const measured = panelRef.current?.offsetHeight || 0;
+    setRect(placeFixedPanel(r, { width: r.width, height: measured > 40 ? measured : estimated, minHeight: 80 }));
   };
 
   useLayoutEffect(() => {
-    if (open) reposition();
-  }, [open]);
+    if (!open) return;
+    reposition();
+    const id = requestAnimationFrame(() => reposition());
+    return () => cancelAnimationFrame(id);
+  }, [open, options.length]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -101,8 +108,8 @@ export function MultiSelect({
         left: rect.left,
         width: rect.width,
         right: "auto",
-        zIndex: 1000,
-        maxHeight: 220,
+        zIndex: Z_POPOVER,
+        maxHeight: rect.maxHeight,
         overflowY: "auto",
       }}
     >

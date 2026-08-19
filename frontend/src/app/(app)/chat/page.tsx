@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { UserAvatar } from "@/components/UserAvatar";
-import { api, ApiError, ensureAccess, unwrapList, wsUrl } from "@/lib/api";
+import { api, ApiError, refreshSession, unwrapList, wsUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
 import { useToast } from "@/lib/toast";
@@ -234,15 +234,9 @@ function ChatPageInner() {
       setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, last_message: msg } : c)));
     };
 
-    const connect = async () => {
+    const connect = () => {
       if (cancelled) return;
-      const token = await ensureAccess();
-      if (cancelled) return;
-      if (!token) {
-        reconnectTimer = setTimeout(() => void connect(), 4000);
-        return;
-      }
-      const socket = new WebSocket(wsUrl(`/ws/messages/${selectedId}/`, token));
+      const socket = new WebSocket(wsUrl(`/ws/messages/${selectedId}/`));
       socket.onmessage = handleMessage;
       socket.onopen = () => {
         attempt = 0;
@@ -251,7 +245,11 @@ function ChatPageInner() {
         if (cancelled) return;
         attempt += 1;
         const delay = Math.min(15_000, 800 * 2 ** Math.min(attempt, 4));
-        reconnectTimer = setTimeout(() => void connect(), delay);
+        reconnectTimer = setTimeout(() => {
+          void refreshSession().finally(() => {
+            if (!cancelled) connect();
+          });
+        }, delay);
       };
       wsRef.current = socket;
     };

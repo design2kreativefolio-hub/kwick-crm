@@ -8,7 +8,7 @@ from common.media_urls import (
     sign_media_url,
     verify_media_signature,
 )
-from common.uploads import IMAGE_EXTENSIONS, UploadRejected, check_upload
+from common.uploads import CALENDAR_FILE_EXTENSIONS, IMAGE_EXTENSIONS, UploadRejected, check_upload
 
 
 class MediaKeyTests(SimpleTestCase):
@@ -55,3 +55,14 @@ class UploadAllowlistTests(SimpleTestCase):
         upload = SimpleUploadedFile("doc.pdf", b"not-a-pdf", content_type="application/pdf")
         with self.assertRaises(UploadRejected):
             check_upload(upload, allowed=frozenset({"pdf"}), max_bytes=10000)
+
+    def test_calendar_allows_docx(self):
+        upload = SimpleUploadedFile(
+            "brief.docx",
+            b"PK\x03\x04fake-docx",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.assertEqual(
+            check_upload(upload, allowed=CALENDAR_FILE_EXTENSIONS, max_bytes=10000),
+            "docx",
+        )

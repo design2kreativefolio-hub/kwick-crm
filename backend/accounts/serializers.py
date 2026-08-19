@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 
 from common.maintenance import SiteInMaintenance, is_blocked_by_maintenance
 from common.media_urls import sign_media_url
@@ -265,6 +266,24 @@ class KwickTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["role"] = user.role
         token["status"] = user.status
         return token
+
+
+class CookieTokenRefreshSerializer(TokenRefreshSerializer):
+    """Accept refresh from the HttpOnly cookie when the body omits it."""
+
+    refresh = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        token = (attrs.get("refresh") or "").strip()
+        if not token and request is not None:
+            from common.jwt_cookies import REFRESH_COOKIE
+
+            token = request.COOKIES.get(REFRESH_COOKIE) or ""
+        if not token:
+            raise InvalidToken("No refresh token.")
+        attrs["refresh"] = token
+        return super().validate(attrs)
 
 
 class ModuleAccessSerializer(serializers.ModelSerializer):

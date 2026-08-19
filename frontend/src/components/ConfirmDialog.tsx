@@ -1,7 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+import { Z_CONFIRM } from "@/lib/placeFixedPanel";
 
 type ConfirmOptions = {
   title?: string;
@@ -25,6 +28,9 @@ export function useConfirm() {
   const [state, setState] = useState<{ message: string; options: ConfirmOptions } | null>(null);
   const resolver = useRef<((value: boolean | "discard") => void) | null>(null);
   const reduceMotion = useReducedMotion();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   const confirm = useCallback((message: string, options: ConfirmOptions = {}) => {
     setState({ message, options });
@@ -39,59 +45,62 @@ export function useConfirm() {
     setState(null);
   };
 
-  const ConfirmDialog = (
-    <AnimatePresence>
-      {state && (
-        <motion.div
-          style={overlay}
-          initial={reduceMotion ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={reduceMotion ? undefined : { opacity: 0 }}
-          transition={{ duration: reduceMotion ? 0 : 0.15 }}
-          onClick={() => respond(false)}
-        >
+  const ConfirmDialog =
+    mounted &&
+    createPortal(
+      <AnimatePresence>
+        {state && (
           <motion.div
-            className="card"
-            style={card}
-            onClick={(e) => e.stopPropagation()}
-            initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduceMotion ? undefined : { opacity: 0, y: 12, scale: 0.98 }}
-            transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }}
+            style={overlay}
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.15 }}
+            onClick={() => respond(false)}
           >
-            <span className="card-title" style={{ margin: 0 }}>{state.options.title || "Are you sure?"}</span>
-            <p className="muted" style={{ marginTop: 12, marginBottom: 0, fontSize: 14, whiteSpace: "pre-line", color: "var(--text-muted)" }}>
-              {state.message}
-            </p>
-            <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="btn"
-                style={state.options.danger ? { background: "var(--danger)" } : undefined}
-                onClick={() => respond(true)}
-                autoFocus
-              >
-                {state.options.confirmLabel || "Confirm"}
-              </button>
-              {state.options.discardLabel && (
+            <motion.div
+              className="card"
+              style={card}
+              onClick={(e) => e.stopPropagation()}
+              initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }}
+            >
+              <span className="card-title" style={{ margin: 0 }}>{state.options.title || "Are you sure?"}</span>
+              <p className="muted" style={{ marginTop: 12, marginBottom: 0, fontSize: 14, whiteSpace: "pre-line", color: "var(--text-muted)" }}>
+                {state.message}
+              </p>
+              <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  className="btn btn-ghost"
-                  style={{ color: "var(--danger)" }}
-                  onClick={() => respond("discard")}
+                  className="btn"
+                  style={state.options.danger ? { background: "var(--danger)" } : undefined}
+                  onClick={() => respond(true)}
+                  autoFocus
                 >
-                  {state.options.discardLabel}
+                  {state.options.confirmLabel || "Confirm"}
                 </button>
-              )}
-              <button type="button" className="btn btn-ghost" onClick={() => respond(false)}>
-                {state.options.cancelLabel || "Cancel"}
-              </button>
-            </div>
+                {state.options.discardLabel && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ color: "var(--danger)" }}
+                    onClick={() => respond("discard")}
+                  >
+                    {state.options.discardLabel}
+                  </button>
+                )}
+                <button type="button" className="btn btn-ghost" onClick={() => respond(false)}>
+                  {state.options.cancelLabel || "Cancel"}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+        )}
+      </AnimatePresence>,
+      document.body
+    );
 
   return { confirm, ConfirmDialog };
 }
@@ -102,7 +111,7 @@ const overlay: React.CSSProperties = {
   background: "rgba(7, 11, 22, 0.55)",
   display: "grid",
   placeItems: "center",
-  zIndex: 80,
+  zIndex: Z_CONFIRM,
   padding: 16,
 };
 

@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 
 from accounts.models import Module
 from common.permissions import HasModuleAccess, IsActive, IsSuperadmin
+from common.throttles import VaultPinThrottle
 
 from .crypto import decrypt_secret
 from .models import PasswordAccessLog, PasswordEntry
@@ -129,6 +130,12 @@ class PasswordEntryViewSet(VaultUnlockedMixin, viewsets.ModelViewSet):
 class VaultUnlockView(APIView):
     permission_classes = [HasModuleAccess]
     required_module = Module.PASSWORDS
+    throttle_classes = [VaultPinThrottle]
+
+    def get_throttles(self):
+        if self.request.method != "POST":
+            return []
+        return super().get_throttles()
 
     def get(self, request):
         return Response(

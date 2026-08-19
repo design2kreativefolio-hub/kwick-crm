@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { API_BASE, tokens } from "@/lib/api";
+import { API_BASE, refreshSession } from "@/lib/api";
 
 const STORAGE_KEY = "edith-voice-replies";
 
@@ -59,33 +59,17 @@ function pickVoice(): SpeechSynthesisVoice | null {
 }
 
 async function fetchElevenLabsAudio(text: string): Promise<Blob | null> {
-  const doFetch = async (token: string | null) =>
+  const doFetch = async () =>
     fetch(`${API_BASE}/api/ai/tts`, {
       method: "POST",
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     });
 
-  let res = await doFetch(tokens.access);
-  if (res.status === 401) {
-    const refresh = tokens.refresh;
-    if (refresh) {
-      const refreshed = await fetch(`${API_BASE}/api/auth/refresh`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
-      });
-      if (refreshed.ok) {
-        const data = await refreshed.json();
-        tokens.set(data.access);
-        res = await doFetch(data.access);
-      }
-    }
+  let res = await doFetch();
+  if (res.status === 401 && (await refreshSession())) {
+    res = await doFetch();
   }
 
   if (res.status === 503) return null; // not configured — browser fallback
