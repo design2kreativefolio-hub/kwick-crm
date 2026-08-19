@@ -23,7 +23,7 @@ export default function ProfilePage() {
   const isSuperadmin = user?.role === "superadmin";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="profile-page">
       <Reveal index={0}>
         <ProfileHeader
           tabs={isSuperadmin ? undefined : TABS}

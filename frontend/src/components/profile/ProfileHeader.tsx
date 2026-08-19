@@ -92,7 +92,7 @@ export function ProfileHeader({
   };
 
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+    <div className="card profile-header-card" style={{ padding: 0, overflow: "hidden" }}>
       {ConfirmDialog}
       <AvatarCropModal
         open={!!cropSrc}
@@ -100,7 +100,7 @@ export function ProfileHeader({
         onClose={closeCrop}
         onCropped={uploadCropped}
       />
-      <div style={banner} />
+      <div className="profile-header-banner" style={banner} />
       <div style={{ textAlign: "center", padding: "0 20px 20px" }}>
         <div style={avatarSlot}>
           <div style={avatarWrap}>
@@ -128,7 +128,7 @@ export function ProfileHeader({
           {user?.role}
           {user?.profile?.job_title ? ` · ${user.profile.job_title}` : ""}
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <div className="profile-header-photos" style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           <button
             type="button"
             className="btn btn-ghost"
@@ -154,13 +154,14 @@ export function ProfileHeader({
       </div>
 
       {tabs && tabs.length > 0 && (
-        <div style={tabBar}>
+        <div className="profile-header-tabs" style={tabBar}>
           {tabs.map((t) => {
             const active = t.key === activeTab;
             return (
               <button
                 key={t.key}
                 onClick={() => onTabChange?.(t.key)}
+                className="profile-header-tab"
                 style={{
                   ...tabItem,
                   color: active ? "var(--navy)" : "var(--text-muted)",

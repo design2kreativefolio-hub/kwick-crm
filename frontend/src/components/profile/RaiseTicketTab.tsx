@@ -68,7 +68,7 @@ export function RaiseTicketTab() {
   };
 
   return (
-    <div style={twoCol}>
+    <div className="profile-split-grid">
       <form className="card" onSubmit={submit}>
         <span className="card-title">Raise a Ticket</span>
         <label className="field-label" style={{ marginTop: 0 }}>Date</label>
@@ -145,9 +145,3 @@ export function RaiseTicketTab() {
   );
 }
 
-const twoCol: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "380px 1fr",
-  gap: 20,
-  alignItems: "start",
-};

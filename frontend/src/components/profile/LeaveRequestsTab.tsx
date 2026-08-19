@@ -111,7 +111,7 @@ export function LeaveRequestsTab() {
     : 0;
 
   return (
-    <div style={twoCol}>
+    <div className="profile-split-grid">
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div className="card">
           <span className="card-title">Annual Leave Balance {balance ? `(${balance.year})` : ""}</span>
@@ -176,7 +176,7 @@ export function LeaveRequestsTab() {
             ]}
             ariaLabel="Leave type"
           />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="profile-field-grid">
             <div>
               <label className="field-label">Start date</label>
               <DatePicker
@@ -276,10 +276,4 @@ const monthStat: React.CSSProperties = {
   marginTop: 12,
   fontSize: 12.5,
   color: "var(--text-muted)",
-};
-const twoCol: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "380px 1fr",
-  gap: 20,
-  alignItems: "start",
 };

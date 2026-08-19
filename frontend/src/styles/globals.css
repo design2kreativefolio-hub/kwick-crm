@@ -1867,6 +1867,38 @@ table.kwick-table {
     grid-template-columns: 1fr;
   }
 }
+
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.profile-edit-grid,
+.profile-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  min-width: 0;
+}
+.profile-edit-grid {
+  gap: 20px;
+  align-items: start;
+}
+.profile-split-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 380px) 1fr;
+  gap: 20px;
+  align-items: start;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .profile-edit-grid,
+  .profile-field-grid,
+  .profile-split-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .toggle-switch.on::after {
   transform: translateX(16px);
 }
@@ -3624,20 +3656,29 @@ html[data-theme="dark"] .edith-task-card__pri {
     grid-template-columns: 1fr !important;
   }
   .kwick-modal-overlay {
-    padding: 8px !important;
-    align-items: flex-end !important;
+    padding: 12px 10px 12px !important;
+    align-items: end !important;
+    place-items: end center !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
   }
   .kwick-modal-card,
   .kwick-modal-card--wide {
     max-width: 100% !important;
-    max-height: min(92dvh, 100%) !important;
-    border-radius: 16px 16px 8px 8px !important;
+    max-height: calc(100dvh - 24px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 16px !important;
+    padding-bottom: 28px !important;
   }
   .hero {
     padding: 18px 16px !important;
   }
   .card {
     padding: 14px;
+  }
+  .card.kwick-modal-card {
+    padding: 16px 16px 32px;
   }
   .auth-screen {
     padding: 16px;
@@ -3986,7 +4027,7 @@ html[data-theme="dark"] .edith-task-card__pri {
     height: auto !important;
     max-height: none !important;
     display: block !important;
-    padding: 12px 12px 8px !important;
+    padding: 12px 12px 16px !important;
   }
   .shell.is-mobile-app .shell-content > .page-transition {
     display: block !important;
@@ -4153,5 +4194,38 @@ html[data-theme="dark"] .edith-task-card__pri {
   .shell.is-mobile-app .page-header,
   .shell.is-mobile-app .card > div[style*="space-between"] {
     gap: 10px;
+  }
+
+  .shell.is-mobile-app .profile-page {
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+  .shell.is-mobile-app .profile-header-banner {
+    height: 64px !important;
+  }
+  .shell.is-mobile-app .profile-header-tabs {
+    justify-content: flex-start;
+    gap: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 8px;
+  }
+  .shell.is-mobile-app .profile-header-tab {
+    flex: 1 0 auto;
+    white-space: nowrap;
+    font-size: 12px !important;
+    padding: 12px 10px !important;
+  }
+  .shell.is-mobile-app .profile-page .card,
+  .shell.is-mobile-app .profile-page .input {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .shell.is-mobile-app .profile-page .card > .btn {
+    width: 100%;
+  }
+  .shell.is-mobile-app .profile-doc-row {
+    flex-wrap: wrap;
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 /** Shared centered overlay/card shell — blurred backdrop, focus animation. */
@@ -24,8 +25,22 @@ export function Modal({
   const reduceMotion = useReducedMotion();
   const duration = reduceMotion ? 0 : 0.22;
   const resolvedMax = wide ? Math.max(maxWidth, 920) : maxWidth;
+  const [mounted, setMounted] = useState(false);
 
-  return (
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open]);
+
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -57,7 +72,8 @@ export function Modal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
 
@@ -69,7 +85,7 @@ const overlay: React.CSSProperties = {
   WebkitBackdropFilter: "blur(10px)",
   display: "grid",
   placeItems: "center",
-  zIndex: 60,
+  zIndex: 200,
   padding: 16,
   overflowY: "auto",
 };

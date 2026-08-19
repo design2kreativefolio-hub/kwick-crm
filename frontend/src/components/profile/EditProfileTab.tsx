@@ -103,13 +103,13 @@ export function EditProfileTab() {
   };
 
   return (
-    <div style={twoCol}>
+    <div className="profile-edit-grid">
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <form className="card" onSubmit={changePassword}>
           <span className="card-title">Change Password</span>
           <label className="field-label" style={{ marginTop: 0 }}>Current password</label>
           <input className="input" type="password" value={pw.current_password} onChange={setPwField("current_password")} required />
-          <div style={fieldGrid}>
+          <div className="profile-field-grid">
             <div>
               <label className="field-label">New password</label>
               <input className="input" type="password" value={pw.new_password} onChange={setPwField("new_password")} required minLength={8} />
@@ -145,7 +145,7 @@ export function EditProfileTab() {
             {letters.length > 0 && (
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {letters.map((l) => (
-                  <li key={l.id} style={docRow}>
+                  <li key={l.id} className="profile-doc-row" style={docRow}>
                     <span style={docIcon}>
                       <i className="bi bi-file-earmark-text-fill" />
                     </span>
@@ -173,7 +173,7 @@ export function EditProfileTab() {
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <form className="card" onSubmit={saveProfile}>
           <span className="card-title">Profile Details</span>
-          <div style={fieldGrid}>
+          <div className="profile-field-grid">
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Username</label>
               <input
@@ -198,7 +198,7 @@ export function EditProfileTab() {
               />
             </div>
           </div>
-          <div style={fieldGrid}>
+          <div className="profile-field-grid">
             <div>
               <label className="field-label">Phone number</label>
               <input className="input" value={form.phone} onChange={set("phone")} />
@@ -217,15 +217,15 @@ export function EditProfileTab() {
         {!isSuperadmin && (
           <div className="card">
             <span className="card-title">Employment Details</span>
-            <div style={fieldGrid}>
+            <div className="profile-field-grid">
               <InfoField label="Job title" value={user?.profile?.job_title || "—"} />
               <InfoField label="Department" value={user?.profile?.department || "—"} />
             </div>
-            <div style={fieldGrid}>
+            <div className="profile-field-grid">
               <InfoField label="Joining date" value={dateLabel(user?.profile?.date_joined)} />
               <InfoField label="Visa renewal" value={dateLabel(user?.profile?.visa_renewal_date)} />
             </div>
-            <div style={fieldGrid}>
+            <div className="profile-field-grid">
               <InfoField label="Insurance renewal" value={dateLabel(user?.profile?.insurance_renewal_date)} />
               <InfoField label="ILOE renewal" value={dateLabel(user?.profile?.iloe_renewal_date)} />
             </div>
@@ -245,17 +245,6 @@ function InfoField({ label, value }: { label: string; value: string }) {
   );
 }
 
-const twoCol: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 20,
-  alignItems: "start",
-};
-const fieldGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 14,
-};
 const disabledInput: React.CSSProperties = {
   opacity: 1,
   cursor: "not-allowed",

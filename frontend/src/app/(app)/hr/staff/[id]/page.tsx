@@ -286,19 +286,19 @@ export default function StaffDetailPage() {
 
       <Reveal index={1}>
         {tab === "profile" && (
-          <div style={twoCol}>
+          <div className="profile-edit-grid">
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <div className="card">
                 <span className="card-title">Profile Details</span>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Full name" value={staff.full_name || "—"} />
                   <InfoField label="Email" value={staff.email} />
                 </div>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Phone number" value={staff.phone || "—"} />
                   <InfoField label="Role" value={staff.role} capitalize />
                 </div>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Nationality" value={staff.nationality || "—"} />
                   <InfoField label="Status" value={staff.status.replace(/_/g, " ")} capitalize />
                 </div>
@@ -308,15 +308,15 @@ export default function StaffDetailPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <div className="card">
                 <span className="card-title">Employment Details</span>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Job title" value={staff.job_title || "—"} />
                   <InfoField label="Department" value={staff.department || "—"} />
                 </div>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Joining date" value={dateLabel(staff.date_joined)} />
                   <InfoField label="Visa renewal" value={dateLabel(staff.visa_renewal_date)} />
                 </div>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Insurance renewal" value={dateLabel(staff.insurance_renewal_date)} />
                   <InfoField label="ILOE renewal" value={dateLabel(staff.iloe_renewal_date)} />
                 </div>
@@ -324,11 +324,11 @@ export default function StaffDetailPage() {
 
               <div className="card">
                 <span className="card-title">Emergency &amp; home country</span>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Emergency contact (UAE)" value={staff.emergency_contact_uae || "—"} />
                   <InfoField label="Relation" value={staff.emergency_contact_relation || "—"} />
                 </div>
-                <div style={fieldGrid}>
+                <div className="profile-field-grid">
                   <InfoField label="Home country number" value={staff.home_country_number || "—"} />
                   <InfoField label="Home country address" value={staff.home_country_address || "—"} />
                 </div>
@@ -560,17 +560,6 @@ const tabItem: React.CSSProperties = {
   border: "none",
   borderBottom: "2px solid transparent",
   cursor: "pointer",
-};
-const twoCol: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 20,
-  alignItems: "start",
-};
-const fieldGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 14,
 };
 const disabledInput: React.CSSProperties = {
   opacity: 0.7,
