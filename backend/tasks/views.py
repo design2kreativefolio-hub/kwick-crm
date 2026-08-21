@@ -26,9 +26,9 @@ from .services import (
 
 def _base_task_qs():
     return not_todo_linked(
-        Task.objects.select_related("project", "assignee", "content_item__client", "client").prefetch_related(
-            "assignees"
-        )
+        Task.objects.select_related(
+            "project", "assignee", "content_item__client", "client", "mini_project"
+        ).prefetch_related("assignees")
     )
 
 
@@ -83,6 +83,13 @@ class TaskViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if instance.mini_project_id:
+            return Response(
+                {
+                    "detail": "This task mirrors a mini-project — remove it from Mini-Projects instead."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not self._can_mutate(instance):
             return Response({"detail": "You can only delete tasks assigned to you."}, status=403)
         return super().destroy(request, *args, **kwargs)
@@ -127,10 +134,59 @@ class TaskViewSet(viewsets.ModelViewSet):
         sync_task_reminders(task)
         if task.content_item_id and task.status != before_status:
             self._sync_content_item_status(task)
+        if task.mini_project_id:
+            self._sync_mini_project_from_task(task, before_status=before_status)
 
     def perform_destroy(self, instance):
         clear_task_reminders(instance.id)
         return super().perform_destroy(instance)
+
+    def _sync_mini_project_from_task(self, task, *, before_status):
+        """Status / priority / due edits on the mirrored Tasks row write back
+        onto the mini-project (same idea as content calendar reverse sync)."""
+        from projects.models import Project
+
+        project = task.mini_project
+        if project is None:
+            return
+        status_changed = task.status != before_status
+        project.status = task.status
+        project.priority = task.priority
+        if task.status == Task.Status.APPROVED:
+            project.delivery_date = None
+        elif task.due_date is not None:
+            project.delivery_date = task.due_date
+        project.name = task.title
+        project.description = task.description or ""
+        project.client = task.client_name or ""
+        project.save(
+            update_fields=[
+                "status",
+                "priority",
+                "delivery_date",
+                "name",
+                "description",
+                "client",
+                "updated_at",
+            ]
+        )
+        # Keep assignees aligned when edited from Tasks.
+        member_ids = list(task.assignees.values_list("id", flat=True))
+        if not member_ids and task.assignee_id:
+            member_ids = [task.assignee_id]
+        if member_ids:
+            project.members.set(member_ids)
+        if status_changed:
+            from projects.tasks import evaluate_project_delivery
+
+            try:
+                evaluate_project_delivery(project)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "Failed to refresh delivery reminder for mini-project %s", project.pk
+                )
 
     def _sync_content_item_status(self, task):
         """Reverse of ContentCalendarItemViewSet._sync_assignee_tasks — marking

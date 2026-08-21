@@ -54,6 +54,15 @@ class Task(TimeStampedModel):
         blank=True,
         related_name="tasks",
     )
+    # One work-list row per mini-project so assignees (+ superadmins) see it
+    # under Tasks without managing a separate task by hand.
+    mini_project = models.OneToOneField(
+        "projects.Project",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="work_task",
+    )
     # Primary assignee (required for personal tasks / kanban ownership).
     assignee = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tasks"

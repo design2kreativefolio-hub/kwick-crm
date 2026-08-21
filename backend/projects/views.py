@@ -2,13 +2,16 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
 
 from common.permissions import IsActive, IsSuperadminOrReadOnly
 from common.services import log_activity
+from notifications.services import notify_user
 from sales.models import Client
 from tasks.services import combine_due_datetime, notify_task_assignment, notify_task_edit
 
-from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient
+from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient, ProjectUpdate
 from .serializers import (
     ArtworkSerializer,
     ArtworkTypeSerializer,
@@ -17,8 +20,9 @@ from .serializers import (
     ContentCalendarItemSerializer,
     ProjectClientSerializer,
     ProjectSerializer,
+    ProjectUpdateSerializer,
 )
-from .services import build_artwork_id
+from .services import build_artwork_id, sync_mini_project_task
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -30,9 +34,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [IsActive]
     filterset_fields = ["status", "client"]
     search_fields = ["name"]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        return Project.objects.prefetch_related("members")
+        return Project.objects.select_related("created_by", "work_task").prefetch_related("members")
 
     def _notify_new_members(self, project, before_ids):
         after_ids = set(project.members.values_list("id", flat=True))
@@ -53,18 +58,83 @@ class ProjectViewSet(viewsets.ModelViewSet):
         from .tasks import evaluate_project_delivery
 
         project = serializer.save(created_by=self.request.user)
-        log_activity(actor=self.request.user, action=f"added project \"{project.name}\"")
-        self._notify_new_members(project, before_ids=set())
-        evaluate_project_delivery(project)
+        log_activity(actor=self.request.user, action=f'added project "{project.name}"')
+        try:
+            sync_mini_project_task(project)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Failed to mirror mini-project %s into Tasks", project.pk
+            )
+        try:
+            self._notify_new_members(project, before_ids=set())
+            evaluate_project_delivery(project)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Post-create project side effects failed for project %s", project.pk
+            )
 
     def perform_update(self, serializer):
         from .tasks import evaluate_project_delivery
 
         before_ids = set(serializer.instance.members.values_list("id", flat=True))
         project = serializer.save()
-        log_activity(actor=self.request.user, action=f"edited project \"{project.name}\"")
-        self._notify_new_members(project, before_ids=before_ids)
-        evaluate_project_delivery(project)
+        log_activity(actor=self.request.user, action=f'edited project "{project.name}"')
+        try:
+            sync_mini_project_task(project)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Failed to mirror mini-project %s into Tasks", project.pk
+            )
+        try:
+            self._notify_new_members(project, before_ids=before_ids)
+            evaluate_project_delivery(project)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Post-update project side effects failed for project %s", project.pk
+            )
+
+
+class ProjectUpdateListCreateView(APIView):
+    permission_classes = [IsActive]
+
+    def _project(self, project_id):
+        return get_object_or_404(Project.objects.prefetch_related("members"), pk=project_id)
+
+    def get(self, request, project_id):
+        project = self._project(project_id)
+        updates = project.updates.select_related("author")
+        return Response(ProjectUpdateSerializer(updates, many=True).data)
+
+    def post(self, request, project_id):
+        project = self._project(project_id)
+        if not project.members.filter(pk=request.user.id).exists():
+            return Response({"detail": "Only assignees can post daily updates."}, status=403)
+        serializer = ProjectUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(project=project, author=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ProjectUpdateDestroyView(APIView):
+    permission_classes = [IsActive]
+
+    def delete(self, request, project_id, pk):
+        update = get_object_or_404(
+            ProjectUpdate.objects.select_related("project"), pk=pk, project_id=project_id
+        )
+        get_object_or_404(Project, pk=project_id)
+        if update.author_id != request.user.id:
+            return Response({"detail": "You can only delete your own updates."}, status=403)
+        update.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ArtworkViewSet(viewsets.ModelViewSet):

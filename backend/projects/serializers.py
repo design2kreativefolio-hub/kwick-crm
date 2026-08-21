@@ -4,12 +4,25 @@ from common.media_urls import persist_storage_url, sign_media_url
 from common.uploads import CALENDAR_FILE_EXTENSIONS, MAX_FILE_BYTES, validated_extension
 from sales.models import Client
 
-from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient
+from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient, ProjectUpdate
+
+
+def _person_label(user) -> str:
+    if not user:
+        return ""
+    name = (user.full_name or user.email or "").strip()
+    if getattr(user, "purged_at", None):
+        if name.lower().startswith("former employee"):
+            return name
+        return f"Former employee · {name}" if name else "Former employee"
+    return name
 
 
 class ProjectSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     member_names = serializers.SerializerMethodField()
+    work_task_id = serializers.SerializerMethodField()
+    attachment = serializers.FileField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Project
@@ -27,19 +40,36 @@ class ProjectSerializer(serializers.ModelSerializer):
             "member_names",
             "created_by",
             "created_by_name",
+            "work_task_id",
+            "attachment",
+            "attachment_url",
+            "attachment_urls",
             "created_at",
         ]
         # created_by is set server-side only (perform_create) — never
         # accepted from the client, so it can't be spoofed.
-        read_only_fields = ["created_by", "member_names"]
+        read_only_fields = [
+            "created_by",
+            "member_names",
+            "work_task_id",
+            "attachment_url",
+            "attachment_urls",
+            "created_by_name",
+        ]
 
     def get_created_by_name(self, obj):
-        if not obj.created_by:
-            return ""
-        return obj.created_by.full_name or obj.created_by.email
+        return _person_label(obj.created_by)
 
     def get_member_names(self, obj):
-        return [{"id": u.id, "name": u.full_name or u.email} for u in obj.members.all()]
+        return [{"id": u.id, "name": _person_label(u)} for u in obj.members.all()]
+
+    def get_work_task_id(self, obj):
+        task = getattr(obj, "work_task", None)
+        if task is not None:
+            return task.id
+        from tasks.models import Task
+
+        return Task.objects.filter(mini_project_id=obj.pk).values_list("id", flat=True).first()
 
     def validate_members(self, value):
         from common.maintenance import allowlist_emails
@@ -48,6 +78,93 @@ class ProjectSerializer(serializers.ModelSerializer):
         if emails and any((getattr(u, "email", "") or "").lower() in emails for u in value):
             raise serializers.ValidationError("That account cannot be assigned.")
         return value
+
+    def to_internal_value(self, data):
+        # Multipart forms send members as a JSON string.
+        if hasattr(data, "copy"):
+            data = data.copy()
+        else:
+            data = dict(data)
+        raw = data.get("members") if hasattr(data, "get") else None
+        if isinstance(raw, str) and raw.strip():
+            import json
+
+            try:
+                parsed = json.loads(raw)
+                if hasattr(data, "setlist"):
+                    data.setlist("members", [str(x) for x in parsed])
+                else:
+                    data["members"] = parsed
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+        return super().to_internal_value(data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        urls = list(instance.attachment_urls or [])
+        if not urls and instance.attachment_url:
+            urls = [instance.attachment_url]
+        data["attachment_urls"] = [sign_media_url(u) for u in urls]
+        if data["attachment_urls"]:
+            data["attachment_url"] = data["attachment_urls"][0]
+        elif data.get("attachment_url"):
+            data["attachment_url"] = sign_media_url(data["attachment_url"])
+        else:
+            data["attachment_url"] = ""
+        return data
+
+    def _uploads_from_request(self):
+        request = self.context.get("request")
+        if request is None:
+            return []
+        files = list(request.FILES.getlist("attachments"))
+        single = request.FILES.get("attachment")
+        if single:
+            files.insert(0, single)
+        return files[:5]
+
+    def _save_attachments(self, instance, uploads):
+        from django.core.files.storage import default_storage
+
+        request = self.context["request"]
+        files = [f for f in uploads if f][:5]
+        if not files:
+            return
+        urls = []
+        for idx, upload in enumerate(files):
+            ext = validated_extension(upload, allowed=CALENDAR_FILE_EXTENSIONS, max_bytes=MAX_FILE_BYTES)
+            key = f"projects/{instance.pk}/{idx}.{ext}"
+            if default_storage.exists(key):
+                default_storage.delete(key)
+            saved_path = default_storage.save(key, upload)
+            urls.append(persist_storage_url(request, saved_path))
+        instance.attachment_urls = urls
+        instance.attachment_url = urls[0] if urls else ""
+        instance.save(update_fields=["attachment_urls", "attachment_url", "updated_at"])
+
+    def create(self, validated_data):
+        validated_data.pop("attachment", None)
+        members = validated_data.pop("members", [])
+        instance = Project.objects.create(**validated_data)
+        if members:
+            instance.members.set(members)
+        uploads = self._uploads_from_request()
+        if uploads:
+            self._save_attachments(instance, uploads)
+        return instance
+
+    def update(self, instance, validated_data):
+        validated_data.pop("attachment", None)
+        members = validated_data.pop("members", None)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+        if members is not None:
+            instance.members.set(members)
+        uploads = self._uploads_from_request()
+        if uploads:
+            self._save_attachments(instance, uploads)
+        return instance
 
 
 class ArtworkSerializer(serializers.ModelSerializer):
@@ -278,3 +395,23 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             if uploads:
                 self._save_attachments(instance, uploads)
         return instance
+
+
+class ProjectUpdateSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProjectUpdate
+        fields = ["id", "author", "author_name", "body", "created_at"]
+        read_only_fields = ["author", "author_name", "created_at"]
+
+    def validate_body(self, value):
+        text = (value or "").strip()
+        if not text:
+            raise serializers.ValidationError("Update cannot be empty.")
+        if len(text) > 4000:
+            raise serializers.ValidationError("Update is too long.")
+        return text
+
+    def get_author_name(self, obj):
+        return _person_label(obj.author)

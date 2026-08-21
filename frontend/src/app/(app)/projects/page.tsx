@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Combobox } from "@/components/Combobox";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -12,6 +12,7 @@ import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
+import { displayUploadedFileName } from "@/lib/files";
 import { STATUS_BADGE, PROJECT_STATUS_LABEL, PROJECT_STATUS_OPTIONS, isProjectTerminal, type ProjectStatus } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
@@ -31,6 +32,8 @@ type Project = {
   member_names: { id: number; name: string }[];
   created_by: number | null;
   created_by_name: string;
+  attachment_url?: string;
+  attachment_urls?: string[];
   created_at: string;
 };
 
@@ -50,6 +53,9 @@ const PRIORITY_OPTIONS = (Object.keys(PRIORITY_LABEL) as ProjectPriority[]).map(
   value: p,
   label: PRIORITY_LABEL[p],
 }));
+
+const ATTACH_ACCEPT =
+  ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.png,.jpg,.jpeg,.webp,.gif";
 
 const emptyForm = {
   name: "",
@@ -72,6 +78,48 @@ function isOverdue(iso: string | null, status: ProjectStatus) {
   return new Date(iso) < new Date(new Date().toDateString());
 }
 
+function projectAttachmentUrls(p: Project): string[] {
+  if (p.attachment_urls?.length) return p.attachment_urls;
+  if (p.attachment_url) return [p.attachment_url];
+  return [];
+}
+
+function buildProjectBody(
+  fields: {
+    name: string;
+    description: string;
+    client: string;
+    status: ProjectStatus;
+    priority: ProjectPriority;
+    delivery_date: string;
+    members: number[];
+  },
+  files: File[]
+): BodyInit {
+  if (!files.length) {
+    return JSON.stringify({
+      name: fields.name,
+      description: fields.description,
+      client: fields.client.trim(),
+      status: fields.status,
+      priority: fields.priority,
+      delivery_date: fields.delivery_date || null,
+      members: fields.members,
+    });
+  }
+  const fd = new FormData();
+  fd.append("name", fields.name);
+  fd.append("description", fields.description);
+  fd.append("client", fields.client.trim());
+  fd.append("status", fields.status);
+  fd.append("priority", fields.priority);
+  if (fields.delivery_date) fd.append("delivery_date", fields.delivery_date);
+  else fd.append("delivery_date", "");
+  fd.append("members", JSON.stringify(fields.members));
+  files.forEach((f) => fd.append("attachments", f));
+  return fd;
+}
+
 export default function ProjectsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -87,11 +135,15 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [createAttachments, setCreateAttachments] = useState<File[]>([]);
+  const createAttachRef = useRef<HTMLInputElement>(null);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editAttachments, setEditAttachments] = useState<File[]>([]);
+  const editAttachRef = useRef<HTMLInputElement>(null);
 
   const loadProjects = () => {
     setLoading(true);
@@ -131,6 +183,7 @@ export default function ProjectsPage() {
       ...emptyForm,
       assignee: user?.id ? String(user.id) : "",
     });
+    setCreateAttachments([]);
     setError(null);
     setShowForm(true);
   };
@@ -141,19 +194,24 @@ export default function ProjectsPage() {
     setCreating(true);
     try {
       const assigneeId = form.assignee || (user?.id ? String(user.id) : "");
+      const members = assigneeId ? [Number(assigneeId)] : [];
       await api<Project>("/api/projects", {
         method: "POST",
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          client: form.client.trim(),
-          status: form.status,
-          priority: form.priority,
-          delivery_date: form.delivery_date || null,
-          members: assigneeId ? [Number(assigneeId)] : [],
-        }),
+        body: buildProjectBody(
+          {
+            name: form.name,
+            description: form.description,
+            client: form.client,
+            status: form.status,
+            priority: form.priority,
+            delivery_date: form.delivery_date,
+            members,
+          },
+          createAttachments
+        ),
       });
       setForm(emptyForm);
+      setCreateAttachments([]);
       setShowForm(false);
       showToast("Project added.");
       loadProjects();
@@ -175,6 +233,7 @@ export default function ProjectsPage() {
       priority: p.priority,
       delivery_date: p.delivery_date || "",
     });
+    setEditAttachments([]);
     setEditError(null);
   };
 
@@ -184,24 +243,29 @@ export default function ProjectsPage() {
     setEditError(null);
     setSaving(true);
     try {
+      const members = editForm.assignee
+        ? [Number(editForm.assignee)]
+        : user?.id
+          ? [user.id]
+          : [];
       await api(`/api/projects/${editingProject.id}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          name: editForm.name,
-          description: editForm.description,
-          client: editForm.client.trim(),
-          status: editForm.status,
-          priority: editForm.priority,
-          delivery_date: editForm.delivery_date || null,
-          members: editForm.assignee
-            ? [Number(editForm.assignee)]
-            : user?.id
-              ? [user.id]
-              : [],
-        }),
+        body: buildProjectBody(
+          {
+            name: editForm.name,
+            description: editForm.description,
+            client: editForm.client,
+            status: editForm.status,
+            priority: editForm.priority,
+            delivery_date: editForm.delivery_date,
+            members,
+          },
+          editAttachments
+        ),
       });
       showToast("Project updated.");
       setEditingProject(null);
+      setEditAttachments([]);
       loadProjects();
     } catch (err: any) {
       setEditError(err instanceof ApiError ? formatApiError(err.data) : err.message);
@@ -332,6 +396,54 @@ export default function ProjectsPage() {
                 />
               </div>
             </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Attachments</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <input
+                  ref={createAttachRef}
+                  type="file"
+                  multiple
+                  hidden
+                  accept={ATTACH_ACCEPT}
+                  onChange={(e) => {
+                    const picked = Array.from(e.target.files || []);
+                    e.target.value = "";
+                    if (!picked.length) return;
+                    setCreateAttachments((prev) => [...prev, ...picked].slice(0, 5));
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => createAttachRef.current?.click()}
+                  disabled={createAttachments.length >= 5}
+                >
+                  <i className="bi bi-paperclip" /> Choose files
+                </button>
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  Up to 5{createAttachments.length ? ` · ${createAttachments.length} selected` : ""}
+                </span>
+              </div>
+              {createAttachments.length > 0 && (
+                <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {createAttachments.map((f, idx) => (
+                    <li key={`${f.name}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                      <i className="bi bi-file-earmark" style={{ color: "var(--gold)" }} />
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: "2px 8px", color: "var(--danger)" }}
+                        onClick={() => setCreateAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label="Remove file"
+                      >
+                        <i className="bi bi-x-lg" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn" disabled={creating}>
@@ -376,12 +488,28 @@ export default function ProjectsPage() {
                     (fromDir ? fromDir.full_name || fromDir.email : null) ||
                     (user && p.members[0] === user.id ? user.full_name || user.email : null);
                   const overdue = isOverdue(p.delivery_date, p.status);
+                  const files = projectAttachmentUrls(p);
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 600 }}>
-                        <Link href={`/projects/${p.id}`} style={{ color: "var(--navy)" }}>
-                          {p.name}
-                        </Link>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Link href={`/projects/${p.id}`} style={{ color: "var(--navy)" }}>
+                            {p.name}
+                          </Link>
+                          {files.length > 0 && (
+                            <a
+                              href={files[0]}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={files.map(displayUploadedFileName).join(", ")}
+                              aria-label="Open attachment"
+                              style={{ color: "var(--gold)", display: "inline-flex" }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <i className="bi bi-paperclip" />
+                            </a>
+                          )}
+                        </div>
                       </td>
                       <td>{p.client || "—"}</td>
                       <td>{assigneeLabel || "—"}</td>
@@ -506,6 +634,70 @@ export default function ProjectsPage() {
                   ariaLabel="Delivery date"
                 />
               </div>
+            </div>
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Attachments</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <input
+                  ref={editAttachRef}
+                  type="file"
+                  multiple
+                  hidden
+                  accept={ATTACH_ACCEPT}
+                  onChange={(e) => {
+                    const picked = Array.from(e.target.files || []);
+                    e.target.value = "";
+                    if (!picked.length) return;
+                    setEditAttachments((prev) => [...prev, ...picked].slice(0, 5));
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => editAttachRef.current?.click()}
+                  disabled={editAttachments.length >= 5}
+                >
+                  <i className="bi bi-paperclip" /> {editAttachments.length || projectAttachmentUrls(editingProject!).length ? "Replace files" : "Choose files"}
+                </button>
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  Up to 5{editAttachments.length ? ` · ${editAttachments.length} selected` : ""}
+                </span>
+              </div>
+              {editAttachments.length > 0 && (
+                <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {editAttachments.map((f, idx) => (
+                    <li key={`${f.name}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                      <i className="bi bi-file-earmark" style={{ color: "var(--gold)" }} />
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: "2px 8px", color: "var(--danger)" }}
+                        onClick={() => setEditAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label="Remove file"
+                      >
+                        <i className="bi bi-x-lg" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {editingProject && !editAttachments.length && projectAttachmentUrls(editingProject).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+                  {projectAttachmentUrls(editingProject).map((url, i) => (
+                    <a
+                      key={url}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="muted"
+                      style={{ fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}
+                    >
+                      <i className="bi bi-download" /> {displayUploadedFileName(url) || `Attachment ${i + 1}`}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
             {editError && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{editError}</p>}
             <div style={{ display: "flex", gap: 10 }}>

@@ -31,6 +31,7 @@ type Task = {
   assignee_names?: { id: number; name: string }[];
   content_item: number | null;
   content_client_id?: number | null;
+  mini_project_id?: number | null;
   status: string;
   from_todo?: boolean;
   priority: "low" | "medium" | "high";
@@ -159,6 +160,10 @@ export default function TaskDetailPage() {
     setNotFound(false);
     api<Task>(`/api/tasks/${id}`)
       .then((t) => {
+        if (t.mini_project_id) {
+          router.replace(`/projects/${t.mini_project_id}`);
+          return;
+        }
         if (t.content_item && t.content_client_id) {
           router.replace(
             `/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`

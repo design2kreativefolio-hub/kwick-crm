@@ -12,6 +12,7 @@ import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
+import { displayUploadedFileName } from "@/lib/files";
 import { STATUS_BADGE, PROJECT_STATUS_LABEL, PROJECT_STATUS_OPTIONS, isProjectTerminal, type ProjectStatus } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
@@ -31,6 +32,17 @@ type Project = {
   member_names: { id: number; name: string }[];
   created_by: number | null;
   created_by_name: string;
+  attachment_url?: string;
+  attachment_urls?: string[];
+  work_task_id?: number | null;
+  created_at: string;
+};
+
+type ProjectUpdate = {
+  id: number;
+  author: number;
+  author_name: string;
+  body: string;
   created_at: string;
 };
 
@@ -91,10 +103,17 @@ export default function ProjectDetailPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
+  const [updateText, setUpdateText] = useState("");
+  const [posting, setPosting] = useState(false);
+
   const load = () => {
     setLoading(true);
     api<Project>(`/api/projects/${id}`)
-      .then(setProject)
+      .then((p) => {
+        setProject(p);
+        return api<ProjectUpdate[]>(`/api/projects/${id}/updates`).then(setUpdates).catch(() => setUpdates([]));
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) setNotFound(true);
       })
@@ -131,6 +150,41 @@ export default function ProjectDetailPage() {
     return null;
   })();
   const overdue = project ? isOverdue(project.delivery_date, project.status) : false;
+  const isAssignee = Boolean(
+    project && user && (project.members || []).includes(user.id)
+  );
+
+  const postUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!updateText.trim() || !project) return;
+    setPosting(true);
+    try {
+      const created = await api<ProjectUpdate>(`/api/projects/${project.id}/updates`, {
+        method: "POST",
+        body: JSON.stringify({ body: updateText.trim() }),
+      });
+      setUpdates((prev) => [created, ...prev]);
+      setUpdateText("");
+      showToast("Update posted.");
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : err.message, "error");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const removeUpdate = async (entry: ProjectUpdate) => {
+    if (!project) return;
+    if (!(await confirm("Delete this update?", { title: "Delete update", danger: true, confirmLabel: "Delete" })))
+      return;
+    try {
+      await api(`/api/projects/${project.id}/updates/${entry.id}`, { method: "DELETE" });
+      setUpdates((prev) => prev.filter((u) => u.id !== entry.id));
+      showToast("Update deleted.");
+    } catch {
+      showToast("Couldn't delete update.", "error");
+    }
+  };
 
   const openEdit = () => {
     if (!project) return;
@@ -221,6 +275,85 @@ export default function ProjectDetailPage() {
         <p style={{ marginTop: 10, whiteSpace: "pre-wrap", color: project.description ? "var(--text)" : "var(--text-muted)" }}>
           {project.description || "No description added yet."}
         </p>
+        {(() => {
+          const files =
+            project.attachment_urls?.length
+              ? project.attachment_urls
+              : project.attachment_url
+                ? [project.attachment_url]
+                : [];
+          if (!files.length) return null;
+          return (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="muted" style={{ fontSize: 12 }}>Attachments</span>
+              {files.map((url, i) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 13.5, display: "inline-flex", alignItems: "center", gap: 6, color: "var(--navy)" }}
+                >
+                  <i className="bi bi-paperclip" /> {displayUploadedFileName(url) || `Attachment ${i + 1}`}
+                </a>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+
+      <div className="card">
+        <span className="card-title">Daily updates</span>
+        {isAssignee ? (
+          <form onSubmit={postUpdate} style={{ marginBottom: 16 }}>
+            <textarea
+              className="input"
+              rows={3}
+              value={updateText}
+              onChange={(e) => setUpdateText(e.target.value)}
+              placeholder="What did you work on today?"
+              style={{ resize: "vertical" }}
+            />
+            <button className="btn btn-accent btn-sm" style={{ marginTop: 8 }} disabled={posting || !updateText.trim()}>
+              {posting ? "Posting…" : "Post update"}
+            </button>
+          </form>
+        ) : (
+          <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+            Only people assigned to this mini-project can add updates.
+          </p>
+        )}
+        {updates.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No updates yet.</p>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {updates.map((entry) => (
+            <div
+              key={entry.id}
+              style={{
+                borderTop: "1px solid var(--border)",
+                paddingTop: 12,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                <strong style={{ fontSize: 13 }}>{entry.author_name || "Unknown"}</strong>
+                <span className="muted" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  {formatDateTime(entry.created_at)}
+                  {user?.id === entry.author && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ padding: "0 6px", color: "var(--danger)" }}
+                      onClick={() => removeUpdate(entry)}
+                      title="Delete update"
+                    >
+                      <i className="bi bi-trash" />
+                    </button>
+                  )}
+                </span>
+              </div>
+              <p style={{ margin: "6px 0 0", fontSize: 14, whiteSpace: "pre-line" }}>{entry.body}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div style={infoGrid}>

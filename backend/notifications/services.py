@@ -127,6 +127,11 @@ def refresh_daily_reminder(*, source, title, body="", object_ref="", users=None)
             event.active = True
         event.read_at = None
         event.save()
-        deliver_notification.delay(event.id)
+        try:
+            deliver_notification.delay(event.id)
+        except Exception:
+            # Celery/broker down — still deliver over WebSocket so create/update
+            # requests never 500 after the row is already saved.
+            deliver_notification(event.id)
         events.append(event)
     return events

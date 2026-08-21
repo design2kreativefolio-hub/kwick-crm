@@ -1,3 +1,4 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
@@ -7,6 +8,8 @@ from .views import (
     ClientDirectoryViewSet,
     ContentCalendarItemViewSet,
     ProjectClientViewSet,
+    ProjectUpdateDestroyView,
+    ProjectUpdateListCreateView,
     ProjectViewSet,
 )
 
@@ -32,4 +35,7 @@ urlpatterns = router.urls
 # a named prefix, exactly like those other apps.
 bare_router = DefaultRouter(trailing_slash=False)
 bare_router.register("projects", ProjectViewSet, basename="projects")
-bare_urlpatterns = bare_router.urls
+bare_urlpatterns = bare_router.urls + [
+    path("projects/<int:project_id>/updates", ProjectUpdateListCreateView.as_view()),
+    path("projects/<int:project_id>/updates/<int:pk>", ProjectUpdateDestroyView.as_view()),
+]

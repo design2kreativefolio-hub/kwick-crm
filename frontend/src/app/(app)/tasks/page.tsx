@@ -37,6 +37,7 @@ type Task = {
   client?: number | null;
   content_item: number | null;
   content_client_id: number | null;
+  mini_project_id?: number | null;
   status: string;
   from_todo?: boolean;
   priority: "low" | "medium" | "high";
@@ -578,9 +579,11 @@ export default function TasksPage() {
                     <td>
                       <Link
                         href={
-                          t.content_item && t.content_client_id
-                            ? `/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`
-                            : `/tasks/${t.id}`
+                          t.mini_project_id
+                            ? `/projects/${t.mini_project_id}`
+                            : t.content_item && t.content_client_id
+                              ? `/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`
+                              : `/tasks/${t.id}`
                         }
                         style={{
                           fontWeight: 600,
@@ -589,9 +592,11 @@ export default function TasksPage() {
                           opacity: isTaskApproved(t.status) ? 0.7 : 1,
                         }}
                         title={
-                          t.content_item && t.content_client_id
-                            ? "Open on client calendar"
-                            : undefined
+                          t.mini_project_id
+                            ? "Open mini-project"
+                            : t.content_item && t.content_client_id
+                              ? "Open on client calendar"
+                              : undefined
                         }
                       >
                         {t.title}
@@ -612,7 +617,28 @@ export default function TasksPage() {
                       {formatDateTime(t.created_at)}
                     </td>
                     <td>
-                      {t.content_item ? (
+                      {t.mini_project_id ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Link
+                            href={`/projects/${t.mini_project_id}`}
+                            className="muted"
+                            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, whiteSpace: "nowrap" }}
+                            title="Open mini-project"
+                          >
+                            <i className="bi bi-kanban-fill" style={{ color: "var(--gold)" }} />
+                            Mini-project
+                          </Link>
+                          <div style={{ width: 150 }}>
+                            <Select
+                              value={t.status}
+                              onChange={(v) => changeStatus(t, v)}
+                              options={STATUS_OPTIONS}
+                              compact
+                              ariaLabel={`Change status for ${t.title}`}
+                            />
+                          </div>
+                        </div>
+                      ) : t.content_item ? (
                         t.content_client_id ? (
                           <Link
                             href={`/projects/clients/${t.content_client_id}/calendar?item=${t.content_item}`}

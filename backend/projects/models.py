@@ -49,9 +49,28 @@ class Project(TimeStampedModel):
         blank=True,
         related_name="created_projects",
     )
+    # Optional brief / reference files (same pattern as content calendar).
+    attachment_url = models.URLField(blank=True, default="")
+    attachment_urls = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return self.name
+
+
+class ProjectUpdate(TimeStampedModel):
+    """Daily progress note on a mini-project. Only assigned members may post."""
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="updates")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="project_updates"
+    )
+    body = models.TextField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Update on project {self.project_id} by {self.author_id}"
 
 
 class ProjectClient(TimeStampedModel):

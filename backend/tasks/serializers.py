@@ -24,6 +24,7 @@ class TaskSerializer(serializers.ModelSerializer):
     content_client_id = serializers.IntegerField(
         source="content_item.client_id", read_only=True, allow_null=True, default=None
     )
+    mini_project_id = serializers.IntegerField(read_only=True, allow_null=True, default=None)
     from_todo = serializers.SerializerMethodField()
 
     class Meta:
@@ -42,6 +43,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "assignee_names",
             "content_item",
             "content_client_id",
+            "mini_project_id",
             "from_todo",
             "status",
             "priority",
@@ -60,6 +62,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_at",
             "content_item",
             "content_client_id",
+            "mini_project_id",
             "from_todo",
             "assignee_name",
             "assignee_names",
