@@ -64,7 +64,10 @@ def purge_staff_account(*, user, actor) -> None:
 
     # Staff-subject renewals become anonymous "other" subjects so the reminder
     # row can stay without exposing personal identity.
-    former_label = (user.full_name or "").strip() or "Former employee"
+    original_name = (user.full_name or "").strip()
+    former_label = (
+        f"Former employee · {original_name}" if original_name else "Former employee"
+    )
     for renewal in Renewal.objects.filter(staff=user):
         renewal.subject_type = Renewal.SubjectType.OTHER
         renewal.subject_name = former_label
@@ -104,9 +107,13 @@ def purge_staff_account(*, user, actor) -> None:
         profile.home_country_number = ""
         profile.save()
 
-    # Anonymize login identity. Tasks/projects keep pointing at this pk.
+    # Anonymize login identity but keep the real name for work history labels.
+    # Tasks/projects keep pointing at this pk.
+    original_name = (user.full_name or "").strip()
     user.email = f"deleted-{user.pk}-{uuid.uuid4().hex[:8]}@removed.local"
-    user.full_name = "Former employee"
+    user.full_name = (
+        f"Former employee · {original_name}" if original_name else "Former employee"
+    )
     user.status = UserStatus.DISABLED
     user.is_active = False
     user.purged_at = timezone.now()

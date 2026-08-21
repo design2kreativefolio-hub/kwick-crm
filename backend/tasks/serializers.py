@@ -4,6 +4,18 @@ from rest_framework import serializers
 from .models import Task, TaskUpdate
 
 
+def _assignee_label(user) -> str:
+    """Active staff: name. Purged staff: 'Former employee · Name'."""
+    if not user:
+        return ""
+    name = (user.full_name or user.email or "").strip()
+    if getattr(user, "purged_at", None):
+        if name.lower().startswith("former employee"):
+            return name
+        return f"Former employee · {name}" if name else "Former employee"
+    return name
+
+
 class TaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True, default="")
     assignee_name = serializers.SerializerMethodField()
@@ -83,14 +95,17 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_assignee_names(self, obj):
         names = []
         for u in obj.assignees.all():
-            names.append({"id": u.id, "name": (u.full_name or u.email or "").strip()})
+            label = _assignee_label(u)
+            if label:
+                names.append({"id": u.id, "name": label, "former": bool(u.purged_at)})
         if names:
             return names
         if obj.assignee_id:
             return [
                 {
                     "id": obj.assignee_id,
-                    "name": (obj.assignee.full_name or obj.assignee.email or "").strip(),
+                    "name": _assignee_label(obj.assignee),
+                    "former": bool(getattr(obj.assignee, "purged_at", None)),
                 }
             ]
         return []
@@ -99,14 +114,12 @@ class TaskSerializer(serializers.ModelSerializer):
         return False
 
     def get_assignee_name(self, obj):
-        names = []
-        for u in obj.assignees.all():
-            names.append((u.full_name or u.email or "").strip())
+        names = [_assignee_label(u) for u in obj.assignees.all()]
         names = [n for n in names if n]
         if names:
             return ", ".join(names)
         if obj.assignee_id:
-            return (obj.assignee.full_name or obj.assignee.email or "").strip()
+            return _assignee_label(obj.assignee)
         return ""
 
     def to_representation(self, instance):
@@ -136,4 +149,4 @@ class TaskUpdateSerializer(serializers.ModelSerializer):
         return text
 
     def get_author_name(self, obj):
-        return (obj.author.full_name or obj.author.email or "").strip()
+        return _assignee_label(obj.author)

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Combobox } from "@/components/Combobox";
@@ -14,7 +14,13 @@ import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
-import { STATUS_BADGE, TASK_STATUS_LABEL, TASK_STATUS_OPTIONS, isTaskApproved } from "@/lib/statusBadges";
+import {
+  STATUS_BADGE,
+  TASK_STATUS_LABEL,
+  TASK_STATUS_OPTIONS,
+  isProjectTerminal,
+  isTaskApproved,
+} from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
 type Task = {
@@ -27,6 +33,7 @@ type Task = {
   assignee: number | null;
   assignee_name: string;
   assignee_ids?: number[];
+  assignee_names?: { id: number; name: string; former?: boolean }[];
   client?: number | null;
   content_item: number | null;
   content_client_id: number | null;
@@ -41,6 +48,7 @@ type Task = {
 
 type ClientOption = { id: number; name: string };
 type Contact = { id: number; full_name: string; email: string; role: string };
+type DateMode = "pending" | "today" | "all" | "custom";
 
 const STATUS_OPTIONS = TASK_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
@@ -50,11 +58,20 @@ const PRIORITY_OPTIONS = [
   { value: "high", label: "High" },
 ];
 
+const DATE_MODE_OPTIONS = [
+  { value: "pending", label: "Pending (default)" },
+  { value: "today", label: "Due today" },
+  { value: "all", label: "All tasks" },
+  { value: "custom", label: "Custom dates" },
+];
+
 const PRIORITY_BADGE: Record<string, string> = {
   low: "badge-muted",
   medium: "badge-warning",
   high: "badge-danger",
 };
+
+const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 const emptyForm = {
   title: "",
@@ -66,6 +83,11 @@ const emptyForm = {
   due_date: "",
   due_time: "",
 };
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function formatDue(date: string | null, time?: string | null) {
   if (!date) return "—";
@@ -107,6 +129,9 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
 
   const [tab, setTab] = useState<"all" | "mine">("all");
+  const [dateMode, setDateMode] = useState<DateMode>("pending");
+  const [dueFrom, setDueFrom] = useState("");
+  const [dueTo, setDueTo] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -136,6 +161,30 @@ export default function TasksPage() {
   };
 
   useEffect(load, [statusFilter, priorityFilter, search, tab, isSuperadmin]);
+
+  const visibleTasks = useMemo(() => {
+    const today = todayIso();
+    let list = tasks.slice();
+
+    if (dateMode === "pending") {
+      list = list.filter((t) => !isProjectTerminal(t.status));
+    } else if (dateMode === "today") {
+      list = list.filter((t) => t.due_date === today);
+    } else if (dateMode === "custom") {
+      if (dueFrom) list = list.filter((t) => t.due_date && t.due_date >= dueFrom);
+      if (dueTo) list = list.filter((t) => t.due_date && t.due_date <= dueTo);
+    }
+
+    list.sort((a, b) => {
+      const ad = a.due_date || "9999-99-99";
+      const bd = b.due_date || "9999-99-99";
+      if (ad !== bd) return ad.localeCompare(bd);
+      const pr = (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9);
+      if (pr !== 0) return pr;
+      return a.title.localeCompare(b.title);
+    });
+    return list;
+  }, [tasks, dateMode, dueFrom, dueTo]);
 
   useEffect(() => {
     api<ClientOption[] | { results: ClientOption[] }>("/api/projects/clients")
@@ -449,6 +498,27 @@ export default function TasksPage() {
 
         <div style={{ ...fieldGrid, marginTop: 14, marginBottom: 6 }}>
           <div>
+            <label className="field-label" style={{ marginTop: 0 }}>Date</label>
+            <Select
+              value={dateMode}
+              onChange={(v) => setDateMode(v as DateMode)}
+              options={DATE_MODE_OPTIONS}
+              ariaLabel="Filter by date"
+            />
+          </div>
+          {dateMode === "custom" && (
+            <>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>From</label>
+                <DatePicker value={dueFrom} onChange={setDueFrom} ariaLabel="Due from" />
+              </div>
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>To</label>
+                <DatePicker value={dueTo} onChange={setDueTo} ariaLabel="Due to" />
+              </div>
+            </>
+          )}
+          <div>
             <label className="field-label" style={{ marginTop: 0 }}>Status</label>
             <Select
               value={statusFilter}
@@ -478,8 +548,16 @@ export default function TasksPage() {
         </div>
 
         {loading && <p className="muted">Loading…</p>}
-        {!loading && tasks.length === 0 && <p className="muted">No tasks yet.</p>}
-        {!loading && tasks.length > 0 && (
+        {!loading && visibleTasks.length === 0 && (
+          <p className="muted">
+            {dateMode === "pending"
+              ? "No pending tasks."
+              : dateMode === "today"
+                ? "Nothing due today."
+                : "No tasks match these filters."}
+          </p>
+        )}
+        {!loading && visibleTasks.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">
               <thead>
@@ -495,7 +573,7 @@ export default function TasksPage() {
                 </tr>
               </thead>
               <tbody>
-                {tasks.map((t) => (
+                {visibleTasks.map((t) => (
                   <tr key={t.id}>
                     <td>
                       <Link
