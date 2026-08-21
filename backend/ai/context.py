@@ -116,8 +116,10 @@ def _add_tasks(ctx: dict, user) -> None:
     try:
         from tasks.models import Task
 
-        terminal = (Task.Status.COMPLETED, Task.Status.PUBLISHED)
-        task_qs = (
+        terminal = (Task.Status.COMPLETED, Task.Status.QC_COMPLETED, Task.Status.APPROVED)
+        from tasks.services import not_todo_linked
+
+        task_qs = not_todo_linked(
             Task.objects.exclude(status__in=terminal)
             .select_related("assignee", "project")
             .prefetch_related("assignees")
@@ -239,7 +241,7 @@ def _add_content_calendar(ctx: dict, user, today: date, soon: date) -> None:
         from projects.models import ContentCalendarItem
 
         qs = (
-            ContentCalendarItem.objects.exclude(status=ContentCalendarItem.Status.DONE)
+            ContentCalendarItem.objects.exclude(status__in=ContentCalendarItem.TERMINAL_STATUSES)
             .filter(scheduled_date__gte=today, scheduled_date__lte=soon)
             .select_related("client")
             .prefetch_related("assignees")
@@ -274,7 +276,7 @@ def _add_projects(ctx: dict, user) -> None:
         from projects.models import Project
 
         proj_qs = (
-            Project.objects.exclude(status=Project.Status.COMPLETED)
+            Project.objects.exclude(status__in=Project.TERMINAL_STATUSES)
             .prefetch_related("members")
             .order_by("-updated_at")
         )

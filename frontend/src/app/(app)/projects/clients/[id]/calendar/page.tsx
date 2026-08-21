@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
@@ -16,7 +16,7 @@ import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
 import { detectMeetingUrl } from "@/lib/meetingLinks";
-import { STATUS_BADGE, STATUS_COLOR } from "@/lib/statusBadges";
+import { STATUS_BADGE, STATUS_COLOR, TASK_STATUS_OPTIONS, isTaskApproved, isProjectTerminal } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 import { useShellFillHeight } from "@/lib/useShellFillHeight";
 
@@ -41,6 +41,26 @@ type ContentItem = {
   created_at: string;
 };
 
+type LinkedTask = {
+  id: number;
+  title: string;
+  due_date: string | null;
+  status: string;
+  assignee_ids?: number[];
+  assignee_names?: { id: number; name: string }[];
+  assignee_name?: string;
+};
+
+type DayChip = {
+  key: string;
+  date: string;
+  title: string;
+  status: string;
+  kind: "content" | "task";
+  content?: ContentItem;
+  task?: LinkedTask;
+};
+
 const CONTENT_TYPES = [
   { value: "static_post", label: "Static Post" },
   { value: "reel", label: "Reel" },
@@ -49,15 +69,8 @@ const CONTENT_TYPES = [
   { value: "carousel", label: "Carousel" },
   { value: "other", label: "Other" },
 ];
-// Labels match the Tasks page's Status wording exactly (To do / In progress /
-// Completed) — this content item is mirrored onto a real Task for each
-// assignee, so the same state should read identically in both places.
-const STATUSES = [
-  { value: "planned", label: "To do" },
-  { value: "in_progress", label: "In progress" },
-  { value: "done", label: "Completed" },
-  { value: "published", label: "Published" },
-];
+// Same workflow as Tasks / Mini-projects (mirrored task stays in sync).
+const STATUSES = TASK_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 const DEFAULT_ACCENT = "#3673FC";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -90,9 +103,18 @@ const emptyForm = {
   scheduled_date: "",
   deadline: "",
   deadline_time: "",
-  status: "planned",
+  status: "assigned",
   assignees: [] as number[],
 };
+
+function taskStatusLabel(s: string) {
+  if (s === "assigned" || s === "todo") return "Assigned";
+  if (s === "in_progress") return "In Progress";
+  if (s === "completed") return "Completed";
+  if (s === "qc_completed") return "QC Completed";
+  if (s === "approved" || s === "published") return "Approved / Published";
+  return s;
+}
 
 function snapshotContentForm(f: typeof emptyForm, files: File[]) {
   return JSON.stringify({
@@ -105,6 +127,7 @@ function snapshotContentForm(f: typeof emptyForm, files: File[]) {
 export default function ClientCalendarPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const focusItemId = Number(searchParams.get("item") || "") || null;
   const clientId = params.id as string;
   const { user } = useAuth();
@@ -115,6 +138,7 @@ export default function ClientCalendarPage() {
 
   const [client, setClient] = useState<Client | null>(null);
   const [items, setItems] = useState<ContentItem[]>([]);
+  const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
   const [directory, setDirectory] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const deepLinkedItemRef = useRef<number | null>(null);
@@ -135,8 +159,14 @@ export default function ClientCalendarPage() {
 
   const loadItems = () => {
     setLoading(true);
-    api<ContentItem[] | { results: ContentItem[] }>(`/api/projects/content-calendar?client=${clientId}`)
-      .then((d) => setItems(unwrapList(d)))
+    Promise.all([
+      api<ContentItem[] | { results: ContentItem[] }>(`/api/projects/content-calendar?client=${clientId}`),
+      api<LinkedTask[] | { results: LinkedTask[] }>(`/api/tasks?client=${clientId}`),
+    ])
+      .then(([content, tasks]) => {
+        setItems(unwrapList(content));
+        setLinkedTasks(unwrapList(tasks).filter((t) => !!t.due_date));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -214,22 +244,44 @@ export default function ClientCalendarPage() {
     return days;
   }, [gridStart, gridEnd]);
 
-  const itemsByDate = useMemo(() => {
-    const map: Record<string, ContentItem[]> = {};
+  const chipsByDate = useMemo(() => {
+    const map: Record<string, DayChip[]> = {};
+    const push = (chip: DayChip) => {
+      if (!map[chip.date]) map[chip.date] = [];
+      map[chip.date].push(chip);
+    };
     for (const it of items) {
-      if (!map[it.scheduled_date]) map[it.scheduled_date] = [];
-      map[it.scheduled_date].push(it);
+      push({
+        key: `c-${it.id}`,
+        date: it.scheduled_date,
+        title: it.title,
+        status: it.status,
+        kind: "content",
+        content: it,
+      });
+    }
+    for (const t of linkedTasks) {
+      if (!t.due_date) continue;
+      push({
+        key: `t-${t.id}`,
+        date: t.due_date,
+        title: t.title,
+        status: t.status,
+        kind: "task",
+        task: t,
+      });
     }
     return map;
-  }, [items]);
+  }, [items, linkedTasks]);
 
   const counts = useMemo(
     () => ({
       total: items.length,
-      done: items.filter((i) => i.status === "done").length,
-      published: items.filter((i) => i.status === "published").length,
+      completed: items.filter((i) => i.status === "completed").length,
+      approved: items.filter((i) => i.status === "approved" || i.status === "published").length,
+      qc_completed: items.filter((i) => i.status === "qc_completed").length,
       in_progress: items.filter((i) => i.status === "in_progress").length,
-      planned: items.filter((i) => i.status === "planned").length,
+      assigned: items.filter((i) => i.status === "assigned" || i.status === "planned").length,
     }),
     [items]
   );
@@ -380,7 +432,7 @@ export default function ClientCalendarPage() {
 
   const today = new Date();
   const editingItem = editingId ? items.find((i) => i.id === editingId) : null;
-  const selectedItems = itemsByDate[toIso(selectedDate)] ?? [];
+  const selectedItems = chipsByDate[toIso(selectedDate)] ?? [];
 
   const detectMeeting = (text: string) => detectMeetingUrl(text);
 
@@ -390,7 +442,7 @@ export default function ClientCalendarPage() {
         method: "PATCH",
         body: (() => {
           const body = new FormData();
-          body.append("status", item.status === "done" ? "planned" : "done");
+          body.append("status", isProjectTerminal(item.status) ? "assigned" : "completed");
           return body;
         })(),
       });
@@ -441,10 +493,10 @@ export default function ClientCalendarPage() {
         style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 8 }}
       >
         <KpiCard label="Total Items" value={counts.total} icon="bi-collection-fill" tone="blue" />
-        <KpiCard label="Completed" value={counts.done} icon="bi-check-circle-fill" tone="mint" />
-        <KpiCard label="Published" value={counts.published} icon="bi-broadcast" tone="blue" />
+        <KpiCard label="Assigned" value={counts.assigned} icon="bi-calendar-event" tone="purple" />
         <KpiCard label="In Progress" value={counts.in_progress} icon="bi-hourglass-split" tone="amber" />
-        <KpiCard label="To Do" value={counts.planned} icon="bi-calendar-event" tone="purple" />
+        <KpiCard label="Completed" value={counts.completed} icon="bi-check-circle-fill" tone="mint" />
+        <KpiCard label="Approved / Published" value={counts.approved} icon="bi-broadcast" tone="blue" />
       </div>
 
       <div className="kwick-cal-layout cal-stack-mobile">
@@ -491,7 +543,7 @@ export default function ClientCalendarPage() {
             >
               {monthDays.map((d) => {
                 const iso = toIso(d);
-                const dayItems = itemsByDate[iso] ?? [];
+                const dayItems = chipsByDate[iso] ?? [];
                 const inMonth = d.getMonth() === anchor.getMonth();
                 const isToday = iso === toIso(today);
                 const isSelected = iso === toIso(selectedDate);
@@ -527,7 +579,7 @@ export default function ClientCalendarPage() {
                     <div className="client-cal-dots" aria-hidden>
                       {dayItems.slice(0, 3).map((it) => (
                         <span
-                          key={`dot-${it.id}`}
+                          key={`dot-${it.key}`}
                           className="client-cal-dot"
                           style={{ background: STATUS_COLOR[it.status] ?? "var(--gold)" }}
                         />
@@ -536,28 +588,34 @@ export default function ClientCalendarPage() {
                     <div className="client-cal-chips" style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
                       {dayItems.slice(0, 3).map((it) => (
                         <button
-                          key={it.id}
+                          key={it.key}
                           type="button"
                           className="client-cal-chip"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedDate(d);
-                            openEdit(it);
+                            if (it.kind === "task" && it.task) {
+                              router.push(`/tasks/${it.task.id}`);
+                              return;
+                            }
+                            if (it.content) openEdit(it.content);
                           }}
                           style={{
                             ...itemChip,
                             background: `${STATUS_COLOR[it.status] ?? "var(--gold)"}1f`,
                             color: STATUS_COLOR[it.status] ?? "var(--gold)",
-                            textDecoration: it.status === "published" ? "line-through" : undefined,
-                            opacity: it.status === "published" ? 0.65 : 1,
+                            textDecoration: isTaskApproved(it.status) ? "line-through" : undefined,
+                            opacity: isTaskApproved(it.status) ? 0.65 : 1,
                             border: "none",
                             width: "100%",
                             textAlign: "left",
                             cursor: "pointer",
                           }}
-                          title={it.title}
+                          title={it.kind === "task" ? `Task · ${it.title}` : it.title}
                         >
-                          <span className="client-cal-chip-title">{it.title}</span>
+                          <span className="client-cal-chip-title">
+                            {it.kind === "task" ? `Task · ${it.title}` : it.title}
+                          </span>
                         </button>
                       ))}
                       {dayItems.length > 3 && (
@@ -580,16 +638,85 @@ export default function ClientCalendarPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto", minHeight: 0 }}>
             {selectedItems.length === 0 && (
-              <p className="muted" style={{ fontSize: 13 }}>No content on this day.</p>
+              <p className="muted" style={{ fontSize: 13 }}>No content or tasks on this day.</p>
             )}
-            {selectedItems.map((it) => {
+            {selectedItems.map((chip) => {
+              if (chip.kind === "task" && chip.task) {
+                const t = chip.task;
+                const color = STATUS_COLOR[t.status] ?? accent;
+                const finished = t.status === "approved" || t.status === "published";
+                const people = t.assignee_names?.length
+                  ? t.assignee_names
+                  : t.assignee_name
+                    ? [{ id: 0, name: t.assignee_name }]
+                    : [];
+                return (
+                  <div key={chip.key} style={{ ...contentCard, opacity: finished ? 0.72 : 1 }}>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <span style={{ ...typeIcon, background: `${color}18`, color }}>
+                        <i className="bi bi-check2-square" />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/tasks/${t.id}`)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            textAlign: "left",
+                            fontWeight: 650,
+                            fontSize: 13.5,
+                            color: "var(--navy)",
+                            cursor: "pointer",
+                            textDecoration: finished ? "line-through" : undefined,
+                            width: "100%",
+                          }}
+                          title="Open task"
+                        >
+                          {t.title}
+                        </button>
+                        <div className="muted" style={{ fontSize: 11.5, marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span>Task</span>
+                          <span className={`badge ${STATUS_BADGE[t.status] ?? "badge-muted"}`}>
+                            {taskStatusLabel(t.status)}
+                          </span>
+                        </div>
+                        {people.length > 0 && (
+                          <div style={{ display: "flex", marginTop: 8 }}>
+                            {people.slice(0, 5).map((a, i) => (
+                              <span
+                                key={`${a.id}-${a.name}`}
+                                title={a.name}
+                                style={{
+                                  ...avatar,
+                                  marginLeft: i === 0 ? 0 : -6,
+                                  zIndex: 5 - i,
+                                }}
+                              >
+                                {a.name
+                                  .split(/\s+/)
+                                  .slice(0, 2)
+                                  .map((p) => p[0]?.toUpperCase() || "")
+                                  .join("")}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              const it = chip.content;
+              if (!it) return null;
               const color = STATUS_COLOR[it.status] ?? accent;
               const meeting = detectMeeting(it.description || "");
-              const finished = it.status === "published";
-              const completed = it.status === "done";
+              const finished = isTaskApproved(it.status);
+              const completed = isProjectTerminal(it.status);
               return (
                 <div
-                  key={it.id}
+                  key={chip.key}
                   style={{
                     ...contentCard,
                     opacity: finished ? 0.72 : 1,
@@ -625,7 +752,7 @@ export default function ClientCalendarPage() {
                           className="btn btn-ghost btn-sm"
                           style={{ padding: "2px 8px", fontSize: 11 }}
                           onClick={() => markDone(it)}
-                          title={completed ? "Mark as to do" : "Mark completed"}
+                          title={completed ? "Mark as assigned" : "Mark completed"}
                         >
                           <i className={`bi ${completed ? "bi-arrow-counterclockwise" : "bi-check2"}`} />
                         </button>

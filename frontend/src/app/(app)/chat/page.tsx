@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
+import { EmojiPicker } from "@/components/EmojiPicker";
 import { UserAvatar } from "@/components/UserAvatar";
 import { api, ApiError, refreshSession, unwrapList, wsUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -42,6 +43,26 @@ type Contact = { id: number; full_name: string; email: string; role: string; ava
 
 const MAX_ATTACHMENT_SIZE = 30 * 1024 * 1024; // 30MB — mirrors the backend limit
 
+type PendingAttachment = {
+  file: File;
+  previewUrl: string;
+  kind: "image" | "video" | "document";
+};
+
+function attachmentKind(file: File): PendingAttachment["kind"] | null {
+  const mime = (file.type || "").toLowerCase();
+  const name = file.name.toLowerCase();
+  if (mime.startsWith("image/") || /\.(jpe?g|png|gif|webp|bmp)$/i.test(name)) return "image";
+  if (mime.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(name)) return "video";
+  if (mime === "application/pdf" || name.endsWith(".pdf")) return "document";
+  return null;
+}
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
 function ChatAvatar({
   name,
   email,
@@ -99,19 +120,19 @@ function ConversationPreview({ c }: { c: Conversation }) {
   if (last.attachment_type === "image")
     return (
       <>
-        <i className="bi bi-image-fill" style={{ marginRight: 4 }} /> Photo
+        <i className="bi bi-image-fill" style={{ marginRight: 4 }} /> {last.body || "Photo"}
       </>
     );
   if (last.attachment_type === "video")
     return (
       <>
-        <i className="bi bi-camera-reels-fill" style={{ marginRight: 4 }} /> Video
+        <i className="bi bi-camera-reels-fill" style={{ marginRight: 4 }} /> {last.body || "Video"}
       </>
     );
   if (last.attachment_type === "document")
     return (
       <>
-        <i className="bi bi-file-earmark-pdf-fill" style={{ marginRight: 4, color: "var(--danger)" }} /> Document
+        <i className="bi bi-file-earmark-pdf-fill" style={{ marginRight: 4, color: "var(--danger)" }} /> {last.body || "Document"}
       </>
     );
   return <>{last.body}</>;
@@ -137,7 +158,10 @@ function ChatPageInner() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const draftInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatActionBusy, setChatActionBusy] = useState(false);
@@ -278,8 +302,68 @@ function ChatPageInner() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [previewImage]);
 
-  const sendMessage = () => {
+  useEffect(() => {
+    setDraft("");
+    setPendingAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    setDragOver(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [selectedId]);
+
+  const clearPendingAttachment = () => {
+    setPendingAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const stageAttachment = (file: File) => {
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      showToast("That file is over the 30MB limit.", "error");
+      return;
+    }
+    const kind = attachmentKind(file);
+    if (!kind) {
+      showToast("Only images, videos, or PDFs can be attached.", "error");
+      return;
+    }
+    setPendingAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return {
+        file,
+        kind,
+        previewUrl: kind === "document" ? "" : URL.createObjectURL(file),
+      };
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    requestAnimationFrame(() => draftInputRef.current?.focus());
+  };
+
+  const sendMessage = async () => {
+    if (!selectedId || uploading) return;
     const body = draft.trim();
+    const pending = pendingAttachment;
+
+    if (pending) {
+      setUploading(true);
+      try {
+        const form = new FormData();
+        form.append("file", pending.file);
+        if (body) form.append("body", body);
+        await api(`/api/messages/conversations/${selectedId}/attachments`, { method: "POST", body: form });
+        setDraft("");
+        clearPendingAttachment();
+      } catch (err: any) {
+        showToast(err instanceof ApiError ? "Couldn't send that file." : err.message, "error");
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
     if (!body || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({ body }));
     setDraft("");
@@ -287,25 +371,43 @@ function ChatPageInner() {
 
   const pickAttachment = () => fileInputRef.current?.click();
 
-  const uploadAttachment = async (file: File) => {
-    if (!selectedId) return;
-    if (file.size > MAX_ATTACHMENT_SIZE) {
-      showToast("That file is over the 30MB limit.", "error");
+  const onComposerDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if ([...e.dataTransfer.types].includes("Files")) setDragOver(true);
+  };
+
+  const onComposerDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setDragOver(false);
+  };
+
+  const onComposerDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) stageAttachment(file);
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const el = draftInputRef.current;
+    if (!el) {
+      setDraft((d) => d + emoji);
       return;
     }
-    setUploading(true);
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      await api(`/api/messages/conversations/${selectedId}/attachments`, { method: "POST", body });
-      // The backend broadcasts the new message over this conversation's WS
-      // group (including back to us), so no local append needed here.
-    } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't send that file." : err.message, "error");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? draft.length;
+    const next = `${draft.slice(0, start)}${emoji}${draft.slice(end)}`;
+    setDraft(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
   };
 
   const clearChat = async () => {
@@ -589,7 +691,23 @@ function ChatPageInner() {
         </div>
       </div>
 
-      <div className={`chat-thread-pane${!selected ? " chat-pane-hidden-mobile" : ""}`} style={rightPane}>
+      <div
+        className={`chat-thread-pane${!selected ? " chat-pane-hidden-mobile" : ""}`}
+        style={{ ...rightPane, position: "relative" }}
+        onDragEnter={selected ? onComposerDragOver : undefined}
+        onDragOver={selected ? onComposerDragOver : undefined}
+        onDragLeave={selected ? onComposerDragLeave : undefined}
+        onDrop={selected ? onComposerDrop : undefined}
+      >
+        {selected && dragOver && (
+          <div style={dropOverlay} aria-hidden>
+            <div style={dropOverlayCard}>
+              <i className="bi bi-cloud-arrow-up" style={{ fontSize: 28 }} />
+              <span>Drop to attach</span>
+              <span className="muted" style={{ fontSize: 12 }}>Images, videos, or PDFs · up to 30MB</span>
+            </div>
+          </div>
+        )}
         {!selected ? (
           <div style={emptyState}>
             <i className="bi bi-chat-dots-fill" style={{ fontSize: 34, color: "var(--text-muted)" }} />
@@ -713,6 +831,11 @@ function ChatPageInner() {
                                   <i className="bi bi-download" style={{ fontSize: 13 }} />
                                 </a>
                               )}
+                              {m.body ? (
+                                <div style={{ padding: m.attachment_type === "document" ? "8px 0 0" : "8px 8px 4px", fontSize: 13.5, lineHeight: 1.4 }}>
+                                  {m.body}
+                                </div>
+                              ) : null}
                             </div>
                           ) : (
                             <div style={{ ...bubble, ...(own ? bubbleOwn : bubbleOther) }}>{m.body}</div>
@@ -728,27 +851,98 @@ function ChatPageInner() {
               ))}
             </div>
 
-            <div style={inputRow}>
-              <input ref={fileInputRef} type="file" accept="image/*,video/*,application/pdf" style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadAttachment(file);
-                }}
-              />
-              <button className="icon-btn-anim" style={attachBtn} onClick={pickAttachment} disabled={uploading} aria-label="Attach image, video or PDF" title="Attach image, video or PDF (30MB limit)">
-                <i className="bi bi-plus-lg" />
-              </button>
-              <input
-                className="input"
-                placeholder={uploading ? "Uploading…" : "Send message"}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                style={{ flex: 1 }}
-              />
-              <button className="icon-btn-anim" style={sendBtn} onClick={sendMessage} disabled={!draft.trim()} aria-label="Send">
-                <i className="bi bi-send-fill" style={{ fontSize: 14 }} />
-              </button>
+            <div style={composerShell}>
+              {pendingAttachment && (
+                <div style={pendingStrip}>
+                  <div style={pendingPreview}>
+                    {pendingAttachment.kind === "image" && pendingAttachment.previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={pendingAttachment.previewUrl} alt="" style={pendingThumb} />
+                    ) : pendingAttachment.kind === "video" && pendingAttachment.previewUrl ? (
+                      <video src={pendingAttachment.previewUrl} style={pendingThumb} muted />
+                    ) : (
+                      <div style={pendingDocIcon}>
+                        <i className="bi bi-file-earmark-pdf-fill" />
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {pendingAttachment.file.name}
+                      </div>
+                      <div className="muted" style={{ fontSize: 11.5 }}>
+                        {pendingAttachment.kind === "image" ? "Image" : pendingAttachment.kind === "video" ? "Video" : "PDF"}
+                        {" · "}
+                        {formatBytes(pendingAttachment.file.size)}
+                        {" · Ready to send"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-btn-anim"
+                      style={pendingRemoveBtn}
+                      onClick={clearPendingAttachment}
+                      disabled={uploading}
+                      aria-label="Remove attachment"
+                      title="Remove"
+                    >
+                      <i className="bi bi-x-lg" style={{ fontSize: 12 }} />
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={inputRow}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*,application/pdf"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) stageAttachment(file);
+                  }}
+                />
+                <button
+                  className="icon-btn-anim"
+                  style={attachBtn}
+                  onClick={pickAttachment}
+                  disabled={uploading}
+                  aria-label="Attach image, video or PDF"
+                  title="Attach image, video or PDF (30MB limit)"
+                >
+                  <i className="bi bi-plus-lg" />
+                </button>
+                <EmojiPicker onPick={insertEmoji} disabled={uploading} />
+                <input
+                  ref={draftInputRef}
+                  className="input"
+                  placeholder={
+                    uploading
+                      ? "Sending…"
+                      : pendingAttachment
+                        ? "Add a caption…"
+                        : "Send message"
+                  }
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage();
+                    }
+                  }}
+                  disabled={uploading}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="icon-btn-anim"
+                  style={sendBtn}
+                  onClick={() => void sendMessage()}
+                  disabled={uploading || (!draft.trim() && !pendingAttachment)}
+                  aria-label="Send"
+                >
+                  <i className={`bi ${uploading ? "bi-hourglass-split" : "bi-send-fill"}`} style={{ fontSize: 14 }} />
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -1157,7 +1351,77 @@ const inputRow: React.CSSProperties = {
   gap: 10,
   alignItems: "center",
   padding: "14px 20px",
+};
+const composerShell: React.CSSProperties = {
   borderTop: "1px solid var(--border)",
+  background: "var(--panel)",
+};
+const pendingStrip: React.CSSProperties = {
+  padding: "12px 20px 0",
+};
+const pendingPreview: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  padding: "10px 12px",
+  borderRadius: 12,
+  background: "var(--elevated)",
+  border: "1px solid var(--border)",
+};
+const pendingThumb: React.CSSProperties = {
+  width: 52,
+  height: 52,
+  objectFit: "cover",
+  borderRadius: 8,
+  display: "block",
+  background: "var(--bg)",
+  flexShrink: 0,
+};
+const pendingDocIcon: React.CSSProperties = {
+  width: 52,
+  height: 52,
+  borderRadius: 8,
+  display: "grid",
+  placeItems: "center",
+  background: "var(--danger-soft, #fee2e2)",
+  color: "var(--danger)",
+  fontSize: 22,
+  flexShrink: 0,
+};
+const pendingRemoveBtn: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  minWidth: 32,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "var(--bg)",
+  color: "var(--text-muted)",
+  border: "1px solid var(--border)",
+};
+const dropOverlay: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  zIndex: 25,
+  background: "color-mix(in srgb, var(--brand-fill, #3673FC) 18%, transparent)",
+  backdropFilter: "blur(2px)",
+  display: "grid",
+  placeItems: "center",
+  pointerEvents: "none",
+};
+const dropOverlayCard: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 6,
+  padding: "22px 28px",
+  borderRadius: 16,
+  background: "var(--panel)",
+  border: "2px dashed var(--brand-fill, #3673FC)",
+  color: "var(--text)",
+  fontWeight: 600,
+  fontSize: 14,
+  boxShadow: "0 12px 40px rgba(0,0,0,0.12)",
 };
 const attachBtn: React.CSSProperties = {
   width: 38,

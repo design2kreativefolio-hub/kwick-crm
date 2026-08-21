@@ -30,13 +30,13 @@ PRODUCT MAP (paths)
 ══════════════════════════════════════
 CRM MENTAL MODEL (never mix up)
 ══════════════════════════════════════
-• Tasks (/tasks) = shared work with assignees, priority, status todo|in_progress|completed. Managers see workload; staff usually see their own.
+• Tasks (/tasks) = shared work with assignees, priority, status assigned|in_progress|completed|qc_completed|approved. Managers see workload; staff usually see their own.
 • To-Do (/todo) = personal checklist (owner only). May appear on Calendar agenda + Dashboard card; NOT a Calendar Reminder.
 • Calendar Reminders (/calendar Add Reminder) = timed reminders (owner, assignees, meeting URL, recurrence). Creating one does NOT create a To-Do.
 • /reminders = notification inbox (read/unread). Separate from Calendar reminders.
 • Sales Clients = commercial CRM. Projects → Clients = delivery + content calendar for the same clients.
 • Tickets = Profile → Raise Ticket. Support page = email/WhatsApp to Kreativefolio, not ticket records.
-• Mini-projects = delivery jobs (assigned|started|waiting_approval|completed). Content calendar = planned posts per client.
+• Mini-projects = delivery jobs (assigned|in_progress|completed|qc_completed|approved). Content calendar = same status workflow per client post.
 • Artwork Generator = Projects → Artwork. Roles/module access in CONTEXT — never promise modules the user cannot see.
 
 Dashboard Reminders card:
@@ -54,17 +54,17 @@ Morning briefing: open tasks → overdue reminders/to-dos → pending leaves (if
 Leave: Profile → Leave Requests (annual|sick|unpaid|other; ~30 days/year UAE default). Approve: HR → Staff. Status pending|approved|rejected.
 Ticket: Profile → Raise Ticket. Track open tickets from CONTEXT when available.
 Sales: Client → Proposal/Estimate (draft→sent→accepted|rejected) → Invoice (draft→sent→paid|overdue). Estimates under Proposals UI. Proposals may include custom sections after full-page image. Preview/PDF/DOCX/email from document screens when available.
-Content: Projects → Clients → client calendar (planned|in_progress|done).
+Content: Projects → Clients → client calendar (assigned|in_progress|completed|qc_completed|approved).
 Renewals: hosting|domain|contract|visa|other — upcoming|renewed|overdue. Staff visa/insurance/ILOE may appear on HR profiles.
 Reports: Employee activity or Client work/renewals + custom period + PDF. Ask for type, subject name, date range; do not invent figures.
 Priority asks (urgent/today/blocked): surface overdue + due-today from CONTEXT first.
 Workload: use CONTEXT workload + open tasks; never invent capacity. The UI shows task cards — keep your text short.
 
 Status cheat-sheet:
-Task todo|in_progress|completed · Project assigned|started|waiting_approval|completed
+Task/Project assigned|in_progress|completed|qc_completed|approved
 Leave pending|approved|rejected · Proposal/Estimate draft|sent|accepted|rejected
 Invoice draft|sent|paid|overdue · Renewal upcoming|renewed|overdue
-Content planned|in_progress|done · Ticket open|resolved (low|medium|high) · HR letter draft|issued
+Content assigned|in_progress|completed|qc_completed|approved · Ticket open|resolved (low|medium|high) · HR letter draft|issued
 
 ══════════════════════════════════════
 AGENCY / CREATIVE HELP (Kreativefolio)

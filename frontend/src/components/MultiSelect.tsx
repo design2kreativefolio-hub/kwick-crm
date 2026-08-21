@@ -52,6 +52,7 @@ export function MultiSelect({
   }, [open, options.length]);
 
   useEffect(() => {
+    if (!open) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as Node;
       const insideTrigger = containerRef.current?.contains(target);
@@ -68,17 +69,17 @@ export function MultiSelect({
       }
       setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
+    document.addEventListener("mousedown", onClick, true);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("mousedown", onClick, true);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
-  }, []);
+  }, [open]);
 
   const toggle = (value: string) => {
     onChange(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);

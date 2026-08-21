@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from common.permissions import IsActive, IsSuperadminOrReadOnly
 from common.services import log_activity
 from sales.models import Client
-from tasks.services import combine_due_datetime, notify_task_assignment
+from tasks.services import combine_due_datetime, notify_task_assignment, notify_task_edit
 
 from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient
 from .serializers import (
@@ -275,23 +275,27 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
 
         User = get_user_model()
         status_map = {
-            ContentCalendarItem.Status.PLANNED: (TaskModel.Status.TODO, TaskModel.BoardStatus.TODO),
+            ContentCalendarItem.Status.ASSIGNED: (TaskModel.Status.ASSIGNED, TaskModel.BoardStatus.TODO),
             ContentCalendarItem.Status.IN_PROGRESS: (
                 TaskModel.Status.IN_PROGRESS,
                 TaskModel.BoardStatus.DOING,
             ),
-            ContentCalendarItem.Status.DONE: (
+            ContentCalendarItem.Status.COMPLETED: (
                 TaskModel.Status.COMPLETED,
                 TaskModel.BoardStatus.DONE,
             ),
-            ContentCalendarItem.Status.PUBLISHED: (
-                TaskModel.Status.PUBLISHED,
+            ContentCalendarItem.Status.QC_COMPLETED: (
+                TaskModel.Status.QC_COMPLETED,
+                TaskModel.BoardStatus.DONE,
+            ),
+            ContentCalendarItem.Status.APPROVED: (
+                TaskModel.Status.APPROVED,
                 TaskModel.BoardStatus.DONE,
             ),
         }
         task_status, board_status = status_map[item.status]
         title = f"{item.title} — {item.client.name}"
-        published = item.status == ContentCalendarItem.Status.PUBLISHED
+        published = item.status == ContentCalendarItem.Status.APPROVED
         due_date = None if published else (item.deadline or item.scheduled_date)
         due_time = None if published else item.deadline_time
 
@@ -356,6 +360,10 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
             newly = set(assignee_ids) - prev_ids
             if newly:
                 notify_task_assignment(task=task, actor=self.request.user, user_ids=newly)
+            # People already on this content task get an edit notification.
+            edit_targets = (prev_ids & set(assignee_ids)) - {self.request.user.id}
+            if edit_targets and existing:
+                notify_task_edit(task=task, actor=self.request.user, user_ids=edit_targets)
 
         reminder_ids = set() if holder_only else set(assignee_ids)
         self._sync_assignee_reminders(item, reminder_ids, published=published)

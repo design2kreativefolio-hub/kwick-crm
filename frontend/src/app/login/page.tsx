@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { Logo } from "@/components/Logo";
 import { MaintenanceNotice } from "@/components/MaintenanceNotice";
+import { PasswordField } from "@/components/PasswordField";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -81,12 +82,11 @@ export default function LoginPage() {
               Forgot password?
             </Link>
           </div>
-          <input
-            className="input"
-            type="password"
+          <PasswordField
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="current-password"
           />
           {error && <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>}
           <button className="btn" style={{ width: "100%", marginTop: 16 }} disabled={busy}>

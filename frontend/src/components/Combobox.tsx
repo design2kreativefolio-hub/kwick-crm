@@ -60,6 +60,7 @@ export function Combobox({
   }, [open, filtered.length]);
 
   useEffect(() => {
+    if (!open) return;
     const onClick = (e: MouseEvent) => {
       const target = e.target as Node;
       const insideInput = containerRef.current?.contains(target);
@@ -76,17 +77,17 @@ export function Combobox({
       }
       setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
+    document.addEventListener("mousedown", onClick, true);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("mousedown", onClick, true);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
-  }, []);
+  }, [open]);
 
   const panel = open && rect && filtered.length > 0 && (
     <motion.ul

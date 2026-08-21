@@ -9,6 +9,7 @@ from projects.models import Project
 from renewals.models import Renewal
 from sales.models import Invoice, Proposal
 from tasks.models import Task
+from tasks.services import not_todo_linked
 
 from . import report_pdf, services
 
@@ -28,9 +29,11 @@ class ReportSummaryView(APIView):
                 ).count(),
                 "overdue_invoices": Invoice.objects.filter(status=Invoice.Status.OVERDUE).count(),
                 "active_projects": Project.objects.exclude(
-                    status=Project.Status.COMPLETED
+                    status__in=Project.TERMINAL_STATUSES
                 ).count(),
-                "open_tasks": Task.objects.exclude(status=Task.Status.COMPLETED).count(),
+                "open_tasks": not_todo_linked(
+                    Task.objects.exclude(status__in=Task.TERMINAL_STATUSES)
+                ).count(),
                 "upcoming_renewals": Renewal.objects.filter(
                     due_date__lte=soon, status=Renewal.Status.UPCOMING
                 ).count(),

@@ -8,9 +8,15 @@ from common.models import TimeStampedModel
 class Project(TimeStampedModel):
     class Status(models.TextChoices):
         ASSIGNED = "assigned", "Assigned"
-        STARTED = "started", "Started"
-        WAITING_APPROVAL = "waiting_approval", "Waiting for approval"
+        IN_PROGRESS = "in_progress", "In Progress"
         COMPLETED = "completed", "Completed"
+        QC_COMPLETED = "qc_completed", "QC Completed"
+        APPROVED = "approved", "Approved / Published"
+
+    # Closed enough to leave "ongoing" / open project lists.
+    TERMINAL_STATUSES = frozenset(
+        {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED}
+    )
 
     class Priority(models.TextChoices):
         LOW = "low", "Low"
@@ -128,14 +134,16 @@ class ContentCalendarItem(TimeStampedModel):
         OTHER = "other", "Other"
 
     class Status(models.TextChoices):
-        # Labels match tasks.Task.Status exactly (values stay distinct — see
-        # views.ContentCalendarItemViewSet._sync_assignee_tasks, which maps
-        # between the two) so the same state reads identically whether it's
-        # shown on the content calendar or on the mirrored Task.
-        PLANNED = "planned", "To do"
-        IN_PROGRESS = "in_progress", "In progress"
-        DONE = "done", "Completed"
-        PUBLISHED = "published", "Published"
+        # Same values/labels as tasks.Task.Status so mirrored tasks stay in sync.
+        ASSIGNED = "assigned", "Assigned"
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        QC_COMPLETED = "qc_completed", "QC Completed"
+        APPROVED = "approved", "Approved / Published"
+
+    TERMINAL_STATUSES = frozenset(
+        {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED}
+    )
 
     client = models.ForeignKey(
         "sales.Client", on_delete=models.CASCADE, related_name="content_items"
@@ -148,7 +156,7 @@ class ContentCalendarItem(TimeStampedModel):
     scheduled_date = models.DateField()
     deadline = models.DateField(null=True, blank=True)
     deadline_time = models.TimeField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNED)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ASSIGNED)
     assignees = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="content_calendar_items"
     )

@@ -2,7 +2,8 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { EdithOrb } from "@/components/EdithOrb";
 import { EdithPlexus } from "@/components/EdithPlexus";
@@ -66,8 +67,18 @@ async function compressImage(file: File): Promise<Attachment> {
 }
 
 export default function EdithPage() {
+  return (
+    <Suspense fallback={<p className="muted" style={{ padding: 20 }}>Loading…</p>}>
+      <EdithPageInner />
+    </Suspense>
+  );
+}
+
+function EdithPageInner() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const reduceMotion = useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
   useShellFillHeight(rootRef);
@@ -84,6 +95,7 @@ export default function EdithPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const baseInputRef = useRef("");
+  const autoAskDone = useRef(false);
   const empty = messages.length === 0;
   const motionOff = !!reduceMotion;
   const firstName = user?.full_name?.split(" ")[0] || "there";
@@ -261,6 +273,17 @@ export default function EdithPage() {
       inputRef.current?.focus();
     }
   };
+
+  useEffect(() => {
+    if (!enabled || busy || autoAskDone.current) return;
+    const ask = (searchParams.get("ask") || "").trim();
+    if (!ask) return;
+    autoAskDone.current = true;
+    router.replace("/ai", { scroll: false });
+    void send(ask);
+    // Run once when landing with ?ask= — send is stable enough for this launch path.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, searchParams]);
 
   const copyReply = async (text: string) => {
     try {

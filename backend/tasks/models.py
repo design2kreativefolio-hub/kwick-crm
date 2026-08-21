@@ -7,10 +7,11 @@ from common.models import TimeStampedModel
 
 class Task(TimeStampedModel):
     class Status(models.TextChoices):
-        TODO = "todo", "To do"
-        IN_PROGRESS = "in_progress", "In progress"
+        ASSIGNED = "assigned", "Assigned"
+        IN_PROGRESS = "in_progress", "In Progress"
         COMPLETED = "completed", "Completed"
-        PUBLISHED = "published", "Published"
+        QC_COMPLETED = "qc_completed", "QC Completed"
+        APPROVED = "approved", "Approved / Published"
 
     class Priority(models.TextChoices):
         LOW = "low", "Low"
@@ -22,6 +23,11 @@ class Task(TimeStampedModel):
         DOING = "doing", "In Progress"
         DONE = "done", "Complete"
 
+    # Done / closed enough to leave "pending" and "open" lists.
+    TERMINAL_STATUSES = frozenset(
+        {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED}
+    )
+
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     project = models.ForeignKey(
@@ -32,6 +38,13 @@ class Task(TimeStampedModel):
     # touches a row in the real Clients directory. Replaces "Project" as the
     # context field on the Tasks page's own create form (spec follow-up).
     client_name = models.CharField(max_length=200, blank=True, default="")
+    client = models.ForeignKey(
+        "sales.Client",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks",
+    )
     # Set only for a Task auto-created to mirror a client's content calendar
     # item — one task per content item (multiple people via `assignees` M2M).
     content_item = models.ForeignKey(
@@ -52,11 +65,11 @@ class Task(TimeStampedModel):
         blank=True,
         related_name="assigned_tasks",
     )
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.TODO)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ASSIGNED)
     priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
     due_date = models.DateField(null=True, blank=True)
     due_time = models.TimeField(null=True, blank=True)
-    # Set when status → completed; drives Dashboard monthly-reset count (spec §8/§15).
+    # Set when status → completed / later stages; drives Dashboard monthly count.
     completed_at = models.DateTimeField(null=True, blank=True)
     # Kanban board fields (spec §11 reuses this model).
     board_status = models.CharField(
@@ -65,17 +78,32 @@ class Task(TimeStampedModel):
     board_order = models.PositiveIntegerField(default=0)
 
     def save(self, *args, **kwargs):
-        # Stamp / clear completed_at for terminal statuses (completed + published).
-        # Published is the finished state — no due date once it ships.
-        terminal = {self.Status.COMPLETED, self.Status.PUBLISHED}
-        if self.status in terminal and self.completed_at is None:
+        # Stamp completed_at once work is done through QC / approval.
+        # Approved / Published is the finished state — no due date once it ships.
+        if self.status in self.TERMINAL_STATUSES and self.completed_at is None:
             self.completed_at = timezone.now()
-        elif self.status not in terminal:
+        elif self.status not in self.TERMINAL_STATUSES:
             self.completed_at = None
-        if self.status == self.Status.PUBLISHED:
+        if self.status == self.Status.APPROVED:
             self.due_date = None
             self.due_time = None
         super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title
+
+
+class TaskUpdate(TimeStampedModel):
+    """Daily progress note on a task. Only assignees may create entries."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="updates")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="task_updates"
+    )
+    body = models.TextField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Update on {self.task_id} by {self.author_id}"

@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { DEFAULT_SOURCE_META, SOURCE_META, timeAgo } from "@/lib/notifications";
-import { STATUS_BADGE, STATUS_COLOR as SHARED_STATUS_COLOR } from "@/lib/statusBadges";
+import { STATUS_BADGE, STATUS_COLOR as SHARED_STATUS_COLOR, isTaskApproved } from "@/lib/statusBadges";
 
 type StatusCount = { status: string; label: string; count: number };
 
@@ -215,8 +215,12 @@ export default function DashboardPage() {
                   ? "Stay updated with the company's performance today."
                   : "Stay updated with your workload today."
               }
-              ctaLabel="View Full Report"
-              ctaHref="/reports"
+              ctaLabel={isSuperadmin ? "View Full Report" : "Check With Edith"}
+              ctaHref={
+                isSuperadmin
+                  ? "/reports"
+                  : "/ai?ask=" + encodeURIComponent("What are my pending tasks?")
+              }
             />
             <KpiCard
               label="Pending Tasks"
@@ -350,8 +354,8 @@ export default function DashboardPage() {
                       <tr key={t.id}>
                         <td
                           style={{
-                            textDecoration: t.status === "published" ? "line-through" : undefined,
-                            opacity: t.status === "published" ? 0.7 : 1,
+                            textDecoration: isTaskApproved(t.status) ? "line-through" : undefined,
+                            opacity: isTaskApproved(t.status) ? 0.7 : 1,
                             cursor: "pointer",
                           }}
                           onClick={() => router.push(`/tasks/${t.id}`)}
@@ -370,7 +374,7 @@ export default function DashboardPage() {
                           </span>
                         </td>
                         <td className="muted">
-                          {t.status === "published" || !t.due_date ? "—" : formatTaskDue(t.due_date, t.due_time)}
+                          {isTaskApproved(t.status) || !t.due_date ? "—" : formatTaskDue(t.due_date, t.due_time)}
                         </td>
                       </tr>
                     ))}

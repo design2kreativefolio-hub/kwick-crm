@@ -12,10 +12,9 @@ import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
-import { STATUS_BADGE } from "@/lib/statusBadges";
+import { STATUS_BADGE, PROJECT_STATUS_LABEL, PROJECT_STATUS_OPTIONS, isProjectTerminal, type ProjectStatus } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
-type ProjectStatus = "assigned" | "started" | "waiting_approval" | "completed";
 type ProjectPriority = "low" | "medium" | "high";
 
 type Project = {
@@ -38,16 +37,8 @@ type Project = {
 type ClientOption = { id: number; name: string; services: string[] };
 type Contact = { id: number; full_name: string; email: string; role: string };
 
-const STATUS_LABEL: Record<ProjectStatus, string> = {
-  assigned: "Assigned",
-  started: "Started",
-  waiting_approval: "Waiting for approval",
-  completed: "Completed",
-};
-const STATUS_OPTIONS = (Object.keys(STATUS_LABEL) as ProjectStatus[]).map((s) => ({
-  value: s,
-  label: STATUS_LABEL[s],
-}));
+const STATUS_OPTIONS = PROJECT_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
+const STATUS_LABEL = PROJECT_STATUS_LABEL;
 
 const PRIORITY_LABEL: Record<ProjectPriority, string> = { low: "Low", medium: "Medium", high: "High" };
 const PRIORITY_BADGE: Record<ProjectPriority, string> = {
@@ -77,7 +68,7 @@ function formatDate(iso: string | null) {
 }
 
 function isOverdue(iso: string | null, status: ProjectStatus) {
-  if (!iso || status === "completed") return false;
+  if (!iso || isProjectTerminal(status)) return false;
   return new Date(iso) < new Date(new Date().toDateString());
 }
 

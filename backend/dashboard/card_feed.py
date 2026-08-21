@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from django.db.models import Q
+from django.utils import timezone
 
 from calendar_app.models import ManualReminder
 from notifications.models import DashboardCardDismiss, NotificationEvent
@@ -52,6 +53,9 @@ def build_dashboard_card_items(user, *, limit: int = 24) -> list[dict]:
         .order_by("remind_at")[:50]
     )
     for rem in rem_qs:
+        desc = rem.description or ""
+        if "[kwick:task:" in desc or "[kwick:content_item:" in desc:
+            continue
         if rem.id in dismissed_rem:
             continue
         items.append(
@@ -67,21 +71,20 @@ def build_dashboard_card_items(user, *, limit: int = 24) -> list[dict]:
             }
         )
 
-    # Open personal to-dos.
-    todo_qs = TodoItem.objects.filter(owner=user, done=False).order_by("due_date", "created_at")[:50]
-    for todo in todo_qs:
-        if todo.id in dismissed_todo:
-            continue
+    # Pending personal to-dos — one summary card (opens /todo), not every row.
+    pending_todos = TodoItem.objects.filter(owner=user, done=False).count()
+    if pending_todos and 0 not in dismissed_todo:
+        label = "pending to-do" if pending_todos == 1 else "pending to-dos"
         items.append(
             {
                 "kind": "todo",
-                "id": todo.id,
-                "title": todo.text,
-                "body": "To-do" + (f" · due {todo.due_date.isoformat()}" if todo.due_date else ""),
+                "id": 0,
+                "title": f"{pending_todos} {label}",
+                "body": "Open your to-do list",
                 "source": "todo",
                 "href": "/todo",
-                "at": (todo.due_date.isoformat() if todo.due_date else todo.created_at.isoformat()),
-                "created_at": todo.created_at.isoformat(),
+                "at": timezone.localdate().isoformat(),
+                "created_at": timezone.now().isoformat(),
             }
         )
 

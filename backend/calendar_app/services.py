@@ -14,6 +14,7 @@ from daily_tracker.models import DailyTrackerEntry
 from projects.models import ContentCalendarItem, Project
 from renewals.models import Renewal
 from tasks.models import Task
+from tasks.services import not_todo_linked
 from todos.models import TodoItem
 
 
@@ -114,12 +115,21 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
     # --- Tasks with a due_date ---
     # Content-calendar mirrors appear under source=content_calendar (company-wide
     # for every employee). Keep personal tasks here only to avoid duplicates.
-    task_qs = Task.objects.filter(due_date__range=(dt_from, dt_to), content_item__isnull=True).select_related(
-        "assignee"
+    # One card per task even with several assignees (M2M + distinct).
+    task_qs = not_todo_linked(
+        Task.objects.filter(due_date__range=(dt_from, dt_to), content_item__isnull=True)
+        .select_related("assignee", "client")
+        .prefetch_related("assignees")
     )
     if not company:
-        task_qs = task_qs.filter(assignee=user)
-    for t in task_qs:
+        task_qs = task_qs.filter(Q(assignee=user) | Q(assignees=user))
+    for t in task_qs.distinct():
+        people = list(t.assignees.all())
+        if not people and t.assignee:
+            people = [t.assignee]
+        time_label = ""
+        if t.due_time:
+            time_label = t.due_time.strftime("%I:%M %p").lstrip("0")
         items.append(
             {
                 "source": "task",
@@ -127,37 +137,42 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "title": t.title,
                 "date": _iso(t.due_date),
                 # Published is the finished / struck state; completed stays open visually.
-                "done": t.status == Task.Status.PUBLISHED,
+                "done": t.status == Task.Status.APPROVED,
                 "meta": {
                     "status": t.status,
                     "assignee": t.assignee_id,
                     "assignee_name": (t.assignee.full_name or t.assignee.email) if t.assignee else "",
                     "priority": t.priority,
+                    "client": t.client_id,
                     "meeting_url": detect_meeting_url(t.description or ""),
+                    "time": time_label,
+                    "assignees": [{"id": u.id, "name": u.full_name or u.email} for u in people],
                 },
             }
         )
 
     # --- Personal to-dos (self scope only) ---
-    # Prefer due_date when set; otherwise fall back to created_at so items from
-    # the To-Do page still appear on the personal calendar.
+    # One summary card for pending to-dos (not every checklist row).
     if not company:
-        todo_qs = TodoItem.objects.filter(owner=user).filter(
-            Q(due_date__range=(dt_from, dt_to))
-            | Q(due_date__isnull=True, created_at__date__range=(dt_from, dt_to))
-        )
-        for td in todo_qs:
-            day = td.due_date or timezone.localtime(td.created_at).date()
-            items.append(
-                {
-                    "source": "todo",
-                    "id": td.id,
-                    "title": td.text,
-                    "date": _iso(day),
-                    "done": td.done,
-                    "meta": {"status": "done" if td.done else "todo"},
-                }
-            )
+        today = timezone.localdate()
+        if dt_from <= today <= dt_to:
+            pending_todos = TodoItem.objects.filter(owner=user, done=False).count()
+            if pending_todos:
+                label = "pending to-do" if pending_todos == 1 else "pending to-dos"
+                items.append(
+                    {
+                        "source": "todo",
+                        "id": 0,
+                        "title": f"{pending_todos} {label}",
+                        "date": _iso(today),
+                        "done": False,
+                        "meta": {
+                            "status": "todo",
+                            "summary": True,
+                            "pending_count": pending_todos,
+                        },
+                    }
+                )
 
     # --- Daily tracker entries ---
     dt_qs = DailyTrackerEntry.objects.filter(date__range=(dt_from, dt_to)).select_related("user")
@@ -186,7 +201,7 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "id": p.id,
                 "title": f"{p.name} — delivery",
                 "date": _iso(p.delivery_date),
-                "done": p.status == Project.Status.COMPLETED,
+                "done": p.status in Project.TERMINAL_STATUSES,
                 "meta": {"status": p.status, "client": p.client},
             }
         )
@@ -207,7 +222,7 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                     "title": f"{ci.title} — {ci.client.name}",
                     "date": _iso(ci.scheduled_date),
                     # Finished / strikethrough only after Published (not Completed).
-                    "done": ci.status == ContentCalendarItem.Status.PUBLISHED,
+                    "done": ci.status == ContentCalendarItem.Status.APPROVED,
                     "meta": {
                         "status": ci.status,
                         "content_type": ci.content_type,
@@ -255,7 +270,12 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
         ).distinct()
 
     for m in rem_qs:
-        meeting = m.meeting_url or detect_meeting_url(m.description or "")
+        desc = m.description or ""
+        # Auto-generated per-assignee alerts stay for notification timing, but
+        # must not render extra calendar cards (the task / content item is the card).
+        if "[kwick:task:" in desc or "[kwick:content_item:" in desc:
+            continue
+        meeting = m.meeting_url or detect_meeting_url(desc)
         assignee_list = [{"id": u.id, "name": u.full_name or u.email} for u in m.assignees.all()]
         for when, done in expand_reminder_dates(m, dt_from, dt_to):
             items.append(

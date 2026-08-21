@@ -8,12 +8,13 @@ import { Combobox } from "@/components/Combobox";
 import { DatePicker } from "@/components/DatePicker";
 import { TimePicker } from "@/components/TimePicker";
 import { Modal } from "@/components/Modal";
+import { MultiSelect } from "@/components/MultiSelect";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
-import { STATUS_BADGE } from "@/lib/statusBadges";
+import { STATUS_BADGE, TASK_STATUS_LABEL, TASK_STATUS_OPTIONS, isTaskApproved } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 
 type Task = {
@@ -25,9 +26,11 @@ type Task = {
   client_name: string;
   assignee: number | null;
   assignee_name: string;
+  assignee_ids?: number[];
+  client?: number | null;
   content_item: number | null;
   content_client_id: number | null;
-  status: "todo" | "in_progress" | "completed" | "published";
+  status: string;
   from_todo?: boolean;
   priority: "low" | "medium" | "high";
   due_date: string | null;
@@ -39,17 +42,7 @@ type Task = {
 type ClientOption = { id: number; name: string };
 type Contact = { id: number; full_name: string; email: string; role: string };
 
-const STATUS_OPTIONS = [
-  { value: "todo", label: "To do" },
-  { value: "in_progress", label: "In progress" },
-  { value: "completed", label: "Completed" },
-  { value: "published", label: "Published" },
-];
-
-const TODO_STATUS_OPTIONS = [
-  { value: "todo", label: "To do" },
-  { value: "completed", label: "Completed" },
-];
+const STATUS_OPTIONS = TASK_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
 const PRIORITY_OPTIONS = [
   { value: "low", label: "Low" },
@@ -63,20 +56,13 @@ const PRIORITY_BADGE: Record<string, string> = {
   high: "badge-danger",
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  todo: "To do",
-  in_progress: "In progress",
-  completed: "Completed",
-  published: "Published",
-};
-
 const emptyForm = {
   title: "",
   description: "",
   client_name: "",
-  assignee: "",
+  assignee_ids: [] as string[],
   priority: "medium",
-  status: "todo",
+  status: "assigned",
   due_date: "",
   due_time: "",
 };
@@ -155,17 +141,15 @@ export default function TasksPage() {
     api<ClientOption[] | { results: ClientOption[] }>("/api/projects/clients")
       .then((d) => setClients(unwrapList(d)))
       .catch(() => {});
-    if (isSuperadmin) {
-      api<Contact[]>("/api/messages/directory").then(setContacts).catch(() => {});
-    }
+    api<Contact[]>("/api/messages/directory").then(setContacts).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperadmin]);
+  }, []);
 
   const openCreateForm = () => {
     setEditingTask(null);
     const next = {
       ...emptyForm,
-      assignee: user?.id ? String(user.id) : "",
+      assignee_ids: user?.id ? [String(user.id)] : [],
     };
     setForm(next);
     formBaseline.current = JSON.stringify(next);
@@ -179,7 +163,14 @@ export default function TasksPage() {
       title: task.title,
       description: task.description || "",
       client_name: task.client_name || "",
-      assignee: task.assignee ? String(task.assignee) : user?.id ? String(user.id) : "",
+      assignee_ids: (task.assignee_ids?.length
+        ? task.assignee_ids
+        : task.assignee
+          ? [task.assignee]
+          : user?.id
+            ? [user.id]
+            : []
+      ).map(String),
       priority: task.priority,
       status: task.status,
       due_date: task.due_date || "",
@@ -218,9 +209,12 @@ export default function TasksPage() {
         client_name: form.client_name.trim(),
       };
       if (editingTask) body.status = form.status;
-      const assigneeId = form.assignee || (user?.id ? String(user.id) : "");
-      if (assigneeId) body.assignee = Number(assigneeId);
-      else if (isSuperadmin) body.assignee = null;
+      const assigneeIds = form.assignee_ids.map(Number).filter(Boolean);
+      body.assignee_ids = assigneeIds.length ? assigneeIds : user?.id ? [user.id] : [];
+      const matched = clients.find(
+        (c) => c.name.toLowerCase() === form.client_name.trim().toLowerCase(),
+      );
+      body.client = matched ? matched.id : null;
       await api<Task>(editingTask ? `/api/tasks/${editingTask.id}` : "/api/tasks", {
         method: editingTask ? "PATCH" : "POST",
         body: JSON.stringify(body),
@@ -364,7 +358,7 @@ export default function TasksPage() {
                 style={{ resize: "vertical" }}
               />
             </div>
-            <div className={`kwick-form-wide__row ${isSuperadmin ? "kwick-form-wide__row--4" : "kwick-form-wide__row--3"}`}>
+            <div className={`kwick-form-wide__row ${editingTask ? "kwick-form-wide__row--4" : "kwick-form-wide__row--3"}`}>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Client</label>
                 <Combobox
@@ -375,17 +369,16 @@ export default function TasksPage() {
                   ariaLabel="Client"
                 />
               </div>
-              {isSuperadmin && (
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
-                  <Select
-                    value={form.assignee}
-                    onChange={(v) => setForm((f) => ({ ...f, assignee: v }))}
-                    options={assigneeOptions}
-                    ariaLabel="Assign to"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
+                <MultiSelect
+                  values={form.assignee_ids}
+                  onChange={(v) => setForm((f) => ({ ...f, assignee_ids: v }))}
+                  options={assigneeOptions}
+                  placeholder="Select people…"
+                  ariaLabel="Assign to"
+                />
+              </div>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Priority</label>
                 <Select
@@ -401,7 +394,7 @@ export default function TasksPage() {
                   <Select
                     value={form.status}
                     onChange={(v) => setForm((f) => ({ ...f, status: v }))}
-                    options={editingTask?.from_todo ? TODO_STATUS_OPTIONS : STATUS_OPTIONS}
+                    options={STATUS_OPTIONS}
                     ariaLabel="Status"
                   />
                 </div>
@@ -514,8 +507,8 @@ export default function TasksPage() {
                         style={{
                           fontWeight: 600,
                           color: "var(--navy)",
-                          textDecoration: t.status === "published" ? "line-through" : undefined,
-                          opacity: t.status === "published" ? 0.7 : 1,
+                          textDecoration: isTaskApproved(t.status) ? "line-through" : undefined,
+                          opacity: isTaskApproved(t.status) ? 0.7 : 1,
                         }}
                         title={
                           t.content_item && t.content_client_id
@@ -533,10 +526,10 @@ export default function TasksPage() {
                     </td>
                     <td>
                       <span className={`badge ${STATUS_BADGE[t.status] ?? "badge-muted"}`}>
-                        {STATUS_LABEL[t.status] ?? t.status}
+                        {TASK_STATUS_LABEL[t.status] ?? t.status}
                       </span>
                     </td>
-                    <td>{t.status === "published" ? "—" : formatDue(t.due_date, t.due_time)}</td>
+                    <td>{isTaskApproved(t.status) ? "—" : formatDue(t.due_date, t.due_time)}</td>
                     <td className="muted" style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>
                       {formatDateTime(t.created_at)}
                     </td>
@@ -577,7 +570,7 @@ export default function TasksPage() {
                             <Select
                               value={t.status}
                               onChange={(v) => changeStatus(t, v)}
-                              options={t.from_todo ? TODO_STATUS_OPTIONS : STATUS_OPTIONS}
+                              options={STATUS_OPTIONS}
                               compact
                               ariaLabel={`Change status for ${t.title}`}
                             />

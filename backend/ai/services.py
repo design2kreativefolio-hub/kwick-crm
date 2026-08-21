@@ -393,7 +393,7 @@ def _local_reply(text: str, ctx: dict) -> dict:
             ],
         }
 
-    if _match(q, ["task", "who's assigned", "assigned tasks", "my tasks", "open tasks"]):
+    if _match(q, ["task", "who's assigned", "assigned tasks", "my tasks", "open tasks", "pending tasks"]):
         person = named_person(q, ctx)
         if person:
             n = count_tasks_for_person(ctx, person)
@@ -402,9 +402,15 @@ def _local_reply(text: str, ctx: dict) -> dict:
             )
         else:
             n = ctx.get("open_tasks_count", 0)
-            reply = f"**{n}** open shared task(s)." + (
-                " Cards below — tap a card to open it." if n else " Nothing open — nice work."
-            )
+            mine = _match(q, ["my tasks", "pending tasks", "assigned to me"])
+            if mine:
+                reply = f"You have **{n}** pending/open task(s)." + (
+                    " Cards below — tap a card to open it." if n else " Nothing pending — nice work."
+                )
+            else:
+                reply = f"**{n}** open shared task(s)." + (
+                    " Cards below — tap a card to open it." if n else " Nothing open — nice work."
+                )
         return {
             "reply": reply,
             "links": [

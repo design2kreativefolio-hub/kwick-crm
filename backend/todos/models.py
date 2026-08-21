@@ -16,10 +16,8 @@ class TodoItem(TimeStampedModel):
     done_at = models.DateTimeField(null=True, blank=True)
     # Optional calendar date — when set, the to-do appears on the personal calendar.
     due_date = models.DateField(null=True, blank=True)
-    # Every personal to-do is mirrored onto the owner's Kanban board (spec
-    # request: "to-do tasks I create myself should come in the kanban").
-    # Nullable/SET_NULL so deleting the Task from Kanban doesn't take the
-    # to-do down with it.
+    # Every personal to-do used to be mirrored onto Tasks/Kanban. That link is
+    # leftover: to-dos stay on /todo only and are never listed as Tasks.
     linked_task = models.ForeignKey(
         "tasks.Task", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )

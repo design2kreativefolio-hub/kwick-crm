@@ -1,12 +1,14 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import Task
+from .models import Task, TaskUpdate
 
 
 class TaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True, default="")
     assignee_name = serializers.SerializerMethodField()
-    assignee_ids = serializers.SerializerMethodField()
+    assignee_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
+    assignee_names = serializers.SerializerMethodField()
     content_client_id = serializers.IntegerField(
         source="content_item.client_id", read_only=True, allow_null=True, default=None
     )
@@ -21,9 +23,11 @@ class TaskSerializer(serializers.ModelSerializer):
             "project",
             "project_name",
             "client_name",
+            "client",
             "assignee",
             "assignee_name",
             "assignee_ids",
+            "assignee_names",
             "content_item",
             "content_client_id",
             "from_todo",
@@ -46,13 +50,22 @@ class TaskSerializer(serializers.ModelSerializer):
             "content_client_id",
             "from_todo",
             "assignee_name",
-            "assignee_ids",
+            "assignee_names",
         ]
-        # Not required at the serializer level — perform_create always fills
-        # it in (self for employees, self-as-fallback for managers) so a
-        # request that simply omits it shouldn't fail validation before
-        # perform_create ever gets a chance to run.
-        extra_kwargs = {"assignee": {"required": False}}
+        extra_kwargs = {
+            "assignee": {"required": False},
+            "client": {"required": False, "allow_null": True},
+        }
+
+    def validate_assignee_ids(self, value):
+        if not value:
+            return value
+        User = get_user_model()
+        existing = set(User.objects.filter(pk__in=value, is_active=True).values_list("id", flat=True))
+        missing = set(value) - existing
+        if missing:
+            raise serializers.ValidationError("One or more assignees were not found.")
+        return value
 
     def get_assignee_ids(self, obj):
         ids = list(obj.assignees.values_list("id", flat=True))
@@ -60,13 +73,23 @@ class TaskSerializer(serializers.ModelSerializer):
             return ids
         return [obj.assignee_id] if obj.assignee_id else []
 
-    def get_from_todo(self, obj):
-        annotated = getattr(obj, "from_todo", None)
-        if annotated is not None:
-            return bool(annotated)
-        from todos.models import TodoItem
+    def get_assignee_names(self, obj):
+        names = []
+        for u in obj.assignees.all():
+            names.append({"id": u.id, "name": (u.full_name or u.email or "").strip()})
+        if names:
+            return names
+        if obj.assignee_id:
+            return [
+                {
+                    "id": obj.assignee_id,
+                    "name": (obj.assignee.full_name or obj.assignee.email or "").strip(),
+                }
+            ]
+        return []
 
-        return TodoItem.objects.filter(linked_task_id=obj.id).exists()
+    def get_from_todo(self, obj):
+        return False
 
     def get_assignee_name(self, obj):
         names = []
@@ -81,10 +104,29 @@ class TaskSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # Backfill client name for older calendar-synced tasks that predate
-        # client_name being written in _sync_assignee_tasks.
+        data["assignee_ids"] = self.get_assignee_ids(instance)
         if not (data.get("client_name") or "").strip() and instance.content_item_id:
             client = getattr(getattr(instance, "content_item", None), "client", None)
             if client is not None:
                 data["client_name"] = client.name
         return data
+
+
+class TaskUpdateSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskUpdate
+        fields = ["id", "author", "author_name", "body", "created_at"]
+        read_only_fields = ["author", "author_name", "created_at"]
+
+    def validate_body(self, value):
+        text = (value or "").strip()
+        if not text:
+            raise serializers.ValidationError("Update cannot be empty.")
+        if len(text) > 4000:
+            raise serializers.ValidationError("Update is too long.")
+        return text
+
+    def get_author_name(self, obj):
+        return (obj.author.full_name or obj.author.email or "").strip()

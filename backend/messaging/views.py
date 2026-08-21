@@ -385,7 +385,7 @@ class MessageAttachmentView(APIView):
         message = Message.objects.create(
             conversation=convo,
             sender=request.user,
-            body="",
+            body=(request.data.get("body") or "").strip()[:4000],
             attachment_url=persist_storage_url(request, saved_path),
             attachment_type=kind,
             attachment_name=upload.name,
@@ -395,6 +395,7 @@ class MessageAttachmentView(APIView):
         layer = get_channel_layer()
         if layer is not None:
             async_to_sync(layer.group_send)(f"chat_{convo.pk}", {"type": "chat.message", "payload": payload})
+        preview = (message.body[:80] if message.body else "Sent an attachment")
         notify_participants(
             convo,
             request.user.pk,
@@ -402,7 +403,7 @@ class MessageAttachmentView(APIView):
                 "kind": "chat_message",
                 "conversation_id": convo.pk,
                 "sender_name": request.user.full_name or request.user.email,
-                "preview": "Sent an attachment",
+                "preview": preview,
             },
         )
         return Response(payload, status=201)

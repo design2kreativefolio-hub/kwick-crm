@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 STATUS_LABEL = {
-    "todo": "To do",
-    "in_progress": "In progress",
+    "assigned": "Assigned",
+    "todo": "Assigned",
+    "in_progress": "In Progress",
     "completed": "Completed",
-    "published": "Published",
+    "qc_completed": "QC Completed",
+    "approved": "Approved / Published",
+    "published": "Approved / Published",
 }
 PRIORITY_LABEL = {
     "low": "Low",
@@ -132,6 +135,7 @@ def wants_task_cards(query: str, ctx: dict) -> bool:
         [
             "my tasks",
             "open tasks",
+            "pending tasks",
             "assigned tasks",
             "who is doing",
             "who's doing",
@@ -143,6 +147,8 @@ def wants_task_cards(query: str, ctx: dict) -> bool:
             "working on",
         ],
     ):
+        return True
+    if _contains(q, ["pending"]) and _contains(q, ["task"]):
         return True
     if _contains(q, ["task"]) and not _contains(q, ["what is a task", "what are tasks"]):
         return True
@@ -161,8 +167,8 @@ def _task_item(t: dict) -> dict:
     return {
         "id": t.get("id"),
         "title": t.get("title") or "Untitled task",
-        "status": t.get("status") or "todo",
-        "status_label": STATUS_LABEL.get(t.get("status") or "", t.get("status") or "To do"),
+        "status": t.get("status") or "assigned",
+        "status_label": STATUS_LABEL.get(t.get("status") or "", t.get("status") or "Assigned"),
         "priority": t.get("priority") or "medium",
         "priority_label": PRIORITY_LABEL.get(t.get("priority") or "", "Medium"),
         "due_date": t.get("due_date"),
@@ -269,7 +275,7 @@ def attach_visual_cards(query: str, ctx: dict, result: dict) -> dict:
         return result
 
     if wants_task_cards(q, ctx):
-        mine = _contains(q, ["my task", "my tasks", "assigned to me"])
+        mine = _contains(q, ["my task", "my tasks", "assigned to me", "pending tasks", "my pending"])
         show_all = _contains(q, ["who is doing", "who's doing", "workload", "everyone", "all task"])
         person = None if show_all else named_person(q, ctx)
         if mine:

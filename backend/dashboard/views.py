@@ -18,7 +18,7 @@ from projects.models import Project
 from renewals.models import Renewal
 from sales.models import Client, Estimate, Invoice, Proposal
 from tasks.models import Task
-from tasks.services import tasks_for_user
+from tasks.services import not_todo_linked, tasks_for_user
 from todos.models import TodoItem
 
 User = get_user_model()
@@ -54,7 +54,7 @@ class SummaryView(APIView):
         last_month_start, last_month_end = _last_month_bounds()
 
         my_tasks = tasks_for_user(user)
-        terminal = [Task.Status.COMPLETED, Task.Status.PUBLISHED]
+        terminal = [Task.Status.COMPLETED, Task.Status.QC_COMPLETED, Task.Status.APPROVED]
         data = {
             "pending_tasks": my_tasks.exclude(status__in=terminal).count(),
             "completed_this_month": my_tasks.filter(
@@ -67,7 +67,7 @@ class SummaryView(APIView):
                 completed_at__date__lt=last_month_end,
             ).count(),
             "ongoing_projects": Project.objects.filter(members=user).exclude(
-                status=Project.Status.COMPLETED
+                status__in=Project.TERMINAL_STATUSES
             ).count(),
             # Task status breakdown, own tasks — powers a donut/segmented-bar widget.
             "task_status_breakdown": self._status_counts(
@@ -80,7 +80,7 @@ class SummaryView(APIView):
                 User.objects.filter(role=Role.EMPLOYEE, status=UserStatus.AWAITING_APPROVAL)
                 .order_by("-created_at")[:10]
             )
-            all_tasks = Task.objects.all()
+            all_tasks = not_todo_linked(Task.objects.all())
             data.update(
                 {
                     "pending_approvals": User.objects.filter(
@@ -117,7 +117,7 @@ class SummaryView(APIView):
                         created_at__date__lt=last_month_end,
                     ).count(),
                     "company_ongoing_projects": Project.objects.exclude(
-                        status=Project.Status.COMPLETED
+                        status__in=Project.TERMINAL_STATUSES
                     ).count(),
                     "company_task_status_breakdown": self._status_counts(
                         all_tasks, Task.Status.choices, "status"
@@ -212,7 +212,7 @@ class PerformanceView(APIView):
             scope = "self"
 
         if scope == "company":
-            base = Task.objects.all()
+            base = not_todo_linked(Task.objects.all())
         else:
             base = tasks_for_user(request.user)
         trunc = self.TRUNC[granularity]
@@ -231,7 +231,7 @@ class PerformanceView(APIView):
             }
 
         completed = _bucketed(
-            base.filter(status=Task.Status.COMPLETED, completed_at__isnull=False), "completed_at"
+            base.filter(status__in=Task.TERMINAL_STATUSES, completed_at__isnull=False), "completed_at"
         )
         created = _bucketed(base, "created_at")
 
@@ -299,7 +299,7 @@ class GlobalSearchView(APIView):
         has_renewals = has_module_access(request.user, Module.RENEWALS)
         results = []
 
-        tasks = Task.objects.all() if mgr else tasks_for_user(request.user)
+        tasks = not_todo_linked(Task.objects.all()) if mgr else tasks_for_user(request.user)
         for t in tasks.filter(Q(title__icontains=q) | Q(description__icontains=q))[:5]:
             results.append(
                 {
@@ -535,7 +535,7 @@ class TodayTasksView(APIView):
     def get(self, request):
         today = date.today()
         qs = (
-            Task.objects.select_related("project", "assignee")
+            not_todo_linked(Task.objects.select_related("project", "assignee"))
             .filter(Q(due_date=today) | Q(created_at__date=today))
             .order_by("due_date", "-created_at")[:20]
         )

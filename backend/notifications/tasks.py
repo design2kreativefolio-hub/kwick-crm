@@ -26,6 +26,7 @@ def deliver_notification(event_id: int):
         "source": event.source,
         "title": event.title,
         "body": event.body,
+        "object_ref": event.object_ref or "",
         "created_at": event.created_at.isoformat(),
     }
 

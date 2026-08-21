@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { Logo } from "@/components/Logo";
 import { MaintenanceNotice } from "@/components/MaintenanceNotice";
+import { PasswordField } from "@/components/PasswordField";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { api, ApiError, formatApiError } from "@/lib/api";
 import { fetchMaintenance, isMaintenanceError } from "@/lib/maintenance";
@@ -167,9 +168,7 @@ export default function RegisterPage() {
           <label className="field-label">Email</label>
           <input className="input" type="email" value={form.email} onChange={set("email")} required />
           <label className="field-label">Password</label>
-          <input
-            className="input"
-            type="password"
+          <PasswordField
             value={form.password}
             onChange={set("password")}
             required
@@ -195,9 +194,7 @@ export default function RegisterPage() {
             </div>
           )}
           <label className="field-label">Re-enter password</label>
-          <input
-            className="input"
-            type="password"
+          <PasswordField
             value={form.password_confirm}
             onChange={set("password_confirm")}
             required

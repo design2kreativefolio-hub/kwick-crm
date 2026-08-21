@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { api, refreshSession, unwrapList, wsUrl } from "./api";
 import { useAuth } from "./auth";
-import { DEFAULT_SOURCE_META, SOURCE_META } from "./notifications";
+import { notificationHref } from "./notifications";
 import { showDesktopNotification } from "./systemNotify";
 import { useToast } from "./toast";
 
@@ -26,7 +26,14 @@ export function useLiveUpdates() {
 }
 
 type ChatEvent = { kind: "chat_message"; conversation_id: number; sender_name: string; preview: string };
-type NotificationEventPush = { id: number; source: string; title: string; body: string; created_at: string };
+type NotificationEventPush = {
+  id: number;
+  source: string;
+  title: string;
+  body: string;
+  object_ref?: string;
+  created_at: string;
+};
 
 // Synthesized two-note "pop" via the Web Audio API instead of bundling an
 // audio asset. AudioContext starts suspended until a user gesture; by the
@@ -115,7 +122,7 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
         });
       } else if ("title" in payload) {
         setNotifUnread((n) => n + 1);
-        const href = (SOURCE_META[payload.source] ?? DEFAULT_SOURCE_META).href || "/reminders";
+        const href = notificationHref(payload.source, payload.object_ref);
         showToast(payload.title, "info", () => router.push(href));
         playPop();
         showDesktopNotification({

@@ -34,7 +34,7 @@ def evaluate_project_delivery(project) -> None:
     if (
         project.delivery_date
         and project.delivery_date <= lead_cutoff
-        and project.status != Project.Status.COMPLETED
+        and project.status not in Project.TERMINAL_STATUSES
         and assignees
     ):
         overdue = project.delivery_date <= today

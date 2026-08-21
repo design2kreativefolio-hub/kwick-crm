@@ -1409,6 +1409,38 @@ html.nav-open body {
   outline-offset: 0;
   background: var(--elevated);
 }
+
+.password-field {
+  position: relative;
+  width: 100%;
+}
+.password-field .input {
+  padding-right: 42px;
+}
+.password-field__toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.password-field__toggle:hover,
+.password-field__toggle:focus-visible {
+  color: var(--text);
+  background: var(--elevated);
+}
+.password-field__toggle i {
+  font-size: 16px;
+}
 .input:disabled,
 input.input:disabled,
 textarea.input:disabled,
@@ -1549,6 +1581,49 @@ input[type="checkbox"]:disabled {
   max-height: min(360px, calc(100vh - 16px));
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.date-picker-trigger {
+  padding: 0 6px 0 12px;
+  gap: 6px;
+}
+.date-picker-trigger input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  padding: 10px 0;
+}
+.date-picker-trigger input::placeholder {
+  color: var(--text-muted);
+}
+.date-picker-cal-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.date-picker-cal-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-muted);
+}
+
+.emoji-picker-item:hover {
+  background: var(--panel-muted);
+}
+.emoji-picker-tab:hover {
+  background: var(--panel-muted);
 }
 
 .month-year-select {

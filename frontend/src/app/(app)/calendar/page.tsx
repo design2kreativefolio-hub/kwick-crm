@@ -367,6 +367,7 @@ export default function CalendarPage() {
           body: JSON.stringify({ done: !it.done }),
         });
       } else if (it.source === "todo") {
+        if (it.meta?.summary || it.id === 0) return;
         await api(`/api/todos/${it.id}`, {
           method: "PATCH",
           body: JSON.stringify({ done: !it.done }),
@@ -374,7 +375,7 @@ export default function CalendarPage() {
       } else if (it.source === "task") {
         await api(`/api/tasks/${it.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ status: it.done ? "todo" : "completed" }),
+          body: JSON.stringify({ status: it.done ? "assigned" : "completed" }),
         });
       } else {
         return;
@@ -740,7 +741,9 @@ function AgendaCard({
   const meetingUrl = item.meta?.meeting_url as string | undefined;
   const showJoin = isMeetingUrl(meetingUrl);
   const assignees: { id: number; name: string }[] = item.meta?.assignees || [];
-  const canToggle = item.source === "manual" || item.source === "todo" || item.source === "task";
+  const canToggle =
+    (item.source === "manual" || item.source === "todo" || item.source === "task") &&
+    !(item.source === "todo" && (item.meta?.summary || item.id === 0));
   const timeLabel = item.meta?.time as string | undefined;
   const isManual = item.source === "manual";
   const href = itemHref(item);

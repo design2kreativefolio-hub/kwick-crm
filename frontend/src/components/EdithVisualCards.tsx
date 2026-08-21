@@ -79,8 +79,8 @@ export function EdithVisualCards({ cards }: { cards?: EdithCards | null }) {
                   <Link key={item.id ?? `${group.person}-${i}`} href={href} className="edith-task-card">
                     <div className="edith-task-card__top">
                       {!isTodo && (
-                        <span className={`badge ${STATUS_BADGE[item.status || "todo"] || "badge-muted"}`}>
-                          {item.status_label || item.status || "To do"}
+                        <span className={`badge ${STATUS_BADGE[item.status || "assigned"] || "badge-muted"}`}>
+                          {item.status_label || item.status || "Assigned"}
                         </span>
                       )}
                       {item.priority === "high" && <span className="edith-task-card__pri">High</span>}

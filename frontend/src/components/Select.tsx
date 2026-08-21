@@ -98,12 +98,12 @@ export function Select({
       }
       setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
+    document.addEventListener("mousedown", onClick, true);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("mousedown", onClick, true);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);

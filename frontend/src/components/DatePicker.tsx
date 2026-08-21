@@ -8,6 +8,7 @@ import { CALENDAR_MONTHS, MonthYearSelect } from "@/components/MonthYearSelect";
 import { Z_POPOVER, placeFixedPanel } from "@/lib/placeFixedPanel";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTH_SHORT = CALENDAR_MONTHS.map((m) => m.slice(0, 3).toLowerCase());
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -21,14 +22,70 @@ function parseIso(value: string | null | undefined): Date | null {
   if (!value) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
   if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return Number.isNaN(d.getTime()) ? null : d;
+  return validYmd(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function validYmd(year: number, month: number, day: number): Date | null {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (year < 100) year += 2000;
+  if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+  const d = new Date(year, month, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month || d.getDate() !== day) return null;
+  return d;
 }
 
 function formatDisplay(value: string | null | undefined) {
   const d = parseIso(value);
   if (!d) return "";
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/** Accept ISO, "Aug 10, 2026", "10 Aug 2026", 10/08/2026, 2026/08/10, etc. */
+function parseTypedDate(raw: string): Date | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const iso = parseIso(s);
+  if (iso) return iso;
+
+  const lower = s.toLowerCase().replace(/,/g, " ").replace(/\s+/g, " ").trim();
+  let monthIdx = -1;
+  for (let i = 0; i < 12; i++) {
+    const full = CALENDAR_MONTHS[i].toLowerCase();
+    const short = MONTH_SHORT[i];
+    if (lower.includes(full) || new RegExp(`\\b${short}\\b`).test(lower)) {
+      monthIdx = i;
+      break;
+    }
+  }
+  const nums = (lower.match(/\d+/g) || []).map(Number);
+  if (monthIdx >= 0 && nums.length >= 1) {
+    const year = nums.find((n) => n > 31) ?? nums[nums.length - 1];
+    const day = nums.find((n) => n <= 31 && n !== year) ?? nums[0];
+    return validYmd(year, monthIdx, day);
+  }
+
+  const parts = s.split(/[./\-\s]+/).filter(Boolean);
+  if (parts.length === 3 && parts.every((p) => /^\d+$/.test(p))) {
+    const a = Number(parts[0]);
+    const b = Number(parts[1]);
+    const c = Number(parts[2]);
+    if (a >= 1000) return validYmd(a, b - 1, c);
+    const year = c;
+    if (a > 12 && b <= 12) return validYmd(year, b - 1, a);
+    if (b > 12 && a <= 12) return validYmd(year, a - 1, b);
+    return validYmd(year, a - 1, b);
+  }
+  return null;
+}
+
+function addDays(d: Date, days: number) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+}
+
+function addMonths(d: Date, delta: number) {
+  const month = d.getMonth() + delta;
+  const last = new Date(d.getFullYear(), month + 1, 0).getDate();
+  return new Date(d.getFullYear(), month, Math.min(d.getDate(), last));
 }
 
 function isInsideSelectPanel(target: EventTarget | null) {
@@ -60,6 +117,9 @@ function monthMatrix(year: number, month: number) {
  * Calendar date picker — panel is portaled to document.body with fixed
  * positioning (same approach as Select) so it doesn't flicker/clip when the
  * page scrolls or when ancestors use overflow/transform.
+ *
+ * The field is a real text input: type a date, or open the calendar and
+ * move with arrow keys.
  */
 export function DatePicker({
   value,
@@ -75,30 +135,40 @@ export function DatePicker({
   placeholder?: string;
   ariaLabel?: string;
   disabled?: boolean;
-  /** ISO date (YYYY-MM-DD) — days before this are not selectable. */
   min?: string;
-  /** ISO date (YYYY-MM-DD) — days after this are not selectable. */
   max?: string;
 }) {
   const selected = parseIso(value);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState("");
   const [rect, setRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const [view, setView] = useState(() => {
     const base = selected ?? new Date();
     return { year: base.getFullYear(), month: base.getMonth() };
   });
+  const [cursor, setCursor] = useState<Date>(() => selected ?? new Date());
   const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
+    if (focused) return;
+    setDraft(formatDisplay(value));
+  }, [value, focused]);
+
+  useEffect(() => {
     if (!open) return;
     const base = selected ?? new Date();
     setView({ year: base.getFullYear(), month: base.getMonth() });
-  }, [open, selected]);
+    setCursor(base);
+    // Only snap the cursor when the panel opens, not on every selected change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const reposition = () => {
     const el = triggerRef.current;
@@ -123,11 +193,7 @@ export function DatePicker({
       const target = e.target as Node;
       const insideTrigger = containerRef.current?.contains(target);
       const insidePanel = panelRef.current?.contains(target);
-      // Month/year menus are portaled to document.body, so treat them as part of the picker.
       if (!insideTrigger && !insidePanel && !isInsideSelectPanel(target)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
     };
     const onScroll = (e: Event) => {
       const target = e.target as Node | null;
@@ -137,13 +203,11 @@ export function DatePicker({
       if (isInsideSelectPanel(target)) return;
       setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick, true);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
-      document.removeEventListener("mousedown", onClick);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick, true);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
@@ -152,6 +216,7 @@ export function DatePicker({
   const cells = useMemo(() => monthMatrix(view.year, view.month), [view.year, view.month]);
   const todayIso = toIso(new Date());
   const selectedIso = selected ? toIso(selected) : "";
+  const cursorIso = toIso(cursor);
   const minIso = min?.trim() || "";
   const maxIso = max?.trim() || "";
   const inRange = (iso: string) => {
@@ -163,6 +228,92 @@ export function DatePicker({
 
   const minYear = minIso ? Number(minIso.slice(0, 4)) : undefined;
   const maxYear = maxIso ? Number(maxIso.slice(0, 4)) : undefined;
+
+  const commitDate = (d: Date | null, close = false) => {
+    if (!d) {
+      onChange("");
+      setDraft("");
+      if (close) setOpen(false);
+      return;
+    }
+    const iso = toIso(d);
+    if (!inRange(iso)) return;
+    onChange(iso);
+    setDraft(formatDisplay(iso));
+    setCursor(d);
+    setView({ year: d.getFullYear(), month: d.getMonth() });
+    if (close) setOpen(false);
+  };
+
+  const commitDraft = (text: string, close = false) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      commitDate(null, close);
+      return true;
+    }
+    const d = parseTypedDate(trimmed);
+    if (!d) {
+      setDraft(formatDisplay(value));
+      return false;
+    }
+    commitDate(d, close);
+    return true;
+  };
+
+  const moveCursor = (next: Date) => {
+    setCursor(next);
+    setView({ year: next.getFullYear(), month: next.getMonth() });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (disabled) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setDraft(formatDisplay(value));
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (open) {
+        commitDate(cursor, true);
+      } else {
+        commitDraft(draft, false);
+      }
+      return;
+    }
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !open) {
+      e.preventDefault();
+      setOpen(true);
+      return;
+    }
+    if (!open) return;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      moveCursor(addDays(cursor, -1));
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      moveCursor(addDays(cursor, 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveCursor(addDays(cursor, -7));
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveCursor(addDays(cursor, 7));
+    } else if (e.key === "PageUp") {
+      e.preventDefault();
+      moveCursor(addMonths(cursor, e.shiftKey ? -12 : -1));
+    } else if (e.key === "PageDown") {
+      e.preventDefault();
+      moveCursor(addMonths(cursor, e.shiftKey ? 12 : 1));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      moveCursor(addDays(cursor, -cursor.getDay()));
+    } else if (e.key === "End") {
+      e.preventDefault();
+      moveCursor(addDays(cursor, 6 - cursor.getDay()));
+    }
+  };
 
   const panel = open && rect && (
     <motion.div
@@ -191,6 +342,7 @@ export function DatePicker({
           type="button"
           className="btn btn-ghost"
           aria-label="Previous month"
+          tabIndex={-1}
           onClick={() =>
             setView((v) => {
               const m = v.month - 1;
@@ -213,6 +365,7 @@ export function DatePicker({
           type="button"
           className="btn btn-ghost"
           aria-label="Next month"
+          tabIndex={-1}
           onClick={() =>
             setView((v) => {
               const m = v.month + 1;
@@ -246,26 +399,28 @@ export function DatePicker({
         {cells.map((cell) => {
           const iso = toIso(cell.date);
           const isSelected = iso === selectedIso;
+          const isCursor = iso === cursorIso;
           const isToday = iso === todayIso;
           const allowed = inRange(iso);
           return (
             <button
               key={iso + String(cell.inMonth)}
               type="button"
+              tabIndex={-1}
               disabled={!allowed}
               onClick={() => {
                 if (!allowed) return;
-                onChange(iso);
-                setOpen(false);
+                commitDate(cell.date, true);
               }}
               style={{
                 height: 34,
                 borderRadius: 8,
-                border: isSelected ? "1px solid var(--gold)" : "1px solid transparent",
+                border: isSelected || isCursor ? "1px solid var(--gold)" : "1px solid transparent",
                 background: isSelected ? "var(--gold-soft)" : isToday ? "var(--panel-muted)" : "transparent",
+                boxShadow: isCursor && !isSelected ? "0 0 0 2px var(--gold-soft)" : undefined,
                 color: cell.inMonth ? "var(--text)" : "var(--text-muted)",
                 opacity: !allowed ? 0.28 : cell.inMonth ? 1 : 0.45,
-                fontWeight: isSelected || isToday ? 700 : 500,
+                fontWeight: isSelected || isToday || isCursor ? 700 : 500,
                 fontSize: 13,
                 cursor: allowed ? "pointer" : "not-allowed",
               }}
@@ -280,10 +435,7 @@ export function DatePicker({
         <button
           type="button"
           className="btn btn-ghost"
-          onClick={() => {
-            onChange("");
-            setOpen(false);
-          }}
+          onClick={() => commitDate(null, true)}
           style={{ padding: "6px 10px", fontSize: 12.5 }}
         >
           Clear
@@ -294,8 +446,7 @@ export function DatePicker({
           disabled={!todayAllowed}
           onClick={() => {
             if (!todayAllowed) return;
-            onChange(todayIso);
-            setOpen(false);
+            commitDate(new Date(), true);
           }}
           style={{ padding: "6px 10px", fontSize: 12.5, opacity: todayAllowed ? 1 : 0.45 }}
         >
@@ -307,22 +458,62 @@ export function DatePicker({
 
   return (
     <div ref={containerRef} style={{ position: "relative", width: "100%" }}>
-      <button
+      <div
         ref={triggerRef}
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="dialog"
+        className="select-trigger date-picker-trigger"
         aria-expanded={open}
-        aria-label={ariaLabel || placeholder}
-        className="select-trigger"
-        style={{ opacity: disabled ? 0.6 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+        style={{ opacity: disabled ? 0.6 : 1, cursor: disabled ? "not-allowed" : undefined }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {formatDisplay(value) || <span style={{ color: "var(--text-muted)" }}>{placeholder}</span>}
-        </span>
-        <i className="bi bi-calendar3" style={{ fontSize: 14, color: "var(--text-muted)", flexShrink: 0 }} />
-      </button>
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="text"
+          autoComplete="off"
+          disabled={disabled}
+          value={focused || open ? draft : formatDisplay(value)}
+          placeholder={placeholder}
+          aria-label={ariaLabel || placeholder}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onFocus={() => {
+            setFocused(true);
+            setDraft(formatDisplay(value) || value || "");
+            setOpen(true);
+          }}
+          onBlur={(e) => {
+            const next = e.relatedTarget as Node | null;
+            if (panelRef.current?.contains(next) || containerRef.current?.contains(next)) return;
+            setFocused(false);
+            commitDraft(draft);
+          }}
+          onChange={(e) => {
+            const t = e.target.value;
+            setDraft(t);
+            const d = parseTypedDate(t);
+            if (d) {
+              setCursor(d);
+              setView({ year: d.getFullYear(), month: d.getMonth() });
+              if (!open) setOpen(true);
+            }
+          }}
+          onKeyDown={onKeyDown}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          className="date-picker-cal-btn"
+          aria-label="Open calendar"
+          onClick={() => {
+            if (disabled) return;
+            const next = !open;
+            setOpen(next);
+            inputRef.current?.focus();
+          }}
+        >
+          <i className="bi bi-calendar3" />
+        </button>
+      </div>
       {mounted
         ? createPortal(<AnimatePresence>{panel}</AnimatePresence>, document.body)
         : null}

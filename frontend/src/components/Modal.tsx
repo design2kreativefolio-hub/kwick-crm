@@ -64,7 +64,6 @@ export function Modal({
             className={`card kwick-modal-card${wide ? " kwick-modal-card--wide" : ""}`}
             style={{ ...card, maxWidth: resolvedMax }}
             onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
             initial={reduceMotion ? false : { opacity: 0, y: 28, scale: 0.94 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduceMotion ? undefined : { opacity: 0, y: 18, scale: 0.96 }}

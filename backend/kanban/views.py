@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from common.permissions import IsActive
 from tasks.models import Task
 from tasks.serializers import TaskSerializer
+from tasks.services import not_todo_linked
 
 
 class BoardView(APIView):
@@ -20,7 +21,7 @@ class BoardView(APIView):
         columns = {}
         for value, label in Task.BoardStatus.choices:
             qs = (
-                Task.objects.filter(board_status=value)
+                not_todo_linked(Task.objects.filter(board_status=value))
                 .filter(Q(assignee=request.user) | Q(assignees=request.user))
                 .distinct()
                 .order_by("board_order")
@@ -38,7 +39,7 @@ class MoveTaskView(APIView):
 
     def patch(self, request, task_id):
         try:
-            task = Task.objects.get(pk=task_id)
+            task = not_todo_linked(Task.objects.all()).get(pk=task_id)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         if task.assignee_id != request.user.id and not task.assignees.filter(pk=request.user.id).exists():
@@ -51,17 +52,5 @@ class MoveTaskView(APIView):
         if board_order is not None:
             task.board_order = board_order
         task.save(update_fields=["board_status", "board_order", "updated_at"])
-
-        # Mirror back onto the originating to-do, if this task came from one —
-        # dragging a card to Complete checks it off there too, and dragging it
-        # back out un-checks it (spec follow-up: Kanban <-> To-Do stay in sync).
-        from todos.models import TodoItem
-
-        todo = TodoItem.objects.filter(linked_task=task).first()
-        if todo is not None:
-            should_be_done = task.board_status == Task.BoardStatus.DONE
-            if todo.done != should_be_done:
-                todo.done = should_be_done
-                todo.save()
 
         return Response(TaskSerializer(task).data)

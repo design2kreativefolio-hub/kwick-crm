@@ -17,6 +17,7 @@ from projects.models import ContentCalendarItem, Project
 from renewals.models import Renewal
 from sales.models import Client, Invoice
 from tasks.models import Task
+from tasks.services import not_todo_linked
 
 
 def parse_iso_date(value) -> date | None:
@@ -185,16 +186,19 @@ def _employee_report(user_id: int, date_from: date, date_to: date) -> dict:
     if not user:
         raise LookupError("Employee not found.")
 
-    completed_qs = Task.objects.filter(
-        assignee=user,
-        status=Task.Status.COMPLETED,
-        completed_at__date__gte=date_from,
-        completed_at__date__lte=date_to,
-    ).select_related("project")
+    assigned = Q(assignee=user) | Q(assignees=user)
+    completed_qs = not_todo_linked(
+        Task.objects.filter(
+            assigned,
+            status__in=Task.TERMINAL_STATUSES,
+            completed_at__date__gte=date_from,
+            completed_at__date__lte=date_to,
+        )
+    ).select_related("project").distinct()
 
     open_qs = (
-        Task.objects.filter(assignee=user)
-        .exclude(status=Task.Status.COMPLETED)
+        not_todo_linked(Task.objects.filter(assigned))
+        .exclude(status__in=Task.TERMINAL_STATUSES)
         .filter(
             Q(due_date__gte=date_from, due_date__lte=date_to)
             | Q(due_date__isnull=True, created_at__date__gte=date_from, created_at__date__lte=date_to)
@@ -313,8 +317,8 @@ def _client_report(client_id: int, date_from: date, date_to: date) -> dict:
         scheduled_date__lte=date_to,
     ).prefetch_related("assignees")
 
-    tasks_qs = Task.objects.filter(
-        Q(content_item__client=client) | Q(client_name__iexact=name)
+    tasks_qs = not_todo_linked(
+        Task.objects.filter(Q(content_item__client=client) | Q(client=client) | Q(client_name__iexact=name))
     ).filter(
         Q(completed_at__date__gte=date_from, completed_at__date__lte=date_to)
         | Q(due_date__gte=date_from, due_date__lte=date_to)

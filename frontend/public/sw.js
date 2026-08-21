@@ -25,7 +25,7 @@ const SOURCE_HREF = {
   chat: "/chat",
 };
 
-const ICON = "/hr/kwick-k-icon.png";
+const ICON = "/icon-192.png";
 
 self.addEventListener("push", (event) => {
   if (!event.data) return;

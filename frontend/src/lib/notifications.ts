@@ -3,6 +3,7 @@ export type NotificationEvent = {
   source: string;
   title: string;
   body: string;
+  object_ref?: string;
   sent_at: string | null;
   read_at: string | null;
   recurring: boolean;
@@ -27,6 +28,20 @@ export const SOURCE_META: Record<
   todo: { icon: "bi-check2-square", color: "#219150", bg: "var(--success-soft)", label: "To-do", href: "/todo" },
 };
 export const DEFAULT_SOURCE_META = { icon: "bi-bell-fill", color: "var(--gold)", bg: "var(--gold-soft)", label: "Update", href: "" };
+
+/** Deep-link from object_ref (e.g. task:42) or fall back to source module. */
+export function notificationHref(source: string, objectRef?: string | null): string {
+  const ref = (objectRef || "").trim();
+  if (ref.startsWith("task:")) {
+    const id = ref.split(":")[1];
+    if (id && /^\d+$/.test(id)) return `/tasks/${id}`;
+  }
+  if (ref.startsWith("project:")) {
+    const id = ref.split(":")[1];
+    if (id && /^\d+$/.test(id)) return `/projects/${id}`;
+  }
+  return (SOURCE_META[source] ?? DEFAULT_SOURCE_META).href || "/reminders";
+}
 
 export function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();

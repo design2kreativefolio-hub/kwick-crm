@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
-import { DEFAULT_SOURCE_META, NotificationEvent, SOURCE_META, timeAgo } from "@/lib/notifications";
+import { DEFAULT_SOURCE_META, NotificationEvent, SOURCE_META, notificationHref, timeAgo } from "@/lib/notifications";
 
 type Filter = "all" | "unread";
 
@@ -49,7 +49,7 @@ export default function Page() {
 
   const openReminder = (n: NotificationEvent) => {
     if (!n.read_at) markRead(n.id);
-    const href = (SOURCE_META[n.source] ?? DEFAULT_SOURCE_META).href;
+    const href = notificationHref(n.source, n.object_ref);
     if (href) router.push(href);
   };
 
@@ -108,6 +108,7 @@ export default function Page() {
           visible.map((n, i) => {
             const meta = SOURCE_META[n.source] ?? DEFAULT_SOURCE_META;
             const unread = !n.read_at;
+            const href = notificationHref(n.source, n.object_ref);
             return (
               <div
                 key={n.id}
@@ -116,7 +117,7 @@ export default function Page() {
                   ...row,
                   borderTop: i === 0 ? "none" : "1px solid var(--border)",
                   background: unread ? "transparent" : "var(--gold-soft)",
-                  cursor: meta.href ? "pointer" : "default",
+                  cursor: href ? "pointer" : "default",
                 }}
               >
                 <span style={{ ...iconWrap, background: meta.bg, color: meta.color }}>

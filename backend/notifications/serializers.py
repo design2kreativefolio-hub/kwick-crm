@@ -17,6 +17,7 @@ class NotificationEventSerializer(serializers.ModelSerializer):
             "source",
             "title",
             "body",
+            "object_ref",
             "sent_at",
             "read_at",
             "recurring",
