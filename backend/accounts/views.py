@@ -10,6 +10,7 @@ from common.jwt_cookies import attach_auth_cookies, clear_jwt_cookies, refresh_t
 from common.maintenance import (
     SiteInMaintenance,
     allowlist_emails,
+    exclude_system_accounts,
     is_allowlisted,
     is_blocked_by_maintenance,
     maintenance_enabled,
@@ -282,8 +283,10 @@ class EmployeeListView(APIView):
     permission_classes = [IsSuperadmin]
 
     def get(self, request):
-        employees = User.objects.filter(
-            role=Role.EMPLOYEE, status=UserStatus.ACTIVE, purged_at__isnull=True
+        employees = exclude_system_accounts(
+            User.objects.filter(
+                role=Role.EMPLOYEE, status=UserStatus.ACTIVE, purged_at__isnull=True
+            )
         ).order_by("full_name")
         return Response(
             [

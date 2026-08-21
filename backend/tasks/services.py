@@ -227,7 +227,10 @@ def resolve_task_client(validated_data: dict) -> None:
 
 
 def apply_assignees(task: Task, ids: list[int]) -> None:
+    from common.maintenance import reject_system_user_ids
+
     User = get_user_model()
+    ids = reject_system_user_ids(ids)
     valid = list(User.objects.filter(pk__in=ids).values_list("id", flat=True))
     ordered = [uid for uid in ids if uid in set(valid)]
     if not ordered:

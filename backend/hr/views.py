@@ -22,6 +22,7 @@ from accounts.tasks import (
     send_welcome_email,
 )
 from common.media_urls import persist_storage_url, sign_media_url
+from common.maintenance import exclude_system_accounts
 from common.permissions import HasModuleAccess, IsActive, has_module_access
 from common.services import log_activity
 from common.uploads import HR_FILE_EXTENSIONS, IMAGE_EXTENSIONS, MAX_FILE_BYTES, MAX_IMAGE_BYTES, validated_extension
@@ -95,9 +96,8 @@ class StaffViewSet(viewsets.ViewSet):
     required_module = Module.HR_STAFF
 
     def list(self, request):
-        qs = (
-            User.objects.filter(role=Role.EMPLOYEE, purged_at__isnull=True)
-            .select_related("profile")
+        qs = exclude_system_accounts(
+            User.objects.filter(role=Role.EMPLOYEE, purged_at__isnull=True).select_related("profile")
         )
         search = request.query_params.get("search")
         if search:

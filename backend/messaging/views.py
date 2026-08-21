@@ -12,6 +12,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from common.maintenance import exclude_system_accounts, reject_system_user_ids
 from common.permissions import IsActive
 
 from .models import Conversation, Message
@@ -138,9 +139,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
             if len(participant_ids) < 2:
                 return Response({"detail": "A group needs at least 2 other members."}, status=400)
             name = (request.data.get("name") or "").strip() or "Group Chat"
+            safe_ids = reject_system_user_ids(participant_ids)
             convo = Conversation.objects.create(is_group=True, name=name, created_by=request.user)
             members = list(
-                User.objects.filter(pk__in=participant_ids, status="active").exclude(pk=request.user.pk)
+                exclude_system_accounts(
+                    User.objects.filter(pk__in=safe_ids, status="active")
+                ).exclude(pk=request.user.pk)
             )
             if len(members) < 2:
                 return Response({"detail": "A group needs at least 2 other members."}, status=400)
@@ -159,6 +163,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
         other_id = request.data.get("participant")
         if not other_id:
             return Response({"detail": "participant is required."}, status=400)
+        safe = reject_system_user_ids([other_id])
+        if not safe:
+            return Response({"detail": "That account is not available for chat."}, status=400)
+        other_id = safe[0]
+        other = User.objects.filter(pk=other_id, status="active").first()
+        if not other:
+            return Response({"detail": "User not found."}, status=400)
         # Two chained M2M .filter() calls each add their own join; annotating
         # a Count straight on top of that double-joined queryset inflates the
         # count. Resolve the candidate IDs first, then re-query cleanly so the
@@ -221,7 +232,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response({"detail": "add/remove must be lists of user ids."}, status=400)
 
         current_ids = set(convo.participants.values_list("id", flat=True))
-        add_ids -= current_ids
+        add_ids = set(reject_system_user_ids(add_ids)) - current_ids
         remove_ids &= current_ids
 
         if request.user.id in remove_ids and request.user.id not in add_ids:
@@ -233,7 +244,9 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return Response({"detail": "A group needs at least 2 members."}, status=400)
 
         actor_name = _display_name(request.user)
-        added_users = list(User.objects.filter(pk__in=add_ids, status="active"))
+        added_users = list(
+            exclude_system_accounts(User.objects.filter(pk__in=add_ids, status="active"))
+        )
         removed_users = list(User.objects.filter(pk__in=remove_ids))
 
         if add_ids and len(added_users) != len(add_ids):
@@ -416,7 +429,7 @@ class DirectoryView(APIView):
 
     def get(self, request):
         qs = (
-            User.objects.filter(status="active")
+            exclude_system_accounts(User.objects.filter(status="active"))
             .exclude(pk=request.user.pk)
             .select_related("profile")
             .order_by("full_name")

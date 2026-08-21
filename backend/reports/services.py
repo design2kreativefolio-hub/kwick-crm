@@ -11,6 +11,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from accounts.models import User, UserStatus
+from common.maintenance import exclude_system_accounts
 from daily_tracker.models import DailyTrackerEntry
 from hr.models import Leave
 from projects.models import ContentCalendarItem, Project
@@ -111,7 +112,9 @@ def _flex_date(raw: str) -> date | None:
 
 
 def report_options() -> dict:
-    staff = User.objects.filter(status=UserStatus.ACTIVE, is_active=True).order_by("full_name", "email")
+    staff = exclude_system_accounts(
+        User.objects.filter(status=UserStatus.ACTIVE, is_active=True)
+    ).order_by("full_name", "email")
     clients = Client.objects.order_by("name")
     return {
         "employees": [
@@ -142,9 +145,9 @@ def resolve_subject(report_type: str, name: str) -> dict:
         return {"matches": [], "error": "Name is required."}
 
     if report_type == "employee":
-        qs = User.objects.filter(status=UserStatus.ACTIVE, is_active=True).filter(
-            Q(full_name__icontains=name) | Q(email__icontains=name)
-        )
+        qs = exclude_system_accounts(
+            User.objects.filter(status=UserStatus.ACTIVE, is_active=True)
+        ).filter(Q(full_name__icontains=name) | Q(email__icontains=name))
         matches = [
             {"id": u.id, "name": u.full_name or u.email, "email": u.email}
             for u in qs.order_by("full_name")[:8]

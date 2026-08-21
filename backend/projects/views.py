@@ -300,6 +300,9 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
         due_time = None if published else item.deadline_time
 
         assignee_ids = list(item.assignees.values_list("id", flat=True))
+        from common.maintenance import reject_system_user_ids
+
+        assignee_ids = reject_system_user_ids(assignee_ids)
         holder_only = False
         if not assignee_ids:
             holder_id = item.created_by_id or self.request.user.id

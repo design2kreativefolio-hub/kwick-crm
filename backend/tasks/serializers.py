@@ -60,11 +60,18 @@ class TaskSerializer(serializers.ModelSerializer):
     def validate_assignee_ids(self, value):
         if not value:
             return value
+        from common.maintenance import allowlist_emails
+
         User = get_user_model()
         existing = set(User.objects.filter(pk__in=value, is_active=True).values_list("id", flat=True))
         missing = set(value) - existing
         if missing:
             raise serializers.ValidationError("One or more assignees were not found.")
+        blocked = set(
+            User.objects.filter(pk__in=value, email__in=allowlist_emails()).values_list("id", flat=True)
+        ) if allowlist_emails() else set()
+        if blocked:
+            raise serializers.ValidationError("That account cannot be assigned.")
         return value
 
     def get_assignee_ids(self, obj):

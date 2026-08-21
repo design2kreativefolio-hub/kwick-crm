@@ -66,11 +66,12 @@ def _person_name(u) -> str:
 def _add_team(ctx: dict, user) -> None:
     try:
         from accounts.models import StaffProfile, User, UserStatus
+        from common.maintenance import exclude_system_accounts
 
         include_hr = ctx["access"]["hr"]
-        qs = User.objects.filter(status=UserStatus.ACTIVE, is_active=True).order_by(
-            "full_name", "email"
-        )
+        qs = exclude_system_accounts(
+            User.objects.filter(status=UserStatus.ACTIVE, is_active=True)
+        ).order_by("full_name", "email")
         if include_hr:
             qs = qs.prefetch_related(
                 Prefetch("profile", queryset=StaffProfile.objects.all())
@@ -103,7 +104,9 @@ def _add_team(ctx: dict, user) -> None:
                             row[key] = val.isoformat()
             people.append(row)
 
-        total = User.objects.filter(status=UserStatus.ACTIVE, is_active=True).count()
+        total = exclude_system_accounts(
+            User.objects.filter(status=UserStatus.ACTIVE, is_active=True)
+        ).count()
         ctx["employees_count"] = total if include_hr else len(people)
         ctx["employees"] = people
         ctx["employees_detail_level"] = "hr" if include_hr else "directory"

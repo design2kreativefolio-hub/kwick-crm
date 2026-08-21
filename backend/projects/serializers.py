@@ -41,6 +41,14 @@ class ProjectSerializer(serializers.ModelSerializer):
     def get_member_names(self, obj):
         return [{"id": u.id, "name": u.full_name or u.email} for u in obj.members.all()]
 
+    def validate_members(self, value):
+        from common.maintenance import allowlist_emails
+
+        emails = allowlist_emails()
+        if emails and any((getattr(u, "email", "") or "").lower() in emails for u in value):
+            raise serializers.ValidationError("That account cannot be assigned.")
+        return value
+
 
 class ArtworkSerializer(serializers.ModelSerializer):
     class Meta:
@@ -168,6 +176,14 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
 
     def get_assignee_names(self, obj):
         return [{"id": u.id, "name": u.full_name or u.email} for u in obj.assignees.all()]
+
+    def validate_assignees(self, value):
+        from common.maintenance import allowlist_emails
+
+        emails = allowlist_emails()
+        if emails and any((getattr(u, "email", "") or "").lower() in emails for u in value):
+            raise serializers.ValidationError("That account cannot be assigned.")
+        return value
 
     def get_created_by_name(self, obj):
         if not obj.created_by:

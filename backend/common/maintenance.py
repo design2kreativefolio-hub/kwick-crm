@@ -1,11 +1,15 @@
-"""Maintenance mode: lock the live site to an allowlisted developer account.
+"""Maintenance mode + developer system accounts.
 
-Turn on/off from the app (allowlisted user), Django admin, or:
+Turn maintenance on/off from the app (allowlisted user), Django admin, or:
 
     python manage.py maintenance on|off|status
 
 MAINTENANCE_ALLOW_EMAIL must be set. If it is empty, maintenance cannot
 engage — that avoids locking everyone out with no key.
+
+Those same allowlisted emails are treated as system/developer accounts and
+are hidden from Chat directory, Staff, assignee pickers, and people lists —
+while retaining full app access when signed in.
 """
 from django.conf import settings
 from django.http import JsonResponse
@@ -32,6 +36,32 @@ def is_allowlisted(user) -> bool:
         return False
     email = (getattr(user, "email", None) or "").strip().lower()
     return bool(email) and email in allowlist_emails()
+
+
+def is_system_account(user) -> bool:
+    """Developer / maintenance allowlisted accounts — hidden from people pickers."""
+    return is_allowlisted(user)
+
+
+def exclude_system_accounts(qs):
+    """Drop allowlisted developer emails from colleague / staff / assignee lists."""
+    emails = allowlist_emails()
+    if not emails:
+        return qs
+    return qs.exclude(email__in=emails)
+
+
+def reject_system_user_ids(user_ids) -> list[int]:
+    """Filter out system-account PKs from an id list (for chat/group adds)."""
+    from accounts.models import User
+
+    emails = allowlist_emails()
+    if not emails or not user_ids:
+        return list(user_ids or [])
+    blocked = set(
+        User.objects.filter(pk__in=list(user_ids), email__in=emails).values_list("id", flat=True)
+    )
+    return [int(uid) for uid in user_ids if int(uid) not in blocked]
 
 
 _MAINT_CACHE_KEY = "kwick:maintenance_on"

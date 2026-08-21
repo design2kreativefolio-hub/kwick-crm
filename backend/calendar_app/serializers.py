@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from accounts.models import User, UserStatus
+from common.maintenance import exclude_system_accounts
 
 from .models import ManualReminder
 
@@ -9,7 +10,7 @@ class ManualReminderSerializer(serializers.ModelSerializer):
     assignee_ids = serializers.PrimaryKeyRelatedField(
         source="assignees",
         many=True,
-        queryset=User.objects.filter(status=UserStatus.ACTIVE),
+        queryset=exclude_system_accounts(User.objects.filter(status=UserStatus.ACTIVE)),
         required=False,
     )
     assignee_names = serializers.SerializerMethodField()

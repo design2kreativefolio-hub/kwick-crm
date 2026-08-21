@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from accounts.models import Module, Role, UserStatus
 from common.models import ActivityLog
+from common.maintenance import exclude_system_accounts
 from common.permissions import IsActive, IsSuperadmin, has_module_access, is_superadmin
 from common.uploads import IMAGE_EXTENSIONS, UploadRejected, check_upload
 from hr.models import HrLetter
@@ -345,9 +346,9 @@ class GlobalSearchView(APIView):
                 )
 
         if has_hr:
-            staff = User.objects.filter(role=Role.EMPLOYEE, purged_at__isnull=True).filter(
-                Q(full_name__icontains=q) | Q(email__icontains=q)
-            )
+            staff = exclude_system_accounts(
+                User.objects.filter(role=Role.EMPLOYEE, purged_at__isnull=True)
+            ).filter(Q(full_name__icontains=q) | Q(email__icontains=q))
             for s in staff[:5]:
                 results.append(
                     {
