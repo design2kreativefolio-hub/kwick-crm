@@ -110,14 +110,22 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
     manager company views elsewhere.
     """
     company = scope == "all" and is_superadmin(user)
+    # Superadmins always see every mini-project delivery, even on the personal
+    # calendar (scope=self) — the whole company's work, not only their assignments.
+    all_mini_projects = company or is_superadmin(user)
     items = []
 
     # --- Tasks with a due_date ---
     # Content-calendar mirrors appear under source=content_calendar (company-wide
     # for every employee). Keep personal tasks here only to avoid duplicates.
+    # Mini-project mirrors appear under source=project instead.
     # One card per task even with several assignees (M2M + distinct).
     task_qs = not_todo_linked(
-        Task.objects.filter(due_date__range=(dt_from, dt_to), content_item__isnull=True)
+        Task.objects.filter(
+            due_date__range=(dt_from, dt_to),
+            content_item__isnull=True,
+            mini_project__isnull=True,
+        )
         .select_related("assignee", "client")
         .prefetch_related("assignees")
     )
@@ -190,11 +198,12 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
             }
         )
 
-    # --- Project delivery dates ---
+    # --- Mini-project delivery dates ---
     project_qs = Project.objects.filter(delivery_date__range=(dt_from, dt_to)).prefetch_related("members")
-    if not company:
+    if not all_mini_projects:
         project_qs = project_qs.filter(members=user)
     for p in project_qs.distinct():
+        people = list(p.members.all())
         items.append(
             {
                 "source": "project",
@@ -202,7 +211,11 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                 "title": f"{p.name} — delivery",
                 "date": _iso(p.delivery_date),
                 "done": p.status in Project.TERMINAL_STATUSES,
-                "meta": {"status": p.status, "client": p.client},
+                "meta": {
+                    "status": p.status,
+                    "client": p.client,
+                    "assignees": [{"id": u.id, "name": u.full_name or u.email} for u in people],
+                },
             }
         )
 

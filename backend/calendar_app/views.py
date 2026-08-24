@@ -19,7 +19,8 @@ class AgendaView(APIView):
     """GET /api/calendar/agenda?from=&to=&scope=
 
     Personal calendar (scope=self) shows the user's own tasks/reminders/todos
-    plus every client's content-calendar item (company-wide).
+    plus every client's content-calendar item (company-wide). Superadmins also
+    see every mini-project delivery date.
     """
 
     permission_classes = [IsActive]
