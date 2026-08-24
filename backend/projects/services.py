@@ -72,6 +72,11 @@ def sync_mini_project_task(project) -> None:
     due_date = None if published else project.delivery_date
     board_status = board_map.get(project.status, Task.BoardStatus.TODO)
 
+    from sales.models import Client
+
+    client_name = (project.client or "").strip()
+    client_obj = Client.objects.filter(name__iexact=client_name).first() if client_name else None
+
     task = Task.objects.filter(mini_project_id=project.pk).first()
 
     if task is None:
@@ -81,7 +86,8 @@ def sync_mini_project_task(project) -> None:
             assignee=primary,
             title=project.name,
             description=project.description or "",
-            client_name=project.client or "",
+            client_name=client_name,
+            client=client_obj,
             due_date=due_date,
             status=project.status,
             priority=project.priority,
@@ -92,7 +98,8 @@ def sync_mini_project_task(project) -> None:
         task.project = project
         task.title = project.name
         task.description = project.description or ""
-        task.client_name = project.client or ""
+        task.client_name = client_name
+        task.client = client_obj
         task.due_date = due_date
         task.status = project.status
         task.priority = project.priority
@@ -104,6 +111,7 @@ def sync_mini_project_task(project) -> None:
                 "title",
                 "description",
                 "client_name",
+                "client",
                 "due_date",
                 "status",
                 "priority",

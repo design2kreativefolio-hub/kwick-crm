@@ -39,7 +39,16 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Do not select_related("work_task"): missing reverse OneToOne rows
         # (and a lagging migration) 500 the entire list page.
-        return Project.objects.select_related("created_by").prefetch_related("members")
+        qs = Project.objects.select_related("created_by").prefetch_related("members")
+        cid = self.request.query_params.get("for_client")
+        if cid:
+            from sales.models import Client
+
+            name = Client.objects.filter(pk=cid).values_list("name", flat=True).first()
+            if not name:
+                return qs.none()
+            return qs.filter(client__iexact=name)
+        return qs
 
     def paginate_queryset(self, queryset):
         # Mini-Projects UI has no pager — always return a bare array.

@@ -49,6 +49,15 @@ type LinkedTask = {
   assignee_ids?: number[];
   assignee_names?: { id: number; name: string }[];
   assignee_name?: string;
+  mini_project_id?: number | null;
+};
+
+type MiniProject = {
+  id: number;
+  name: string;
+  status: string;
+  delivery_date: string | null;
+  member_names?: { id: number; name: string }[];
 };
 
 type DayChip = {
@@ -56,9 +65,10 @@ type DayChip = {
   date: string;
   title: string;
   status: string;
-  kind: "content" | "task";
+  kind: "content" | "task" | "project";
   content?: ContentItem;
   task?: LinkedTask;
+  project?: MiniProject;
 };
 
 const CONTENT_TYPES = [
@@ -139,6 +149,7 @@ export default function ClientCalendarPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
+  const [miniProjects, setMiniProjects] = useState<MiniProject[]>([]);
   const [directory, setDirectory] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const deepLinkedItemRef = useRef<number | null>(null);
@@ -162,10 +173,12 @@ export default function ClientCalendarPage() {
     Promise.all([
       api<ContentItem[] | { results: ContentItem[] }>(`/api/projects/content-calendar?client=${clientId}`),
       api<LinkedTask[] | { results: LinkedTask[] }>(`/api/tasks?client=${clientId}`),
+      api<MiniProject[] | { results: MiniProject[] }>(`/api/projects?for_client=${clientId}`),
     ])
-      .then(([content, tasks]) => {
+      .then(([content, tasks, projects]) => {
         setItems(unwrapList(content));
-        setLinkedTasks(unwrapList(tasks).filter((t) => !!t.due_date));
+        setLinkedTasks(unwrapList(tasks).filter((t) => !!t.due_date && !t.mini_project_id));
+        setMiniProjects(unwrapList(projects).filter((p) => !!p.delivery_date));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -271,8 +284,19 @@ export default function ClientCalendarPage() {
         task: t,
       });
     }
+    for (const p of miniProjects) {
+      if (!p.delivery_date) continue;
+      push({
+        key: `p-${p.id}`,
+        date: p.delivery_date,
+        title: p.name,
+        status: p.status,
+        kind: "project",
+        project: p,
+      });
+    }
     return map;
-  }, [items, linkedTasks]);
+  }, [items, linkedTasks, miniProjects]);
 
   const counts = useMemo(
     () => ({
@@ -598,6 +622,10 @@ export default function ClientCalendarPage() {
                               router.push(`/tasks/${it.task.id}`);
                               return;
                             }
+                            if (it.kind === "project" && it.project) {
+                              router.push(`/projects/${it.project.id}`);
+                              return;
+                            }
                             if (it.content) openEdit(it.content);
                           }}
                           style={{
@@ -611,10 +639,20 @@ export default function ClientCalendarPage() {
                             textAlign: "left",
                             cursor: "pointer",
                           }}
-                          title={it.kind === "task" ? `Task · ${it.title}` : it.title}
+                          title={
+                            it.kind === "task"
+                              ? `Task · ${it.title}`
+                              : it.kind === "project"
+                                ? `Mini-project · ${it.title}`
+                                : it.title
+                          }
                         >
                           <span className="client-cal-chip-title">
-                            {it.kind === "task" ? `Task · ${it.title}` : it.title}
+                            {it.kind === "task"
+                              ? `Task · ${it.title}`
+                              : it.kind === "project"
+                                ? `Project · ${it.title}`
+                                : it.title}
                           </span>
                         </button>
                       ))}
@@ -638,9 +676,72 @@ export default function ClientCalendarPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto", minHeight: 0 }}>
             {selectedItems.length === 0 && (
-              <p className="muted" style={{ fontSize: 13 }}>No content or tasks on this day.</p>
+              <p className="muted" style={{ fontSize: 13 }}>No content, tasks, or mini-projects on this day.</p>
             )}
             {selectedItems.map((chip) => {
+              if (chip.kind === "project" && chip.project) {
+                const p = chip.project;
+                const color = STATUS_COLOR[p.status] ?? accent;
+                const finished = p.status === "approved" || p.status === "published";
+                const people = p.member_names || [];
+                return (
+                  <div key={chip.key} style={{ ...contentCard, opacity: finished ? 0.72 : 1 }}>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <span style={{ ...typeIcon, background: `${color}18`, color }}>
+                        <i className="bi bi-kanban-fill" />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/projects/${p.id}`)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            textAlign: "left",
+                            fontWeight: 650,
+                            fontSize: 13.5,
+                            color: "var(--navy)",
+                            cursor: "pointer",
+                            textDecoration: finished ? "line-through" : undefined,
+                            width: "100%",
+                          }}
+                          title="Open mini-project"
+                        >
+                          {p.name}
+                        </button>
+                        <div className="muted" style={{ fontSize: 11.5, marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span>Mini-project</span>
+                          <span className={`badge ${STATUS_BADGE[p.status] ?? "badge-muted"}`}>
+                            {taskStatusLabel(p.status)}
+                          </span>
+                        </div>
+                        {people.length > 0 && (
+                          <div style={{ display: "flex", marginTop: 8 }}>
+                            {people.slice(0, 5).map((a, i) => (
+                              <span
+                                key={`${a.id}-${a.name}`}
+                                title={a.name}
+                                style={{
+                                  ...avatar,
+                                  marginLeft: i === 0 ? 0 : -6,
+                                  zIndex: 5 - i,
+                                }}
+                              >
+                                {a.name
+                                  .split(/\s+/)
+                                  .slice(0, 2)
+                                  .map((part) => part[0]?.toUpperCase() || "")
+                                  .join("")}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
               if (chip.kind === "task" && chip.task) {
                 const t = chip.task;
                 const color = STATUS_COLOR[t.status] ?? accent;

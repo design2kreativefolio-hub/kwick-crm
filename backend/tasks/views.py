@@ -48,7 +48,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         qs = _base_task_qs()
         client_id = self.request.query_params.get("client")
         if client_id:
-            return qs.filter(client_id=client_id, content_item__isnull=True).distinct()
+            # Content-calendar mirrors stay off this list; mini-projects for this
+            # client are loaded via /api/projects?for_client= instead.
+            return qs.filter(
+                client_id=client_id, content_item__isnull=True, mini_project__isnull=True
+            ).distinct()
 
         assigned = Q(assignee=self.request.user) | Q(assignees=self.request.user)
         if self.action in ("retrieve", "partial_update", "update", "destroy"):
