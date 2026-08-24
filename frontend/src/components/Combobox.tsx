@@ -38,8 +38,8 @@ export function Combobox({
   useEffect(() => setMounted(true), []);
 
   const filtered = useMemo(() => {
-    const q = value.trim().toLowerCase();
-    const pool = q ? options.filter((o) => o.toLowerCase().includes(q)) : options;
+    const q = (value || "").trim().toLowerCase();
+    const pool = q ? options.filter((o) => typeof o === "string" && o.toLowerCase().includes(q)) : options.filter((o) => typeof o === "string");
     return pool.slice(0, 8);
   }, [value, options]);
 

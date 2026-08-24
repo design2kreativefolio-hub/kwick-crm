@@ -64,12 +64,19 @@ class ProjectSerializer(serializers.ModelSerializer):
         return [{"id": u.id, "name": _person_label(u)} for u in obj.members.all()]
 
     def get_work_task_id(self, obj):
-        task = getattr(obj, "work_task", None)
-        if task is not None:
+        # Reverse OneToOne raises RelatedObjectDoesNotExist (getattr does not
+        # catch it). A throw here 500s the whole Mini-Projects list.
+        try:
+            task = obj.work_task
             return task.id
-        from tasks.models import Task
+        except Exception:
+            pass
+        try:
+            from tasks.models import Task
 
-        return Task.objects.filter(mini_project_id=obj.pk).values_list("id", flat=True).first()
+            return Task.objects.filter(mini_project_id=obj.pk).values_list("id", flat=True).first()
+        except Exception:
+            return None
 
     def validate_members(self, value):
         from common.maintenance import allowlist_emails
@@ -101,7 +108,13 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        urls = list(instance.attachment_urls or [])
+        raw = instance.attachment_urls
+        if isinstance(raw, str) and raw.strip():
+            urls = [raw]
+        elif isinstance(raw, (list, tuple)):
+            urls = [u for u in raw if isinstance(u, str) and u]
+        else:
+            urls = []
         if not urls and instance.attachment_url:
             urls = [instance.attachment_url]
         data["attachment_urls"] = [sign_media_url(u) for u in urls]
@@ -111,6 +124,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             data["attachment_url"] = sign_media_url(data["attachment_url"])
         else:
             data["attachment_url"] = ""
+        data["members"] = list(data.get("members") or [])
+        data["member_names"] = list(data.get("member_names") or [])
         return data
 
     def _uploads_from_request(self):

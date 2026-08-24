@@ -33,6 +33,7 @@ type NotificationEventPush = {
   body: string;
   object_ref?: string;
   created_at: string;
+  read_at?: string | null;
 };
 
 // Synthesized two-note "pop" via the Web Audio API instead of bundling an
@@ -77,8 +78,8 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
   const socketRef = useRef<WebSocket | null>(null);
 
   const refreshCounts = () => {
-    api<{ read_at: string | null }[]>("/api/notifications")
-      .then((items) => setNotifUnread(items.filter((n) => !n.read_at).length))
+    api<NotificationEventPush[] | { results: NotificationEventPush[] }>("/api/notifications")
+      .then((items) => setNotifUnread(unwrapList(items).filter((n) => !n.read_at).length))
       .catch(() => {});
     api<{ unread_count: number }[] | { results: { unread_count: number }[] }>(
       "/api/messages/conversations?page_size=200"

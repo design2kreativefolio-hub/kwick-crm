@@ -68,8 +68,9 @@ const emptyForm = {
 };
 
 function formatDate(iso: string | null) {
-  if (!iso) return "—";
+  if (!iso || typeof iso !== "string") return "—";
   const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return "—";
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
@@ -79,8 +80,9 @@ function isOverdue(iso: string | null, status: ProjectStatus) {
 }
 
 function projectAttachmentUrls(p: Project): string[] {
-  if (p.attachment_urls?.length) return p.attachment_urls;
-  if (p.attachment_url) return [p.attachment_url];
+  const raw = p?.attachment_urls;
+  if (Array.isArray(raw) && raw.length) return raw.filter((u): u is string => typeof u === "string" && !!u);
+  if (typeof p?.attachment_url === "string" && p.attachment_url) return [p.attachment_url];
   return [];
 }
 
@@ -145,38 +147,45 @@ export default function ProjectsPage() {
   const [editAttachments, setEditAttachments] = useState<File[]>([]);
   const editAttachRef = useRef<HTMLInputElement>(null);
 
-  const loadProjects = () => {
-    setLoading(true);
+  const loadProjects = (silent = false) => {
+    if (!silent) setLoading(true);
     api<Project[] | { results: Project[] }>("/api/projects")
-      .then((d) => setProjects(unwrapList(d)))
-      .catch(() => {})
+      .then((d) => setProjects(unwrapList(d) || []))
+      .catch(() => setProjects([]))
       .finally(() => setLoading(false));
   };
 
   const loadClients = () => {
     api<ClientOption[] | { results: ClientOption[] }>("/api/projects/clients")
-      .then((d) => setClients(unwrapList(d)))
-      .catch(() => {});
+      .then((d) => setClients(unwrapList(d) || []))
+      .catch(() => setClients([]));
   };
 
   useEffect(() => {
     loadProjects();
     loadClients();
-    api<Contact[]>("/api/messages/directory").then(setDirectory).catch(() => {});
+    api<Contact[] | { results: Contact[] }>("/api/messages/directory")
+      .then((d) => setDirectory(unwrapList(d) || []))
+      .catch(() => setDirectory([]));
   }, []);
 
   const directoryById = useMemo(() => {
     const map = new Map<number, Contact>();
-    directory.forEach((c) => map.set(c.id, c));
+    (Array.isArray(directory) ? directory : []).forEach((c) => map.set(c.id, c));
     return map;
   }, [directory]);
 
   const assigneeOptions = useMemo(
-    () => assigneeSelectOptions(user, directory),
+    () => assigneeSelectOptions(user, Array.isArray(directory) ? directory : []),
     [user, directory]
   );
 
-  const clientNames = useMemo(() => clients.map((c) => c.name), [clients]);
+  const clientNames = useMemo(
+    () => (Array.isArray(clients) ? clients : []).map((c) => c.name).filter(Boolean),
+    [clients]
+  );
+
+  const rows = Array.isArray(projects) ? projects : [];
 
   const openCreate = () => {
     setForm({
@@ -210,11 +219,14 @@ export default function ProjectsPage() {
           createAttachments
         ),
       });
-      setForm(emptyForm);
-      setCreateAttachments([]);
       setShowForm(false);
+      setCreateAttachments([]);
+      setForm({
+        ...emptyForm,
+        assignee: user?.id ? String(user.id) : "",
+      });
       showToast("Project added.");
-      loadProjects();
+      loadProjects(true);
     } catch (err: any) {
       setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
     } finally {
@@ -464,8 +476,8 @@ export default function ProjectsPage() {
           All Mini-Projects
         </span>
         {loading && <p className="muted">Loading…</p>}
-        {!loading && projects.length === 0 && <p className="muted">No projects yet.</p>}
-        {!loading && projects.length > 0 && (
+        {!loading && rows.length === 0 && <p className="muted">No projects yet.</p>}
+        {!loading && rows.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">
               <thead>
@@ -480,15 +492,17 @@ export default function ProjectsPage() {
                 </tr>
               </thead>
               <tbody>
-                {projects.map((p) => {
+                {rows.map((p) => {
+                  const memberIds = Array.isArray(p.members) ? p.members : [];
                   const named = p.member_names?.[0];
-                  const fromDir = p.members[0] ? directoryById.get(p.members[0]) : undefined;
+                  const fromDir = memberIds[0] ? directoryById.get(memberIds[0]) : undefined;
                   const assigneeLabel =
                     named?.name ||
                     (fromDir ? fromDir.full_name || fromDir.email : null) ||
-                    (user && p.members[0] === user.id ? user.full_name || user.email : null);
+                    (user && memberIds[0] === user.id ? user.full_name || user.email : null);
                   const overdue = isOverdue(p.delivery_date, p.status);
                   const files = projectAttachmentUrls(p);
+                  const priority = (PRIORITY_LABEL[p.priority] ? p.priority : "medium") as ProjectPriority;
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 600 }}>
@@ -514,10 +528,12 @@ export default function ProjectsPage() {
                       <td>{p.client || "—"}</td>
                       <td>{assigneeLabel || "—"}</td>
                       <td>
-                        <span className={`badge ${PRIORITY_BADGE[p.priority]}`}>{PRIORITY_LABEL[p.priority]}</span>
+                        <span className={`badge ${PRIORITY_BADGE[priority]}`}>{PRIORITY_LABEL[priority]}</span>
                       </td>
                       <td>
-                        <span className={`badge ${STATUS_BADGE[p.status]}`}>{STATUS_LABEL[p.status]}</span>
+                        <span className={`badge ${STATUS_BADGE[p.status] ?? "badge-muted"}`}>
+                          {STATUS_LABEL[p.status] ?? p.status}
+                        </span>
                       </td>
                       <td style={{ color: overdue ? "var(--danger)" : undefined, fontWeight: overdue ? 700 : undefined }}>
                         {formatDate(p.delivery_date)}
@@ -657,7 +673,7 @@ export default function ProjectsPage() {
                   onClick={() => editAttachRef.current?.click()}
                   disabled={editAttachments.length >= 5}
                 >
-                  <i className="bi bi-paperclip" /> {editAttachments.length || projectAttachmentUrls(editingProject!).length ? "Replace files" : "Choose files"}
+                  <i className="bi bi-paperclip" /> {editAttachments.length || (editingProject && projectAttachmentUrls(editingProject).length) ? "Replace files" : "Choose files"}
                 </button>
                 <span className="muted" style={{ fontSize: 12.5 }}>
                   Up to 5{editAttachments.length ? ` · ${editAttachments.length} selected` : ""}

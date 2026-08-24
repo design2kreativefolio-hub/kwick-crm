@@ -37,7 +37,13 @@ class ProjectViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        return Project.objects.select_related("created_by", "work_task").prefetch_related("members")
+        # Do not select_related("work_task"): missing reverse OneToOne rows
+        # (and a lagging migration) 500 the entire list page.
+        return Project.objects.select_related("created_by").prefetch_related("members")
+
+    def paginate_queryset(self, queryset):
+        # Mini-Projects UI has no pager — always return a bare array.
+        return None
 
     def _notify_new_members(self, project, before_ids):
         after_ids = set(project.members.values_list("id", flat=True))

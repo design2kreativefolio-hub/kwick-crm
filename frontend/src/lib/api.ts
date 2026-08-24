@@ -82,14 +82,24 @@ export async function api<T = any>(
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+  const text = await res.text();
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(res.status, { detail: "Invalid response from server." });
+  }
 }
 
 // DRF paginates every ModelViewSet .list() by default (see common/pagination.py),
 // so list endpoints return {count, next, previous, results} rather than a bare
 // array. Endpoints backed by plain APIViews (manual Response(...)) stay arrays.
-export function unwrapList<T>(data: T[] | { results: T[] }): T[] {
-  return Array.isArray(data) ? data : data.results;
+export function unwrapList<T>(data: T[] | { results: T[] } | null | undefined): T[] {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray((data as { results?: T[] }).results)) {
+    return (data as { results: T[] }).results;
+  }
+  return [];
 }
 
 export class ApiError extends Error {
