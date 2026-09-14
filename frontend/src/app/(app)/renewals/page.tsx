@@ -12,6 +12,8 @@ type SubjectType = "client" | "staff" | "other";
 type RenewalType = "hosting" | "domain" | "contract" | "visa" | "other";
 type RenewalStatus = "upcoming" | "renewed" | "overdue";
 
+type SecurityQa = { question: string; answer: string };
+
 type Renewal = {
   id: number;
   subject_type: SubjectType;
@@ -25,6 +27,9 @@ type Renewal = {
   renewal_type_detail: string;
   type_label?: string;
   due_date: string;
+  registered_date: string | null;
+  is_recurring: boolean;
+  security_qa: SecurityQa[];
   notes: string;
   status: RenewalStatus;
   created_at: string;
@@ -77,6 +82,9 @@ const emptyForm = {
   renewal_type: "hosting" as RenewalType,
   renewal_type_detail: "",
   due_date: "",
+  registered_date: "",
+  is_recurring: false,
+  security_qa: [] as SecurityQa[],
   notes: "",
 };
 
@@ -106,6 +114,7 @@ export default function RenewalsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -159,7 +168,46 @@ export default function RenewalsPage() {
     }));
   };
 
-  const addRenewal = async (e: React.FormEvent) => {
+  const addSecurityQa = () => setForm((f) => ({ ...f, security_qa: [...f.security_qa, { question: "", answer: "" }] }));
+  const updateSecurityQa = (idx: number, patch: Partial<SecurityQa>) =>
+    setForm((f) => ({ ...f, security_qa: f.security_qa.map((qa, i) => (i === idx ? { ...qa, ...patch } : qa)) }));
+  const removeSecurityQa = (idx: number) =>
+    setForm((f) => ({ ...f, security_qa: f.security_qa.filter((_, i) => i !== idx) }));
+
+  const openCreateForm = () => {
+    setForm(emptyForm);
+    setEditingId(null);
+    setError(null);
+    setShowForm(true);
+  };
+
+  const openEditForm = (r: Renewal) => {
+    setForm({
+      subject_type: r.subject_type,
+      client: r.client ? String(r.client) : "",
+      staff: r.staff ? String(r.staff) : "",
+      subject_name: r.subject_name || "",
+      renewal_type: r.renewal_type,
+      renewal_type_detail: r.renewal_type_detail || "",
+      due_date: r.due_date || "",
+      registered_date: r.registered_date || "",
+      is_recurring: r.is_recurring,
+      security_qa: (r.security_qa || []).map((qa) => ({ ...qa })),
+      notes: r.notes || "",
+    });
+    setEditingId(r.id);
+    setError(null);
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setForm(emptyForm);
+    setEditingId(null);
+    setError(null);
+  };
+
+  const saveRenewal = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -194,12 +242,21 @@ export default function RenewalsPage() {
         renewal_type: form.renewal_type,
         renewal_type_detail: form.renewal_type === "other" ? form.renewal_type_detail.trim() : "",
         due_date: form.due_date,
+        registered_date: form.registered_date || null,
+        is_recurring: form.is_recurring,
+        security_qa: form.security_qa
+          .map((qa) => ({ question: qa.question.trim(), answer: qa.answer.trim() }))
+          .filter((qa) => qa.question || qa.answer),
         notes: form.notes,
       };
-      await api<Renewal>("/api/renewals", { method: "POST", body: JSON.stringify(payload) });
-      setForm(emptyForm);
-      setShowForm(false);
-      showToast("Renewal added.");
+      if (editingId) {
+        await api<Renewal>(`/api/renewals/${editingId}`, { method: "PATCH", body: JSON.stringify(payload) });
+        showToast("Renewal updated.");
+      } else {
+        await api<Renewal>("/api/renewals", { method: "POST", body: JSON.stringify(payload) });
+        showToast("Renewal added.");
+      }
+      closeForm();
       load();
     } catch (err: any) {
       setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
@@ -249,14 +306,22 @@ export default function RenewalsPage() {
             Client, staff, and other renewal dates for hosting, domains, contracts, visas and more.
           </p>
         </div>
-        <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
-          <i className="bi bi-plus-lg" /> Add Renewal
+        <button className="btn btn-accent" onClick={() => (showForm ? closeForm() : openCreateForm())}>
+          {showForm ? (
+            <>
+              <i className="bi bi-x-lg" /> Close
+            </>
+          ) : (
+            <>
+              <i className="bi bi-plus-lg" /> Add Renewal
+            </>
+          )}
         </button>
       </div>
 
       {showForm && (
-        <form className="card" onSubmit={addRenewal}>
-          <span className="card-title">New Renewal</span>
+        <form className="card" onSubmit={saveRenewal}>
+          <span className="card-title">{editingId ? "Edit Renewal" : "New Renewal"}</span>
           <div style={{ display: "flex", gap: 8, margin: "14px 0", flexWrap: "wrap" }}>
             <button
               type="button"
@@ -355,6 +420,68 @@ export default function RenewalsPage() {
               />
             </div>
 
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Registered date</label>
+              <DatePicker
+                value={form.registered_date}
+                onChange={(v) => setForm((f) => ({ ...f, registered_date: v }))}
+                ariaLabel="Registered date"
+              />
+            </div>
+
+            <div>
+              <label className="field-label" style={{ marginTop: 0 }}>Recurring</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, height: 38 }}>
+                <button
+                  type="button"
+                  className={`toggle-switch${form.is_recurring ? " on" : ""}`}
+                  onClick={() => setForm((f) => ({ ...f, is_recurring: !f.is_recurring }))}
+                  aria-label="Toggle recurring"
+                />
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  {form.is_recurring ? "Repeats automatically" : "One-time"}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label className="field-label" style={{ marginTop: 0 }}>
+                Security questions <span className="muted" style={{ fontWeight: 400 }}>(optional, one or more)</span>
+              </label>
+              {form.security_qa.map((qa, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-start" }}>
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    placeholder="Question"
+                    value={qa.question}
+                    onChange={(e) => updateSecurityQa(idx, { question: e.target.value })}
+                    aria-label={`Security question ${idx + 1}`}
+                  />
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    placeholder="Answer"
+                    value={qa.answer}
+                    onChange={(e) => updateSecurityQa(idx, { answer: e.target.value })}
+                    aria-label={`Security answer ${idx + 1}`}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: "var(--danger)" }}
+                    onClick={() => removeSecurityQa(idx)}
+                    aria-label="Remove security question"
+                  >
+                    <i className="bi bi-trash-fill" />
+                  </button>
+                </div>
+              ))}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={addSecurityQa}>
+                <i className="bi bi-plus-lg" /> Add security question
+              </button>
+            </div>
+
             <div style={{ gridColumn: "1 / -1" }}>
               <label className="field-label" style={{ marginTop: 0 }}>Notes</label>
               <textarea
@@ -368,9 +495,16 @@ export default function RenewalsPage() {
           </div>
 
           {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: "14px 0 0" }}>{error}</p>}
-          <button className="btn" style={{ width: "fit-content", marginTop: 14 }} disabled={creating}>
-            {creating ? "Adding…" : "Add renewal"}
-          </button>
+          <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+            <button className="btn" style={{ width: "fit-content" }} disabled={creating}>
+              {creating ? "Saving…" : editingId ? "Save changes" : "Add renewal"}
+            </button>
+            {editingId && (
+              <button type="button" className="btn btn-ghost" onClick={closeForm} disabled={creating}>
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
       )}
 
@@ -430,6 +564,14 @@ export default function RenewalsPage() {
                       </td>
                       <td>
                         <span className="badge">{typeLabel}</span>
+                        {r.is_recurring && (
+                          <i
+                            className="bi bi-arrow-repeat"
+                            style={{ color: "var(--gold)", marginLeft: 6 }}
+                            title="Recurring"
+                            aria-label="Recurring"
+                          />
+                        )}
                       </td>
                       <td style={{ color: r.status === "overdue" ? "var(--danger)" : undefined, fontWeight: r.status === "overdue" ? 700 : undefined }}>
                         {formatDate(r.due_date)}
@@ -450,6 +592,14 @@ export default function RenewalsPage() {
                             {busyId === r.id ? "…" : "Mark Renewed"}
                           </button>
                         )}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          disabled={busyId === r.id}
+                          onClick={() => openEditForm(r)}
+                          aria-label="Edit renewal"
+                        >
+                          <i className="bi bi-pencil-fill" />
+                        </button>
                         <button
                           className="btn btn-ghost btn-sm"
                           style={{ color: "var(--danger)" }}

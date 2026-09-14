@@ -39,6 +39,16 @@ class Renewal(TimeStampedModel):
     # Free-text type label when renewal_type == other.
     renewal_type_detail = models.CharField(max_length=120, blank=True, default="")
     due_date = models.DateField()
+    # When this was first registered/started (domain purchase date, contract
+    # signing date, visa issue date, ...) — separate from due_date.
+    registered_date = models.DateField(null=True, blank=True)
+    # Whether this renews on its own on a schedule vs. a one-off due date.
+    # Informational only for now — no automated recurrence engine.
+    is_recurring = models.BooleanField(default=False)
+    # [{ "question": "...", "answer": "..." }, ...] — one or more, e.g. domain
+    # registrar / hosting provider account recovery questions. Plain text,
+    # same as PasswordEntry.security_question (not vault-encrypted).
+    security_qa = models.JSONField(default=list, blank=True)
     notes = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.UPCOMING)
     # Track which lead windows we've already pushed for, so we don't re-notify.

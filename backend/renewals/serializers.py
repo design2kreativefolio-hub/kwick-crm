@@ -24,6 +24,9 @@ class RenewalSerializer(serializers.ModelSerializer):
             "renewal_type_detail",
             "type_label",
             "due_date",
+            "registered_date",
+            "is_recurring",
+            "security_qa",
             "notes",
             "status",
             "created_at",
@@ -34,6 +37,19 @@ class RenewalSerializer(serializers.ModelSerializer):
 
     def get_type_label(self, obj):
         return obj.display_type()
+
+    def validate_security_qa(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Must be a list of question/answer pairs.")
+        cleaned = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            question = str(item.get("question") or "").strip()
+            answer = str(item.get("answer") or "").strip()
+            if question or answer:
+                cleaned.append({"question": question, "answer": answer})
+        return cleaned
 
     def validate(self, attrs):
         subject_type = attrs.get("subject_type", getattr(self.instance, "subject_type", None))
