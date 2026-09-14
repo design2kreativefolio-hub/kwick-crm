@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { BackLink } from "@/components/BackLink";
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { ClientFormFields } from "@/components/sales/ClientFormFields";
 import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
@@ -294,9 +295,7 @@ export default function SalesClientDetailPage() {
                   </div>
                   {f.field_type === "attachment" ? (
                     f.value ? (
-                      <a href={f.value} target="_blank" rel="noreferrer">
-                        View file
-                      </a>
+                      <MediaFileLink url={f.value}>View file</MediaFileLink>
                     ) : (
                       <span className="muted">No file</span>
                     )
@@ -331,9 +330,9 @@ function FileRow({ label, url }: { label: string; url?: string }) {
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 600, fontSize: 13.5 }}>{label}</div>
         {url ? (
-          <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+          <MediaFileLink url={url} style={{ fontSize: 13 }}>
             View file
-          </a>
+          </MediaFileLink>
         ) : (
           <span className="muted" style={{ fontSize: 13 }}>
             Not uploaded

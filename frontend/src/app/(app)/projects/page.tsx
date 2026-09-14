@@ -9,6 +9,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/Modal";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
@@ -511,17 +512,15 @@ export default function ProjectsPage() {
                             {p.name}
                           </Link>
                           {files.length > 0 && (
-                            <a
-                              href={files[0]}
-                              target="_blank"
-                              rel="noreferrer"
+                            <MediaFileLink
+                              url={files[0]}
                               title={files.map(displayUploadedFileName).join(", ")}
                               aria-label="Open attachment"
                               style={{ color: "var(--gold)", display: "inline-flex" }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <i className="bi bi-paperclip" />
-                            </a>
+                            </MediaFileLink>
                           )}
                         </div>
                       </td>
@@ -701,16 +700,14 @@ export default function ProjectsPage() {
               {editingProject && !editAttachments.length && projectAttachmentUrls(editingProject).length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
                   {projectAttachmentUrls(editingProject).map((url, i) => (
-                    <a
+                    <MediaFileLink
                       key={url}
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
+                      url={url}
                       className="muted"
                       style={{ fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}
                     >
                       <i className="bi bi-download" /> {displayUploadedFileName(url) || `Attachment ${i + 1}`}
-                    </a>
+                    </MediaFileLink>
                   ))}
                 </div>
               )}

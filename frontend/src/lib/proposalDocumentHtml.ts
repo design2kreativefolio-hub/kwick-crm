@@ -4,7 +4,13 @@
 // class names (styled by public/proposal/preview.css, which mirrors the
 // PDF's own <style> block) — so what you see in the editor matches the PDF.
 
-import { ProposalContent, SOCIAL_PLATFORM_OPTIONS, termsHtml } from "./proposalContent";
+import {
+  ProposalContent,
+  SOCIAL_PLATFORM_OPTIONS,
+  customSectionKey,
+  normalizeContentOrder,
+  termsHtml,
+} from "./proposalContent";
 
 function esc(value: string | null | undefined): string {
   if (!value) return "";
@@ -75,139 +81,163 @@ export function buildProposalHtml(content: ProposalContent): string {
     `);
   }
 
-  if (content.about_kreativefolio.enabled) {
-    parts.push(
-      `<section class="${sectionClass(content.about_kreativefolio.page_break_before)}"><h2>About Kreativefolio</h2>${content.about_kreativefolio.content}</section>`
-    );
-  }
-
-  if (content.about_client.enabled) {
-    parts.push(`
+  // Every non-Home section (built-ins + custom) is emitted in the user's saved
+  // drag order (content.content_order). `frag` holds each section's HTML keyed
+  // by its order key; the cover is always first.
+  const visiblePlatforms = content.social_medias.platforms.filter((p) => p.enabled);
+  const frag: Record<string, string> = {
+    about_kreativefolio: content.about_kreativefolio.enabled
+      ? `<section class="${sectionClass(content.about_kreativefolio.page_break_before)}"><h2>${esc(
+          content.about_kreativefolio.heading || "About Kreativefolio"
+        )}</h2>${content.about_kreativefolio.content}</section>`
+      : "",
+    about_client: content.about_client.enabled
+      ? `
       <section class="${sectionClass(content.about_client.page_break_before)}">
-        <h2>About ${esc(clientDisplayName)}</h2>
+        <h2>${esc(content.about_client.heading || "About the Client")}</h2>
         ${content.about_client.content}
         ${imgs(content.about_client.image_urls, "section-image")}
       </section>
-    `);
-  }
-
-  if (content.traffic.enabled) {
-    parts.push(`
+    `
+      : "",
+    traffic: content.traffic.enabled
+      ? `
       <section class="${sectionClass(content.traffic.page_break_before)}">
-        <h2>Traffic</h2>
+        <h2>${esc(content.traffic.heading || "Traffic")}</h2>
         ${imgs(content.traffic.image_urls, "section-image-full")}
       </section>
-    `);
-  }
-
-  if (content.technical_seo.enabled) {
-    parts.push(
-      `<section class="${sectionClass(content.technical_seo.page_break_before)}"><h2>Technical SEO</h2>${content.technical_seo.content}</section>`
-    );
-  }
-
-  if (content.keyword_strategy.enabled) {
-    parts.push(`
+    `
+      : "",
+    technical_seo: content.technical_seo.enabled
+      ? `<section class="${sectionClass(content.technical_seo.page_break_before)}"><h2>${esc(
+          content.technical_seo.heading || "Technical SEO"
+        )}</h2>${content.technical_seo.content}</section>`
+      : "",
+    keyword_strategy: content.keyword_strategy.enabled
+      ? `
       <section class="${sectionClass(content.keyword_strategy.page_break_before)}">
-        <h2>Keyword Strategy</h2>
+        <h2>${esc(content.keyword_strategy.heading || "Keyword Strategy")}</h2>
         ${imgs(content.keyword_strategy.image_urls, "section-image-full")}
       </section>
-    `);
-  }
-
-  if (content.onpage_seo.enabled) {
-    parts.push(`
+    `
+      : "",
+    onpage_seo: content.onpage_seo.enabled
+      ? `
       <section class="${sectionClass(content.onpage_seo.page_break_before)}">
-        <h2>Onpage SEO</h2>
+        <h2>${esc(content.onpage_seo.heading || "Onpage SEO")}</h2>
         ${content.onpage_seo.content}
         ${imgs(content.onpage_seo.image_urls, "section-image")}
       </section>
-    `);
-  }
-
-  if (content.geo.enabled) {
-    parts.push(`
+    `
+      : "",
+    geo: content.geo.enabled
+      ? `
       <section class="${sectionClass(content.geo.page_break_before)}">
-        <h2>GEO</h2>
-        ${fieldBox("Description", content.geo.description)}
-        <h3>Recommendations</h3>
+        <h2>${esc(content.geo.heading || "GEO")}</h2>
+        ${fieldBox(content.geo.description_label || "Description", content.geo.description)}
+        <h3>${esc(content.geo.recommendations_label || "Recommendations")}</h3>
         ${content.geo.recommendations}
-        <h3>Our Approach</h3>
+        <h3>${esc(content.geo.approach_label || "Our Approach")}</h3>
         ${content.geo.approach}
       </section>
-    `);
-  }
-
-  const visiblePlatforms = content.social_medias.platforms.filter((p) => p.enabled);
-  if (content.social_medias.enabled && visiblePlatforms.length > 0) {
-    const blocks = visiblePlatforms
-      .map((p) => {
-        const label = SOCIAL_PLATFORM_OPTIONS.find((o) => o.value === p.platform)?.label || p.platform;
-        return `
+    `
+      : "",
+    social_medias:
+      content.social_medias.enabled && visiblePlatforms.length > 0
+        ? `<section class="${sectionClass(content.social_medias.page_break_before)}"><h2>${esc(
+            content.social_medias.heading || "Social Medias"
+          )}</h2>${visiblePlatforms
+            .map((p) => {
+              const label = SOCIAL_PLATFORM_OPTIONS.find((o) => o.value === p.platform)?.label || p.platform;
+              return `
           <div class="${sectionClass(p.page_break_before, "platform-block")}">
-            <h3>${esc(label)}</h3>
-            ${fieldBox("Description", p.description)}
+            <h3>${esc(p.heading || label)}</h3>
+            ${fieldBox(p.description_label || "Description", p.description)}
             ${imgs(p.image_urls, "section-image")}
-            ${p.key_problems ? `<h3 style="font-size:12.5px;">Key Problems Identified</h3>${p.key_problems}` : ""}
-            ${table(["Category", "Details", "Goal"], p.strategy_rows as unknown as Record<string, string>[], ["category", "details", "goal"])}
+            ${
+              p.key_problems
+                ? `<h3 style="font-size:12.5px;">${esc(p.key_problems_label || "Key Problems Identified")}</h3>${p.key_problems}`
+                : ""
+            }
+            ${table(
+              [p.col_category || "Category", p.col_details || "Details", p.col_goal || "Goal"],
+              p.strategy_rows as unknown as Record<string, string>[],
+              ["category", "details", "goal"]
+            )}
           </div>
         `;
-      })
-      .join("");
-    parts.push(
-      `<section class="${sectionClass(content.social_medias.page_break_before)}"><h2>Social Medias</h2>${blocks}</section>`
-    );
-  }
-
-  if (content.what_we_can_do.enabled && content.what_we_can_do.rows.length > 0) {
-    parts.push(`
+            })
+            .join("")}</section>`
+        : "",
+    what_we_can_do:
+      content.what_we_can_do.enabled && content.what_we_can_do.rows.length > 0
+        ? `
       <section class="${sectionClass(content.what_we_can_do.page_break_before)}">
-        <h2>What We Can Do</h2>
-        ${table(["Area", "How Kreativefolio Can Help"], content.what_we_can_do.rows as unknown as Record<string, string>[], ["area", "details"])}
+        <h2>${esc(content.what_we_can_do.heading || "What We Can Do")}</h2>
+        ${table(
+          [content.what_we_can_do.col_area || "Area", content.what_we_can_do.col_details || "How Kreativefolio Can Help"],
+          content.what_we_can_do.rows as unknown as Record<string, string>[],
+          ["area", "details"]
+        )}
       </section>
-    `);
-  }
+    `
+        : "",
+  };
 
   const visiblePricing = content.pricing.filter((p) => p.enabled);
-  if (visiblePricing.length > 0) {
-    const blocks = visiblePricing
-      .map(
-        (item) => `
+  frag.pricing =
+    visiblePricing.length > 0
+      ? `<section class="doc-section"><h2>${esc(content.pricing_heading || "Pricing")}</h2>${visiblePricing
+          .map(
+            (item) => `
           <div class="${sectionClass(item.page_break_before, "pricing-block")}">
             <h3>${esc(item.service_name || "Service")}</h3>
             ${fieldBox(item.ad_budget_label || "Ad Budget", item.ad_budget)}
             ${fieldBox(item.management_fee_label || "Ad Management Fee", item.management_fee)}
-            ${table(["Category", "Details", "Frequency"], item.rows as unknown as Record<string, string>[], ["category", "details", "frequency"])}
+            ${table(
+              [item.col_category || "Category", item.col_details || "Details", item.col_frequency || "Frequency"],
+              item.rows as unknown as Record<string, string>[],
+              ["category", "details", "frequency"]
+            )}
           </div>
         `
-      )
-      .join("");
-    parts.push(`<section class="doc-section"><h2>Pricing</h2>${blocks}</section>`);
-  }
+          )
+          .join("")}</section>`
+      : "";
 
-  if (content.terms.enabled) {
-    parts.push(
-      `<section class="${sectionClass(content.terms.page_break_before)}"><h2>Terms</h2>${termsHtml(content.terms)}</section>`
-    );
-  }
+  frag.terms = content.terms.enabled
+    ? `<section class="${sectionClass(content.terms.page_break_before)}"><h2>${esc(
+        content.terms.heading || "Terms"
+      )}</h2>${termsHtml(content.terms)}</section>`
+    : "";
 
-  if (content.full_page_image.enabled && content.full_page_image.image_url) {
-    parts.push(`
-      <section class="fullbleed-page" style="background-image: url('${esc(content.full_page_image.image_url)}');"></section>
-    `);
-  }
+  frag.full_page_image =
+    content.full_page_image.enabled && content.full_page_image.image_url
+      ? `<section class="fullbleed-page" style="background-image: url('${esc(
+          content.full_page_image.image_url
+        )}');"></section>`
+      : "";
 
   for (const item of content.custom_sections || []) {
-    if (!item.enabled) continue;
     const hasBody = Boolean(item.content?.trim()) || (item.image_urls && item.image_urls.length > 0);
-    if (!hasBody && !item.title?.trim()) continue;
-    parts.push(`
+    frag[customSectionKey(item.id)] =
+      item.enabled && (hasBody || item.title?.trim())
+        ? `
       <section class="${sectionClass(item.page_break_before)}">
         <h2>${esc(item.title || "Additional section")}</h2>
         ${item.content || ""}
         ${imgs(item.image_urls || [], "section-image")}
       </section>
-    `);
+    `
+        : "";
+  }
+
+  const order = normalizeContentOrder(
+    content.content_order,
+    (content.custom_sections || []).map((s) => s.id)
+  );
+  for (const key of order) {
+    if (frag[key]) parts.push(frag[key]);
   }
 
   return parts.join("\n");

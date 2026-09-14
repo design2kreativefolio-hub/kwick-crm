@@ -4,14 +4,34 @@ from decimal import Decimal, InvalidOperation
 
 
 DEFAULT_NOTES = "Thanks for your business."
+DEFAULT_ITEMS_HEADING = "Item & Description"
+DEFAULT_NOTES_HEADING = "Notes"
+DEFAULT_PAYMENT_HEADING = "Payment Details"
 
-DEFAULT_PAYMENT = {
-    "payment_method": "Bank Transfer",
-    "bank_name": "",
-    "account_name": "",
-    "iban": "",
-    "paid_amount": "",
-}
+# Legacy structured bank block — only used to migrate old invoices into the
+# free-form `payment_details` rich text.
+_LEGACY_PAYMENT_FIELDS = [
+    ("Payment Method", "payment_method"),
+    ("Bank Name", "bank_name"),
+    ("Account Name", "account_name"),
+    ("IBAN / Account Number", "iban"),
+    ("Paid Amount", "paid_amount"),
+]
+
+
+def _legacy_payment_html(payment) -> str:
+    if not isinstance(payment, dict):
+        return ""
+    rows = [(label, str(payment.get(key) or "").strip()) for label, key in _LEGACY_PAYMENT_FIELDS]
+    rows = [(label, val) for label, val in rows if val]
+    if not any(label != "Payment Method" for label, _ in rows):
+        return ""
+
+    def esc(s):
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    items = "".join(f"<li><strong>{esc(label)}:</strong> {esc(val)}</li>" for label, val in rows)
+    return f"<ul>{items}</ul>"
 
 INVOICE_KINDS = ("standard", "proforma", "petty_cash")
 
@@ -32,6 +52,7 @@ def default_line_item() -> dict:
     return {
         "description": "",
         "details": "",
+        "show_details": True,
         "qty": 1,
         "rate": 0,
     }
@@ -44,6 +65,9 @@ def default_content(kind: str = "standard") -> dict:
         "title": KIND_TITLES[kind],
         "invoice_kind": kind,
         "invoice_number": "",
+        "doc_heading": "",
+        "items_heading": DEFAULT_ITEMS_HEADING,
+        "notes_heading": DEFAULT_NOTES_HEADING,
         "bill_to": "",
         "bill_to_email": "",
         "client_id": None,
@@ -51,7 +75,8 @@ def default_content(kind: str = "standard") -> dict:
         "due_date": None,
         "currency": "AED",
         "items": [default_line_item()],
-        "payment": dict(DEFAULT_PAYMENT),
+        "payment_heading": DEFAULT_PAYMENT_HEADING,
+        "payment_details": "",
         "received_by": "",
         "passed_by": "",
         "notes": DEFAULT_NOTES,
@@ -85,13 +110,16 @@ def merged_content(raw: dict | None) -> dict:
             continue
         if key == "items" and isinstance(value, list):
             base["items"] = [{**default_line_item(), **item} for item in value] or [default_line_item()]
-        elif key == "payment" and isinstance(value, dict):
-            base["payment"] = {**DEFAULT_PAYMENT, **value}
         elif key == "invoice_kind":
             continue
         else:
             base[key] = value
     base["invoice_kind"] = kind
+    # One-time migration: fold an old structured bank block into payment_details.
+    if not (base.get("payment_details") or "").strip():
+        legacy = _legacy_payment_html(raw.get("payment"))
+        if legacy:
+            base["payment_details"] = legacy
     return base
 
 

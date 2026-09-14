@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
+
+import { ImagePickerDialog } from "./ImagePickerDialog";
 
 export function ImageUploadField({
   proposalId,
@@ -16,8 +18,8 @@ export function ImageUploadField({
   onChange: (url: string) => void;
   label?: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { showToast } = useToast();
 
   const upload = async (file: File) => {
@@ -62,19 +64,17 @@ export function ImageUploadField({
           </button>
         </div>
       ) : (
-        <button type="button" className="btn btn-ghost btn-sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={uploading} onClick={() => setPickerOpen(true)}>
           <i className="bi bi-image-fill" /> {uploading ? "Uploading…" : "Add image"}
         </button>
       )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) upload(file);
-          e.target.value = "";
+      <ImagePickerDialog
+        open={pickerOpen}
+        busy={uploading}
+        onClose={() => setPickerOpen(false)}
+        onFile={(file) => {
+          setPickerOpen(false);
+          void upload(file);
         }}
       />
     </div>

@@ -41,6 +41,7 @@ def build_crm_context(user) -> dict:
     }
 
     _add_team(ctx, user)
+    _add_client_names(ctx)
     _add_tasks(ctx, user)
     _add_todos(ctx, user)
     _add_reminders(ctx, user, today)
@@ -239,7 +240,11 @@ def _add_reminders(ctx: dict, user, today: date) -> None:
 
 
 def _add_content_calendar(ctx: dict, user, today: date, soon: date) -> None:
-    """Upcoming content-calendar posts (Projects → Clients → Calendar)."""
+    """Upcoming content-calendar posts (Projects → Clients → Calendar) —
+    ContentCalendarItemViewSet has no queryset scoping ("open to any active
+    employee, same access level as the Clients directory itself"), so this
+    must not be filtered to the current user either — that would make EDITH
+    blind to items it can genuinely see in the app."""
     try:
         from projects.models import ContentCalendarItem
 
@@ -250,8 +255,6 @@ def _add_content_calendar(ctx: dict, user, today: date, soon: date) -> None:
             .prefetch_related("assignees")
             .order_by("scheduled_date", "title")
         )
-        if not is_superadmin(user):
-            qs = qs.filter(Q(assignees=user) | Q(created_by=user)).distinct()
 
         rows = []
         for item in qs[:12]:
@@ -275,19 +278,21 @@ def _add_content_calendar(ctx: dict, user, today: date, soon: date) -> None:
 
 
 def _add_projects(ctx: dict, user) -> None:
+    """Mini-projects (/projects) — ProjectViewSet is explicitly company-wide
+    ("every active user can see... `members` is who is assigned, not who can
+    view"), so this must not be filtered to the current user's membership
+    either. "Active" here means assigned/in_progress only; the system prompt
+    defines mini-projects as also including completed/qc_completed/approved,
+    so a total count is surfaced too — otherwise EDITH can't tell "0 active"
+    from "0 mini-projects at all" and says the wrong thing."""
     try:
         from projects.models import Project
 
-        proj_qs = (
-            Project.objects.exclude(status__in=Project.TERMINAL_STATUSES)
-            .prefetch_related("members")
-            .order_by("-updated_at")
-        )
-        if not is_superadmin(user):
-            proj_qs = proj_qs.filter(members=user)
+        all_qs = Project.objects.prefetch_related("members").order_by("-updated_at")
+        active_qs = all_qs.exclude(status__in=Project.TERMINAL_STATUSES)
 
         rows = []
-        for p in proj_qs[:12]:
+        for p in active_qs[:12]:
             members = [_person_name(m) for m in p.members.all()[:8]]
             rows.append(
                 {
@@ -300,8 +305,9 @@ def _add_projects(ctx: dict, user) -> None:
                     "members": members,
                 }
             )
-        ctx["active_projects_count"] = proj_qs.count()
+        ctx["active_projects_count"] = active_qs.count()
         ctx["active_projects"] = rows
+        ctx["total_projects_count"] = all_qs.count()
     except Exception:
         pass
 
@@ -424,6 +430,22 @@ def _add_tickets(ctx: dict, user) -> None:
         ]
     except Exception:
         pass
+
+
+def _add_client_names(ctx: dict) -> None:
+    """Full client name list (names only — no contact/commercial detail), added
+    unconditionally regardless of Sales module access or list size. Mini-projects
+    and the content calendar reference clients by name company-wide, so EDITH
+    needs to recognize a client mentioned in a question ("gate eight pending
+    task") even for a user without Sales access, and even if that client isn't
+    among the first handful alphabetically (see `_add_clients` below, which is
+    capped and Sales-gated because it carries real contact details)."""
+    try:
+        from sales.models import Client
+
+        ctx["client_names"] = list(Client.objects.order_by("name").values_list("name", flat=True))
+    except Exception:
+        ctx["client_names"] = []
 
 
 def _add_clients(ctx: dict) -> None:
@@ -564,6 +586,12 @@ def context_as_text(ctx: dict) -> str:
         )
     )
 
+    names = ctx.get("client_names") or []
+    if names:
+        shown = ", ".join(names[:60])
+        more = f" (+{len(names) - 60} more)" if len(names) > 60 else ""
+        lines.append(f"Known client names (match against these for any client question): {shown}{more}")
+
     if "employees_count" in ctx:
         level = ctx.get("employees_detail_level") or "directory"
         lines.append(f"Active employees/team ({level}): {ctx['employees_count']}")
@@ -634,7 +662,12 @@ def context_as_text(ctx: dict) -> str:
             )
 
     if "active_projects_count" in ctx:
-        lines.append(f"Active projects: {ctx['active_projects_count']}")
+        lines.append(f"Active mini-projects (assigned/in_progress, company-wide): {ctx['active_projects_count']}")
+        if "total_projects_count" in ctx:
+            lines.append(
+                f"Total mini-projects incl. completed/QC/approved: {ctx['total_projects_count']} "
+                "— do not say there are no mini-projects if this is > 0, even when the active count is 0"
+            )
         for p in ctx.get("active_projects") or []:
             members = ", ".join(p.get("members") or []) or "—"
             lines.append(

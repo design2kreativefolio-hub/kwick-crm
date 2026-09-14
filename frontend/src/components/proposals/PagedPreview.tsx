@@ -37,6 +37,17 @@ export function PagedPreview({ content }: { content: ProposalContent }) {
     const debounceTimer = setTimeout(() => {
       const iframe = iframeRef.current;
       if (!iframe) return;
+      // Editing a field rebuilds this whole srcdoc, which reloads the iframe
+      // and would snap it back to the top. Carry the current scroll offset
+      // into the new document and keep re-applying it (Paged.js repaginates
+      // asynchronously, growing the page height over ~1-2s) until the user
+      // scrolls/clicks or the settle window passes.
+      let prevScroll = 0;
+      try {
+        prevScroll = iframe.contentWindow?.scrollY || 0;
+      } catch {
+        prevScroll = 0;
+      }
       const doc = `<!DOCTYPE html>
 <html>
 <head>
@@ -46,6 +57,21 @@ export function PagedPreview({ content }: { content: ProposalContent }) {
   window.onerror = function (message, source, line, col) {
     parent.postMessage({ type: "proposal-preview-error", message: message + " (line " + line + ")" }, "*");
   };
+  (function () {
+    var y = ${prevScroll};
+    if (!y) return;
+    var stopped = false;
+    ["wheel", "touchstart", "keydown", "mousedown"].forEach(function (ev) {
+      addEventListener(ev, function () { stopped = true; }, { passive: true, once: true });
+    });
+    var n = 0;
+    var id = setInterval(function () {
+      if (stopped) { clearInterval(id); return; }
+      window.scrollTo(0, y);
+      if (++n > 40) clearInterval(id);
+    }, 50);
+    addEventListener("DOMContentLoaded", function () { window.scrollTo(0, y); });
+  })();
 </script>
 </head>
 <body>

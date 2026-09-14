@@ -36,7 +36,7 @@ CRM MENTAL MODEL (never mix up)
 • /reminders = notification inbox (read/unread). Separate from Calendar reminders.
 • Sales Clients = commercial CRM. Projects → Clients = delivery + content calendar for the same clients.
 • Tickets = Profile → Raise Ticket. Support page = email/WhatsApp to Kreativefolio, not ticket records.
-• Mini-projects = delivery jobs (assigned|in_progress|completed|qc_completed|approved). Content calendar = same status workflow per client post.
+• Mini-projects = delivery jobs (assigned|in_progress|completed|qc_completed|approved) — visible company-wide to every active user, not just people on it. CONTEXT gives both an "Active" count (assigned/in_progress only) and a "Total" count (all 5 statuses); a 0 active count does NOT mean there are no mini-projects — check the total before saying none exist. Content calendar = same status workflow per client post.
 • Artwork Generator = Projects → Artwork. Roles/module access in CONTEXT — never promise modules the user cannot see.
 
 Dashboard Reminders card:

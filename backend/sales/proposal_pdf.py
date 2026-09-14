@@ -121,9 +121,12 @@ def build_context(proposal) -> dict:
             continue
         item = dict(item)
         item["image_urls"] = [resolve(u) for u in item.get("image_urls", [])]
+        # Match against a "custom:<id>" entry in content_order (the drag order).
+        item["order_key"] = f"custom:{item.get('id') or ''}"
         custom_sections.append(item)
 
     return {
+        "content_order": content["content_order"],
         "home": home,
         "client_display_name": client_display_name,
         "about_kreativefolio": content["about_kreativefolio"],
@@ -136,6 +139,7 @@ def build_context(proposal) -> dict:
         "social_medias": content["social_medias"],
         "visible_platforms": visible_platforms,
         "what_we_can_do": content["what_we_can_do"],
+        "pricing_heading": content.get("pricing_heading") or "Pricing",
         "visible_pricing": visible_pricing,
         "terms": content["terms"],
         "terms_html": terms_html(content["terms"]),
@@ -172,4 +176,4 @@ def render_proposal_pdf(proposal, request) -> str:
     saved_path = default_storage.save(key, ContentFile(pdf_bytes))
     from common.media_urls import deliver_storage_url
 
-    return deliver_storage_url(request, saved_path)
+    return deliver_storage_url(request, saved_path, filename=f"{slug}.pdf")

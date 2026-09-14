@@ -399,7 +399,7 @@ class MessageAttachmentView(APIView):
             conversation=convo,
             sender=request.user,
             body=(request.data.get("body") or "").strip()[:4000],
-            attachment_url=persist_storage_url(request, saved_path),
+            attachment_url=persist_storage_url(request, saved_path, filename=upload.name),
             attachment_type=kind,
             attachment_name=upload.name,
         )

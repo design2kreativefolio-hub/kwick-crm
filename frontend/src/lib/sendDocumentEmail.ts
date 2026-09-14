@@ -1,6 +1,7 @@
 /** Open the user's email client with a compose draft and download the PDF for attaching.
  *  Browsers cannot auto-attach files to mailto:, so we download the PDF and open a draft.
  */
+import { openUploadedFile } from "./files";
 
 export type SendDocumentEmailArgs = {
   /** Absolute or same-origin URL to the PDF */
@@ -43,7 +44,7 @@ export async function sendDocumentViaEmail(args: SendDocumentEmailArgs): Promise
 
   let blob: Blob | null = null;
   try {
-    const res = await fetch(args.pdfUrl, { mode: "cors", credentials: "omit" });
+    const res = await fetch(args.pdfUrl, { mode: "cors", credentials: "include" });
     if (res.ok) blob = await res.blob();
   } catch {
     blob = null;
@@ -70,7 +71,7 @@ export async function sendDocumentViaEmail(args: SendDocumentEmailArgs): Promise
     triggerDownload(blob, filename);
   } else {
     // CORS blocked — open PDF so the user can save it, then compose email.
-    window.open(args.pdfUrl, "_blank", "noopener,noreferrer");
+    void openUploadedFile(args.pdfUrl);
   }
 
   if (to) openMailto(to, subject, body);

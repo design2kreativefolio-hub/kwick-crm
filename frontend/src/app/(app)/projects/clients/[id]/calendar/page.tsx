@@ -4,6 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { MonthYearSelect } from "@/components/MonthYearSelect";
@@ -1102,16 +1103,14 @@ export default function ClientCalendarPage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span className="muted" style={{ fontSize: 12 }}>Attachments</span>
                     {existing.map((url, i) => (
-                      <a
+                      <MediaFileLink
                         key={url}
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
+                        url={url}
                         className="muted"
                         style={{ fontSize: 12, color: "var(--gold)" }}
                       >
                         <i className="bi bi-download" /> Attachment {i + 1}
-                      </a>
+                      </MediaFileLink>
                     ))}
                   </div>
                 );

@@ -16,6 +16,7 @@ import {
   mergedLetterContent,
 } from "@/lib/hrLetterContent";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
+import { openUploadedFile } from "@/lib/files";
 import { useToast } from "@/lib/toast";
 import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
@@ -138,7 +139,7 @@ export default function HrLetterBuilderPage() {
     setExporting(true);
     try {
       const res = await api<{ file_url: string }>(`/api/hr/letters/${id}/pdf`, { method: "POST" });
-      window.open(res.file_url, "_blank");
+      void openUploadedFile(res.file_url);
       showToast("PDF exported.");
     } catch (err: any) {
       showToast(err instanceof ApiError ? "Couldn't export PDF." : err.message, "error");

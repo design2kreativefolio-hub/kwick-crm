@@ -234,6 +234,6 @@ export function buildLetterHtml(docType: DocType, content: LetterContent, _docum
       </tr>
     </table>
     ${bodyHtml(docType, content)}
-    <div class="powered-by">Powered By Kwick</div>
+    <div class="powered-by">Powered By Kreativefolio</div>
   </div>`;
 }

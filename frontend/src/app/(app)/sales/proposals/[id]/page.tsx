@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { Reorder, useDragControls } from "framer-motion";
 import { useParams } from "next/navigation";
 
 import { BackLink } from "@/components/BackLink";
 import { DatePicker } from "@/components/DatePicker";
 import { DocNameField } from "@/components/DocNameField";
 import { Select } from "@/components/Select";
+import { EditableLabel } from "@/components/proposals/EditableLabel";
 import { EditableTable } from "@/components/proposals/EditableTable";
+import { GrowTextarea } from "@/components/proposals/GrowTextarea";
 import { ImageGalleryField } from "@/components/proposals/ImageGalleryField";
 import { ImageUploadField } from "@/components/proposals/ImageUploadField";
 import { PagedPreview } from "@/components/proposals/PagedPreview";
@@ -21,12 +24,15 @@ import {
   SOCIAL_PLATFORM_OPTIONS,
   SocialPlatform,
   SocialPlatformBlock,
+  customSectionKey,
   defaultCustomSection,
   defaultPricingItem,
   defaultSocialPlatform,
   mergedContent,
+  normalizeContentOrder,
 } from "@/lib/proposalContent";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { openUploadedFile } from "@/lib/files";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -116,6 +122,36 @@ function SectionCard({
         </div>
       )}
     </div>
+  );
+}
+
+/** One draggable row in the section list: a grip handle (the only
+ *  thing that starts a drag — dragListener is off so the form fields inside
+ *  stay usable) plus the section's card. */
+function ContentSectionItem({ sectionKey, children }: { sectionKey: string; children: React.ReactNode }) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      as="div"
+      value={sectionKey}
+      dragListener={false}
+      dragControls={controls}
+      style={{ listStyle: "none" }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onPointerDown={(e) => controls.start(e)}
+          aria-label="Drag to reorder section"
+          title="Drag to reorder"
+          style={{ cursor: "grab", padding: "8px 4px", marginTop: 4, color: "var(--text-muted)", touchAction: "none" }}
+        >
+          <i className="bi bi-grip-vertical" />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+      </div>
+    </Reorder.Item>
   );
 }
 
@@ -221,7 +257,7 @@ export default function ProposalBuilderPage() {
     setExporting(kind);
     try {
       const res = await api<{ file_url: string }>(`/api/sales/proposals/${id}/${kind}`, { method: "POST" });
-      window.open(res.file_url, "_blank");
+      void openUploadedFile(res.file_url);
     } catch (err: any) {
       showToast(err instanceof ApiError ? `Couldn't generate ${kind.toUpperCase()}.` : err.message, "error");
     } finally {
@@ -307,13 +343,583 @@ export default function ProposalBuilderPage() {
       const item = defaultCustomSection();
       setCollapsed((c) => {
         const next = new Set(c);
-        next.delete(`custom:${item.id}`);
+        next.delete(customSectionKey(item.id));
         return next;
       });
-      return { ...prev, custom_sections: [...prev.custom_sections, item] };
+      return {
+        ...prev,
+        custom_sections: [...prev.custom_sections, item],
+        content_order: [...prev.content_order, customSectionKey(item.id)],
+      };
     });
   const removeCustom = (idx: number) =>
-    setContent((prev) => (prev ? { ...prev, custom_sections: prev.custom_sections.filter((_, i) => i !== idx) } : prev));
+    setContent((prev) => {
+      if (!prev) return prev;
+      const removed = prev.custom_sections[idx];
+      const removedKey = removed ? customSectionKey(removed.id) : null;
+      return {
+        ...prev,
+        custom_sections: prev.custom_sections.filter((_, i) => i !== idx),
+        content_order: prev.content_order.filter((k) => k !== removedKey),
+      };
+    });
+
+  // Every built-in non-Home section, keyed so it can be rendered in
+  // content.content_order (the drag order). Custom sections are rendered
+  // separately by renderReorderable(); Home is pinned above the list.
+  const contentSections: Record<string, React.ReactNode> = {
+    about_kreativefolio: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.about_kreativefolio.heading}
+            onChange={(v) => updateSection("about_kreativefolio", { heading: v })}
+            fallback="About Kreativefolio"
+          />
+        }
+        icon="bi-building"
+        enabled={content.about_kreativefolio.enabled}
+        onToggle={() => toggleSection("about_kreativefolio")}
+        collapsed={collapsed.has("about_kreativefolio")}
+        onToggleCollapsed={() => toggleCollapsed("about_kreativefolio")}
+        pageBreakBefore={content.about_kreativefolio.page_break_before}
+        onPageBreakChange={(v) => updateSection("about_kreativefolio", { page_break_before: v })}
+      >
+        <RichTextEditor
+          value={content.about_kreativefolio.content}
+          onChange={(html) => updateSection("about_kreativefolio", { content: html })}
+        />
+      </SectionCard>
+    ),
+    about_client: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.about_client.heading}
+            onChange={(v) => updateSection("about_client", { heading: v })}
+            fallback="About the Client"
+          />
+        }
+        icon="bi-person-badge-fill"
+        enabled={content.about_client.enabled}
+        onToggle={() => toggleSection("about_client")}
+        collapsed={collapsed.has("about_client")}
+        onToggleCollapsed={() => toggleCollapsed("about_client")}
+        pageBreakBefore={content.about_client.page_break_before}
+        onPageBreakChange={(v) => updateSection("about_client", { page_break_before: v })}
+      >
+        <RichTextEditor value={content.about_client.content} onChange={(html) => updateSection("about_client", { content: html })} />
+        <ImageGalleryField
+          proposalId={Number(id)}
+          urls={content.about_client.image_urls}
+          onChange={(image_urls) => updateSection("about_client", { image_urls })}
+          label="Images"
+        />
+      </SectionCard>
+    ),
+    traffic: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.traffic.heading}
+            onChange={(v) => updateSection("traffic", { heading: v })}
+            fallback="Traffic"
+          />
+        }
+        icon="bi-graph-up-arrow"
+        enabled={content.traffic.enabled}
+        onToggle={() => toggleSection("traffic")}
+        collapsed={collapsed.has("traffic")}
+        onToggleCollapsed={() => toggleCollapsed("traffic")}
+        pageBreakBefore={content.traffic.page_break_before}
+        onPageBreakChange={(v) => updateSection("traffic", { page_break_before: v })}
+      >
+        <ImageGalleryField
+          proposalId={Number(id)}
+          urls={content.traffic.image_urls}
+          onChange={(image_urls) => updateSection("traffic", { image_urls })}
+          label="Images"
+        />
+      </SectionCard>
+    ),
+    technical_seo: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.technical_seo.heading}
+            onChange={(v) => updateSection("technical_seo", { heading: v })}
+            fallback="Technical SEO"
+          />
+        }
+        icon="bi-gear-fill"
+        enabled={content.technical_seo.enabled}
+        onToggle={() => toggleSection("technical_seo")}
+        collapsed={collapsed.has("technical_seo")}
+        onToggleCollapsed={() => toggleCollapsed("technical_seo")}
+        pageBreakBefore={content.technical_seo.page_break_before}
+        onPageBreakChange={(v) => updateSection("technical_seo", { page_break_before: v })}
+      >
+        <RichTextEditor value={content.technical_seo.content} onChange={(html) => updateSection("technical_seo", { content: html })} />
+      </SectionCard>
+    ),
+    keyword_strategy: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.keyword_strategy.heading}
+            onChange={(v) => updateSection("keyword_strategy", { heading: v })}
+            fallback="Keyword Strategy"
+          />
+        }
+        icon="bi-search"
+        enabled={content.keyword_strategy.enabled}
+        onToggle={() => toggleSection("keyword_strategy")}
+        collapsed={collapsed.has("keyword_strategy")}
+        onToggleCollapsed={() => toggleCollapsed("keyword_strategy")}
+        pageBreakBefore={content.keyword_strategy.page_break_before}
+        onPageBreakChange={(v) => updateSection("keyword_strategy", { page_break_before: v })}
+      >
+        <ImageGalleryField
+          proposalId={Number(id)}
+          urls={content.keyword_strategy.image_urls}
+          onChange={(image_urls) => updateSection("keyword_strategy", { image_urls })}
+          label="Images"
+        />
+      </SectionCard>
+    ),
+    onpage_seo: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.onpage_seo.heading}
+            onChange={(v) => updateSection("onpage_seo", { heading: v })}
+            fallback="Onpage SEO"
+          />
+        }
+        icon="bi-file-earmark-code-fill"
+        enabled={content.onpage_seo.enabled}
+        onToggle={() => toggleSection("onpage_seo")}
+        collapsed={collapsed.has("onpage_seo")}
+        onToggleCollapsed={() => toggleCollapsed("onpage_seo")}
+        pageBreakBefore={content.onpage_seo.page_break_before}
+        onPageBreakChange={(v) => updateSection("onpage_seo", { page_break_before: v })}
+      >
+        <RichTextEditor value={content.onpage_seo.content} onChange={(html) => updateSection("onpage_seo", { content: html })} />
+        <ImageGalleryField
+          proposalId={Number(id)}
+          urls={content.onpage_seo.image_urls}
+          onChange={(image_urls) => updateSection("onpage_seo", { image_urls })}
+          label="Images"
+        />
+      </SectionCard>
+    ),
+    geo: (
+      <SectionCard
+        label={
+          <EditableLabel value={content.geo.heading} onChange={(v) => updateSection("geo", { heading: v })} fallback="GEO" />
+        }
+        icon="bi-robot"
+        enabled={content.geo.enabled}
+        onToggle={() => toggleSection("geo")}
+        collapsed={collapsed.has("geo")}
+        onToggleCollapsed={() => toggleCollapsed("geo")}
+        pageBreakBefore={content.geo.page_break_before}
+        onPageBreakChange={(v) => updateSection("geo", { page_break_before: v })}
+      >
+        <div>
+          <div className="field-label" style={{ marginTop: 0 }}>
+            <EditableLabel
+              value={content.geo.description_label}
+              onChange={(v) => updateSection("geo", { description_label: v })}
+              fallback="Description"
+            />
+          </div>
+          <textarea
+            className="input"
+            rows={3}
+            value={content.geo.description}
+            onChange={(e) => updateSection("geo", { description: e.target.value })}
+            style={{ resize: "vertical" }}
+          />
+        </div>
+        <div>
+          <div className="field-label">
+            <EditableLabel
+              value={content.geo.recommendations_label}
+              onChange={(v) => updateSection("geo", { recommendations_label: v })}
+              fallback="Recommendations"
+            />
+          </div>
+          <RichTextEditor value={content.geo.recommendations} onChange={(html) => updateSection("geo", { recommendations: html })} />
+        </div>
+        <div>
+          <div className="field-label">
+            <EditableLabel
+              value={content.geo.approach_label}
+              onChange={(v) => updateSection("geo", { approach_label: v })}
+              fallback="Our Approach"
+            />
+          </div>
+          <RichTextEditor value={content.geo.approach} onChange={(html) => updateSection("geo", { approach: html })} />
+        </div>
+      </SectionCard>
+    ),
+    social_medias: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.social_medias.heading}
+            onChange={(v) => updateSection("social_medias", { heading: v })}
+            fallback="Social Medias"
+          />
+        }
+        icon="bi-share-fill"
+        enabled={content.social_medias.enabled}
+        onToggle={() => toggleSection("social_medias")}
+        collapsed={collapsed.has("social_medias")}
+        onToggleCollapsed={() => toggleCollapsed("social_medias")}
+        pageBreakBefore={content.social_medias.page_break_before}
+        onPageBreakChange={(v) => updateSection("social_medias", { page_break_before: v })}
+      >
+        {availablePlatforms.length > 0 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {availablePlatforms.map((o) => (
+              <button key={o.value} type="button" className="btn btn-ghost btn-sm" onClick={() => addPlatform(o.value)}>
+                <i className={`bi ${o.icon}`} /> {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {content.social_medias.platforms.map((p) => {
+          const meta = SOCIAL_PLATFORM_OPTIONS.find((o) => o.value === p.platform)!;
+          return (
+            <div key={p.platform} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14, opacity: p.enabled ? 1 : 0.55 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <i className={`bi ${meta.icon}`} style={{ color: "var(--gold)" }} />
+                <EditableLabel
+                  value={p.heading}
+                  onChange={(v) => updatePlatform(p.platform, { heading: v })}
+                  fallback={meta.label}
+                  style={{ flex: 1, fontWeight: 600 }}
+                />
+                <button
+                  type="button"
+                  className={`toggle-switch${p.enabled ? " on" : ""}`}
+                  onClick={() => updatePlatform(p.platform, { enabled: !p.enabled })}
+                  aria-label={`Toggle ${meta.label}`}
+                />
+                <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => removePlatform(p.platform)}>
+                  <i className="bi bi-trash-fill" />
+                </button>
+              </div>
+              <label style={pageBreakLabel}>
+                <input
+                  type="checkbox"
+                  checked={!!p.page_break_before}
+                  onChange={(e) => updatePlatform(p.platform, { page_break_before: e.target.checked })}
+                />
+                Start on new page
+              </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <div className="field-label" style={{ marginTop: 0 }}>
+                    <EditableLabel
+                      value={p.description_label}
+                      onChange={(v) => updatePlatform(p.platform, { description_label: v })}
+                      fallback="Description"
+                    />
+                  </div>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    value={p.description}
+                    onChange={(e) => updatePlatform(p.platform, { description: e.target.value })}
+                    style={{ resize: "vertical" }}
+                  />
+                </div>
+                <ImageGalleryField
+                  proposalId={Number(id)}
+                  urls={p.image_urls}
+                  onChange={(image_urls) => updatePlatform(p.platform, { image_urls })}
+                  label="Images"
+                />
+                <div>
+                  <div className="field-label" style={{ marginTop: 0 }}>
+                    <EditableLabel
+                      value={p.key_problems_label}
+                      onChange={(v) => updatePlatform(p.platform, { key_problems_label: v })}
+                      fallback="Key Problems Identified"
+                    />
+                  </div>
+                  <RichTextEditor value={p.key_problems} onChange={(html) => updatePlatform(p.platform, { key_problems: html })} />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Strategy</label>
+                  <EditableTable
+                    columns={[
+                      { key: "category", label: p.col_category },
+                      { key: "details", label: p.col_details },
+                      { key: "goal", label: p.col_goal },
+                    ]}
+                    rows={p.strategy_rows}
+                    onChange={(rows) => updatePlatform(p.platform, { strategy_rows: rows })}
+                    emptyRow={() => ({ category: "", details: "", goal: "" })}
+                    addLabel="Add row"
+                    onHeaderChange={(key, label) =>
+                      updatePlatform(p.platform, {
+                        [`col_${key}`]: label,
+                      } as Partial<SocialPlatformBlock>)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </SectionCard>
+    ),
+    what_we_can_do: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.what_we_can_do.heading}
+            onChange={(v) => updateSection("what_we_can_do", { heading: v })}
+            fallback="What We Can Do"
+          />
+        }
+        icon="bi-lightbulb-fill"
+        enabled={content.what_we_can_do.enabled}
+        onToggle={() => toggleSection("what_we_can_do")}
+        collapsed={collapsed.has("what_we_can_do")}
+        onToggleCollapsed={() => toggleCollapsed("what_we_can_do")}
+        pageBreakBefore={content.what_we_can_do.page_break_before}
+        onPageBreakChange={(v) => updateSection("what_we_can_do", { page_break_before: v })}
+      >
+        <EditableTable
+          columns={[
+            { key: "area", label: content.what_we_can_do.col_area },
+            { key: "details", label: content.what_we_can_do.col_details },
+          ]}
+          rows={content.what_we_can_do.rows}
+          onChange={(rows) => updateSection("what_we_can_do", { rows })}
+          emptyRow={() => ({ area: "", details: "" })}
+          addLabel="Add row"
+          onHeaderChange={(key, label) =>
+            updateSection("what_we_can_do", { [`col_${key}`]: label } as Partial<ProposalContent["what_we_can_do"]>)
+          }
+        />
+      </SectionCard>
+    ),
+    pricing: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.pricing_heading}
+            onChange={(v) => setContent((prev) => (prev ? { ...prev, pricing_heading: v } : prev))}
+            fallback="Pricing"
+          />
+        }
+        icon="bi-tag-fill"
+        enabled={content.pricing.length > 0}
+        collapsed={collapsed.has("pricing")}
+        onToggleCollapsed={() => toggleCollapsed("pricing")}
+        toggleDisabled
+      >
+        {content.pricing.map((item, idx) => (
+          <div key={idx} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14, opacity: item.enabled ? 1 : 0.55 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+              <GrowTextarea
+                value={item.service_name}
+                onChange={(v) => updatePricing(idx, { service_name: v })}
+                placeholder="Service name"
+                ariaLabel="Service name"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className={`toggle-switch${item.enabled ? " on" : ""}`}
+                onClick={() => updatePricing(idx, { enabled: !item.enabled })}
+                aria-label={`Toggle ${item.service_name}`}
+              />
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => removePricing(idx)}>
+                <i className="bi bi-trash-fill" />
+              </button>
+            </div>
+            <label style={pageBreakLabel}>
+              <input
+                type="checkbox"
+                checked={!!item.page_break_before}
+                onChange={(e) => updatePricing(idx, { page_break_before: e.target.checked })}
+              />
+              Start on new page
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={fieldGrid}>
+                <div>
+                  <GrowTextarea
+                    className="field-label-input"
+                    style={{ marginTop: 0 }}
+                    value={item.ad_budget_label}
+                    onChange={(v) => updatePricing(idx, { ad_budget_label: v })}
+                    placeholder="Field label"
+                    ariaLabel="Ad budget label"
+                  />
+                  <GrowTextarea
+                    value={item.ad_budget}
+                    onChange={(v) => updatePricing(idx, { ad_budget: v })}
+                    ariaLabel="Ad budget"
+                  />
+                </div>
+                <div>
+                  <GrowTextarea
+                    className="field-label-input"
+                    style={{ marginTop: 0 }}
+                    value={item.management_fee_label}
+                    onChange={(v) => updatePricing(idx, { management_fee_label: v })}
+                    placeholder="Field label"
+                    ariaLabel="Management fee label"
+                  />
+                  <GrowTextarea
+                    value={item.management_fee}
+                    onChange={(v) => updatePricing(idx, { management_fee: v })}
+                    ariaLabel="Management fee"
+                  />
+                </div>
+              </div>
+              <EditableTable
+                columns={[
+                  { key: "category", label: item.col_category },
+                  { key: "details", label: item.col_details },
+                  { key: "frequency", label: item.col_frequency },
+                ]}
+                rows={item.rows}
+                onChange={(rows) => updatePricing(idx, { rows })}
+                emptyRow={() => ({ category: "", details: "", frequency: "" })}
+                addLabel="Add row"
+                onHeaderChange={(key, label) =>
+                  updatePricing(idx, { [`col_${key}`]: label } as Partial<PricingItem>)
+                }
+              />
+            </div>
+          </div>
+        ))}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={addPricing}>
+          <i className="bi bi-plus-lg" /> Add pricing section
+        </button>
+      </SectionCard>
+    ),
+    terms: (
+      <SectionCard
+        label={
+          <EditableLabel
+            value={content.terms.heading}
+            onChange={(v) => updateSection("terms", { heading: v })}
+            fallback="Terms"
+          />
+        }
+        icon="bi-file-text-fill"
+        enabled={content.terms.enabled}
+        onToggle={() => toggleSection("terms")}
+        collapsed={collapsed.has("terms")}
+        onToggleCollapsed={() => toggleCollapsed("terms")}
+        pageBreakBefore={content.terms.page_break_before}
+        onPageBreakChange={(v) => updateSection("terms", { page_break_before: v })}
+      >
+        <div style={fieldGrid}>
+          <div>
+            <label className="field-label" style={{ marginTop: 0 }}>Duration</label>
+            <GrowTextarea value={content.terms.duration} onChange={(v) => updateSection("terms", { duration: v })} ariaLabel="Duration" />
+          </div>
+          <div>
+            <label className="field-label" style={{ marginTop: 0 }}>Payment %</label>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              max="100"
+              value={content.terms.payment_percent}
+              onChange={(e) => updateSection("terms", { payment_percent: e.target.value })}
+            />
+          </div>
+        </div>
+      </SectionCard>
+    ),
+    full_page_image: (
+      <SectionCard
+        label="Full Page Image"
+        icon="bi-image-fill"
+        enabled={content.full_page_image.enabled}
+        onToggle={() => toggleSection("full_page_image")}
+        collapsed={collapsed.has("full_page_image")}
+        onToggleCollapsed={() => toggleCollapsed("full_page_image")}
+      >
+        <p className="muted" style={{ fontSize: 12.5, margin: "0 0 6px" }}>
+          Renders full-bleed, without the header/footer used on every other page.
+        </p>
+        <ImageUploadField
+          proposalId={Number(id)}
+          value={content.full_page_image.image_url}
+          onChange={(url) => updateSection("full_page_image", { image_url: url })}
+          label="Image"
+        />
+      </SectionCard>
+    ),
+  };
+
+  const renderCustomCard = (item: CustomSection, idx: number) => (
+    <SectionCard
+      label={
+        <GrowTextarea
+          value={item.title}
+          placeholder="Section title"
+          ariaLabel="Section title"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onChange={(v) => updateCustom(idx, { title: v })}
+          style={{
+            fontWeight: 600,
+            fontSize: 14,
+            padding: "4px 10px",
+            minHeight: 34,
+            background: "var(--surface)",
+          }}
+        />
+      }
+      icon="bi-plus-square-fill"
+      enabled={item.enabled}
+      onToggle={() => updateCustom(idx, { enabled: !item.enabled })}
+      collapsed={collapsed.has(customSectionKey(item.id))}
+      onToggleCollapsed={() => toggleCollapsed(customSectionKey(item.id))}
+      pageBreakBefore={item.page_break_before}
+      onPageBreakChange={(v) => updateCustom(idx, { page_break_before: v })}
+      onRemove={() => removeCustom(idx)}
+    >
+      <label className="field-label" style={{ marginTop: 0 }}>
+        Description
+      </label>
+      <RichTextEditor value={item.content} onChange={(html) => updateCustom(idx, { content: html })} />
+      <label className="field-label">Images</label>
+      <ImageGalleryField
+        proposalId={Number(id)}
+        urls={item.image_urls}
+        onChange={(image_urls) => updateCustom(idx, { image_urls })}
+      />
+    </SectionCard>
+  );
+
+  // Full render order of every non-Home section (built-ins + custom:<id>).
+  const sectionOrder = normalizeContentOrder(
+    content.content_order,
+    content.custom_sections.map((s) => s.id)
+  );
+  const renderReorderable = (key: string): React.ReactNode => {
+    if (key.startsWith("custom:")) {
+      const id = key.slice("custom:".length);
+      const idx = content.custom_sections.findIndex((s) => s.id === id);
+      return idx === -1 ? null : renderCustomCard(content.custom_sections[idx], idx);
+    }
+    return contentSections[key] ?? null;
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -338,9 +944,13 @@ export default function ProposalBuilderPage() {
           <button className="btn btn-ghost" disabled={sending || exporting !== null} onClick={sendToEmail}>
             <i className="bi bi-envelope" /> {sending ? "Preparing…" : "Send to"}
           </button>
+          {/* Word export hidden for now — backend /docx endpoint + generator
+              and the exportAs("docx") path are kept intact; restore the
+              button here to bring it back.
           <button className="btn btn-ghost" disabled={exporting !== null} onClick={() => exportAs("docx")}>
             <i className="bi bi-file-earmark-word-fill" /> {exporting === "docx" ? "Exporting…" : "Export Word"}
           </button>
+          */}
           <button className="btn btn-accent" disabled={exporting !== null} onClick={() => exportAs("pdf")}>
             <i className="bi bi-file-earmark-pdf-fill" /> {exporting === "pdf" ? "Exporting…" : "Export PDF"}
           </button>
@@ -361,7 +971,7 @@ export default function ProposalBuilderPage() {
             <div style={fieldGrid}>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>QTN No</label>
-                <input className="input" value={home.qtn_no} onChange={(e) => updateSection("home", { qtn_no: e.target.value })} />
+                <GrowTextarea value={home.qtn_no} onChange={(v) => updateSection("home", { qtn_no: v })} ariaLabel="QTN No" />
               </div>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Date</label>
@@ -370,7 +980,7 @@ export default function ProposalBuilderPage() {
             </div>
             <div>
               <label className="field-label">Cover title</label>
-              <input className="input" value={home.title} onChange={(e) => updateSection("home", { title: e.target.value })} />
+              <GrowTextarea value={home.title} onChange={(v) => updateSection("home", { title: v })} ariaLabel="Cover title" />
             </div>
             <div>
               <label className="field-label">Pick a client</label>
@@ -379,15 +989,15 @@ export default function ProposalBuilderPage() {
             <div style={fieldGrid}>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Client name</label>
-                <input className="input" value={home.client_name} onChange={(e) => updateSection("home", { client_name: e.target.value })} />
+                <GrowTextarea value={home.client_name} onChange={(v) => updateSection("home", { client_name: v })} ariaLabel="Client name" />
               </div>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Client email</label>
-                <input className="input" value={home.client_email} onChange={(e) => updateSection("home", { client_email: e.target.value })} />
+                <GrowTextarea value={home.client_email} onChange={(v) => updateSection("home", { client_email: v })} ariaLabel="Client email" />
               </div>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Client phone</label>
-                <input className="input" value={home.client_phone} onChange={(e) => updateSection("home", { client_phone: e.target.value })} />
+                <GrowTextarea value={home.client_phone} onChange={(v) => updateSection("home", { client_phone: v })} ariaLabel="Client phone" />
               </div>
             </div>
             <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
@@ -395,431 +1005,22 @@ export default function ProposalBuilderPage() {
             </p>
           </SectionCard>
 
-          {/* 2. About Kreativefolio */}
-          <SectionCard
-            label="About Kreativefolio"
-            icon="bi-building"
-            enabled={content.about_kreativefolio.enabled}
-            onToggle={() => toggleSection("about_kreativefolio")}
-            collapsed={collapsed.has("about_kreativefolio")}
-            onToggleCollapsed={() => toggleCollapsed("about_kreativefolio")}
-            pageBreakBefore={content.about_kreativefolio.page_break_before}
-            onPageBreakChange={(v) => updateSection("about_kreativefolio", { page_break_before: v })}
+          {/* Every non-Home section — drag the grip handle to reorder. */}
+          <Reorder.Group
+            as="div"
+            axis="y"
+            values={sectionOrder}
+            onReorder={(order) =>
+              setContent((prev) => (prev ? { ...prev, content_order: order as string[] } : prev))
+            }
+            style={{ display: "flex", flexDirection: "column", gap: 14, listStyle: "none", padding: 0, margin: 0 }}
           >
-            <RichTextEditor
-              value={content.about_kreativefolio.content}
-              onChange={(html) => updateSection("about_kreativefolio", { content: html })}
-            />
-          </SectionCard>
-
-          {/* 3. About the Client */}
-          <SectionCard
-            label="About the Client"
-            icon="bi-person-badge-fill"
-            enabled={content.about_client.enabled}
-            onToggle={() => toggleSection("about_client")}
-            collapsed={collapsed.has("about_client")}
-            onToggleCollapsed={() => toggleCollapsed("about_client")}
-            pageBreakBefore={content.about_client.page_break_before}
-            onPageBreakChange={(v) => updateSection("about_client", { page_break_before: v })}
-          >
-            <RichTextEditor value={content.about_client.content} onChange={(html) => updateSection("about_client", { content: html })} />
-            <ImageGalleryField
-              proposalId={Number(id)}
-              urls={content.about_client.image_urls}
-              onChange={(image_urls) => updateSection("about_client", { image_urls })}
-              label="Images"
-            />
-          </SectionCard>
-
-          {/* 4. Traffic */}
-          <SectionCard
-            label="Traffic"
-            icon="bi-graph-up-arrow"
-            enabled={content.traffic.enabled}
-            onToggle={() => toggleSection("traffic")}
-            collapsed={collapsed.has("traffic")}
-            onToggleCollapsed={() => toggleCollapsed("traffic")}
-            pageBreakBefore={content.traffic.page_break_before}
-            onPageBreakChange={(v) => updateSection("traffic", { page_break_before: v })}
-          >
-            <ImageGalleryField
-              proposalId={Number(id)}
-              urls={content.traffic.image_urls}
-              onChange={(image_urls) => updateSection("traffic", { image_urls })}
-              label="Images"
-            />
-          </SectionCard>
-
-          {/* 5. Technical SEO */}
-          <SectionCard
-            label="Technical SEO"
-            icon="bi-gear-fill"
-            enabled={content.technical_seo.enabled}
-            onToggle={() => toggleSection("technical_seo")}
-            collapsed={collapsed.has("technical_seo")}
-            onToggleCollapsed={() => toggleCollapsed("technical_seo")}
-            pageBreakBefore={content.technical_seo.page_break_before}
-            onPageBreakChange={(v) => updateSection("technical_seo", { page_break_before: v })}
-          >
-            <RichTextEditor value={content.technical_seo.content} onChange={(html) => updateSection("technical_seo", { content: html })} />
-          </SectionCard>
-
-          {/* 6. Keyword Strategy */}
-          <SectionCard
-            label="Keyword Strategy"
-            icon="bi-search"
-            enabled={content.keyword_strategy.enabled}
-            onToggle={() => toggleSection("keyword_strategy")}
-            collapsed={collapsed.has("keyword_strategy")}
-            onToggleCollapsed={() => toggleCollapsed("keyword_strategy")}
-            pageBreakBefore={content.keyword_strategy.page_break_before}
-            onPageBreakChange={(v) => updateSection("keyword_strategy", { page_break_before: v })}
-          >
-            <ImageGalleryField
-              proposalId={Number(id)}
-              urls={content.keyword_strategy.image_urls}
-              onChange={(image_urls) => updateSection("keyword_strategy", { image_urls })}
-              label="Images"
-            />
-          </SectionCard>
-
-          {/* 7. Onpage SEO */}
-          <SectionCard
-            label="Onpage SEO"
-            icon="bi-file-earmark-code-fill"
-            enabled={content.onpage_seo.enabled}
-            onToggle={() => toggleSection("onpage_seo")}
-            collapsed={collapsed.has("onpage_seo")}
-            onToggleCollapsed={() => toggleCollapsed("onpage_seo")}
-            pageBreakBefore={content.onpage_seo.page_break_before}
-            onPageBreakChange={(v) => updateSection("onpage_seo", { page_break_before: v })}
-          >
-            <RichTextEditor value={content.onpage_seo.content} onChange={(html) => updateSection("onpage_seo", { content: html })} />
-            <ImageGalleryField
-              proposalId={Number(id)}
-              urls={content.onpage_seo.image_urls}
-              onChange={(image_urls) => updateSection("onpage_seo", { image_urls })}
-              label="Images"
-            />
-          </SectionCard>
-
-          {/* 8. GEO */}
-          <SectionCard
-            label="GEO"
-            icon="bi-robot"
-            enabled={content.geo.enabled}
-            onToggle={() => toggleSection("geo")}
-            collapsed={collapsed.has("geo")}
-            onToggleCollapsed={() => toggleCollapsed("geo")}
-            pageBreakBefore={content.geo.page_break_before}
-            onPageBreakChange={(v) => updateSection("geo", { page_break_before: v })}
-          >
-            <div>
-              <label className="field-label" style={{ marginTop: 0 }}>Description</label>
-              <textarea
-                className="input"
-                rows={3}
-                value={content.geo.description}
-                onChange={(e) => updateSection("geo", { description: e.target.value })}
-                style={{ resize: "vertical" }}
-              />
-            </div>
-            <div>
-              <label className="field-label">Recommendations</label>
-              <RichTextEditor value={content.geo.recommendations} onChange={(html) => updateSection("geo", { recommendations: html })} />
-            </div>
-            <div>
-              <label className="field-label">Our Approach</label>
-              <RichTextEditor value={content.geo.approach} onChange={(html) => updateSection("geo", { approach: html })} />
-            </div>
-          </SectionCard>
-
-          {/* 9. Social Medias */}
-          <SectionCard
-            label="Social Medias"
-            icon="bi-share-fill"
-            enabled={content.social_medias.enabled}
-            onToggle={() => toggleSection("social_medias")}
-            collapsed={collapsed.has("social_medias")}
-            onToggleCollapsed={() => toggleCollapsed("social_medias")}
-            pageBreakBefore={content.social_medias.page_break_before}
-            onPageBreakChange={(v) => updateSection("social_medias", { page_break_before: v })}
-          >
-            {availablePlatforms.length > 0 && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {availablePlatforms.map((o) => (
-                  <button key={o.value} type="button" className="btn btn-ghost btn-sm" onClick={() => addPlatform(o.value)}>
-                    <i className={`bi ${o.icon}`} /> {o.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {content.social_medias.platforms.map((p) => {
-              const meta = SOCIAL_PLATFORM_OPTIONS.find((o) => o.value === p.platform)!;
-              return (
-                <div key={p.platform} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14, opacity: p.enabled ? 1 : 0.55 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                    <i className={`bi ${meta.icon}`} style={{ color: "var(--gold)" }} />
-                    <span style={{ flex: 1, fontWeight: 600 }}>{meta.label}</span>
-                    <button
-                      type="button"
-                      className={`toggle-switch${p.enabled ? " on" : ""}`}
-                      onClick={() => updatePlatform(p.platform, { enabled: !p.enabled })}
-                      aria-label={`Toggle ${meta.label}`}
-                    />
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => removePlatform(p.platform)}>
-                      <i className="bi bi-trash-fill" />
-                    </button>
-                  </div>
-                  <label style={pageBreakLabel}>
-                    <input
-                      type="checkbox"
-                      checked={!!p.page_break_before}
-                      onChange={(e) => updatePlatform(p.platform, { page_break_before: e.target.checked })}
-                    />
-                    Start on new page
-                  </label>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div>
-                      <label className="field-label" style={{ marginTop: 0 }}>Description</label>
-                      <textarea
-                        className="input"
-                        rows={2}
-                        value={p.description}
-                        onChange={(e) => updatePlatform(p.platform, { description: e.target.value })}
-                        style={{ resize: "vertical" }}
-                      />
-                    </div>
-                    <ImageGalleryField
-                      proposalId={Number(id)}
-                      urls={p.image_urls}
-                      onChange={(image_urls) => updatePlatform(p.platform, { image_urls })}
-                      label="Images"
-                    />
-                    <div>
-                      <label className="field-label" style={{ marginTop: 0 }}>Key problems identified</label>
-                      <RichTextEditor value={p.key_problems} onChange={(html) => updatePlatform(p.platform, { key_problems: html })} />
-                    </div>
-                    <div>
-                      <label className="field-label" style={{ marginTop: 0 }}>Strategy</label>
-                      <EditableTable
-                        columns={[
-                          { key: "category", label: "Category" },
-                          { key: "details", label: "Details" },
-                          { key: "goal", label: "Goal" },
-                        ]}
-                        rows={p.strategy_rows}
-                        onChange={(rows) => updatePlatform(p.platform, { strategy_rows: rows })}
-                        emptyRow={() => ({ category: "", details: "", goal: "" })}
-                        addLabel="Add row"
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </SectionCard>
-
-          {/* 10. What We Can Do */}
-          <SectionCard
-            label="What We Can Do"
-            icon="bi-lightbulb-fill"
-            enabled={content.what_we_can_do.enabled}
-            onToggle={() => toggleSection("what_we_can_do")}
-            collapsed={collapsed.has("what_we_can_do")}
-            onToggleCollapsed={() => toggleCollapsed("what_we_can_do")}
-            pageBreakBefore={content.what_we_can_do.page_break_before}
-            onPageBreakChange={(v) => updateSection("what_we_can_do", { page_break_before: v })}
-          >
-            <EditableTable
-              columns={[
-                { key: "area", label: "Area" },
-                { key: "details", label: "How Kreativefolio Can Help" },
-              ]}
-              rows={content.what_we_can_do.rows}
-              onChange={(rows) => updateSection("what_we_can_do", { rows })}
-              emptyRow={() => ({ area: "", details: "" })}
-              addLabel="Add row"
-            />
-          </SectionCard>
-
-          {/* 11. Pricing (repeatable) */}
-          <SectionCard
-            label="Pricing"
-            icon="bi-tag-fill"
-            enabled={content.pricing.length > 0}
-            collapsed={collapsed.has("pricing")}
-            onToggleCollapsed={() => toggleCollapsed("pricing")}
-            toggleDisabled
-          >
-            {content.pricing.map((item, idx) => (
-              <div key={idx} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14, opacity: item.enabled ? 1 : 0.55 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                  <input
-                    className="input"
-                    value={item.service_name}
-                    onChange={(e) => updatePricing(idx, { service_name: e.target.value })}
-                    placeholder="Service name"
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    className={`toggle-switch${item.enabled ? " on" : ""}`}
-                    onClick={() => updatePricing(idx, { enabled: !item.enabled })}
-                    aria-label={`Toggle ${item.service_name}`}
-                  />
-                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => removePricing(idx)}>
-                    <i className="bi bi-trash-fill" />
-                  </button>
-                </div>
-                <label style={pageBreakLabel}>
-                  <input
-                    type="checkbox"
-                    checked={!!item.page_break_before}
-                    onChange={(e) => updatePricing(idx, { page_break_before: e.target.checked })}
-                  />
-                  Start on new page
-                </label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div style={fieldGrid}>
-                    <div>
-                      <input
-                        className="field-label-input"
-                        style={{ marginTop: 0 }}
-                        value={item.ad_budget_label}
-                        onChange={(e) => updatePricing(idx, { ad_budget_label: e.target.value })}
-                        placeholder="Field label"
-                      />
-                      <input className="input" value={item.ad_budget} onChange={(e) => updatePricing(idx, { ad_budget: e.target.value })} />
-                    </div>
-                    <div>
-                      <input
-                        className="field-label-input"
-                        style={{ marginTop: 0 }}
-                        value={item.management_fee_label}
-                        onChange={(e) => updatePricing(idx, { management_fee_label: e.target.value })}
-                        placeholder="Field label"
-                      />
-                      <input className="input" value={item.management_fee} onChange={(e) => updatePricing(idx, { management_fee: e.target.value })} />
-                    </div>
-                  </div>
-                  <EditableTable
-                    columns={[
-                      { key: "category", label: "Category" },
-                      { key: "details", label: "Details" },
-                      { key: "frequency", label: "Frequency" },
-                    ]}
-                    rows={item.rows}
-                    onChange={(rows) => updatePricing(idx, { rows })}
-                    emptyRow={() => ({ category: "", details: "", frequency: "" })}
-                    addLabel="Add row"
-                  />
-                </div>
-              </div>
+            {sectionOrder.map((key) => (
+              <ContentSectionItem key={key} sectionKey={key}>
+                {renderReorderable(key)}
+              </ContentSectionItem>
             ))}
-            <button type="button" className="btn btn-ghost btn-sm" onClick={addPricing}>
-              <i className="bi bi-plus-lg" /> Add pricing section
-            </button>
-          </SectionCard>
-
-          {/* 12. Terms */}
-          <SectionCard
-            label="Terms"
-            icon="bi-file-text-fill"
-            enabled={content.terms.enabled}
-            onToggle={() => toggleSection("terms")}
-            collapsed={collapsed.has("terms")}
-            onToggleCollapsed={() => toggleCollapsed("terms")}
-            pageBreakBefore={content.terms.page_break_before}
-            onPageBreakChange={(v) => updateSection("terms", { page_break_before: v })}
-          >
-            <div style={fieldGrid}>
-              <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Duration</label>
-                <input className="input" value={content.terms.duration} onChange={(e) => updateSection("terms", { duration: e.target.value })} />
-              </div>
-              <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Payment %</label>
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={content.terms.payment_percent}
-                  onChange={(e) => updateSection("terms", { payment_percent: e.target.value })}
-                />
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* 13. Full page image */}
-          <SectionCard
-            label="Full Page Image"
-            icon="bi-image-fill"
-            enabled={content.full_page_image.enabled}
-            onToggle={() => toggleSection("full_page_image")}
-            collapsed={collapsed.has("full_page_image")}
-            onToggleCollapsed={() => toggleCollapsed("full_page_image")}
-          >
-            <p className="muted" style={{ fontSize: 12.5, margin: "0 0 6px" }}>
-              Renders full-bleed, without the header/footer used on every other page.
-            </p>
-            <ImageUploadField
-              proposalId={Number(id)}
-              value={content.full_page_image.image_url}
-              onChange={(url) => updateSection("full_page_image", { image_url: url })}
-              label="Image"
-            />
-          </SectionCard>
-
-          {/* User-added sections */}
-          {content.custom_sections.map((item, idx) => {
-            const collapseKey = `custom:${item.id}`;
-            return (
-              <SectionCard
-                key={item.id}
-                label={
-                  <input
-                    className="input"
-                    value={item.title}
-                    placeholder="Section title"
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => updateCustom(idx, { title: e.target.value })}
-                    style={{
-                      fontWeight: 600,
-                      fontSize: 14,
-                      padding: "4px 10px",
-                      height: 34,
-                      background: "var(--surface)",
-                    }}
-                  />
-                }
-                icon="bi-plus-square-fill"
-                enabled={item.enabled}
-                onToggle={() => updateCustom(idx, { enabled: !item.enabled })}
-                collapsed={collapsed.has(collapseKey)}
-                onToggleCollapsed={() => toggleCollapsed(collapseKey)}
-                pageBreakBefore={item.page_break_before}
-                onPageBreakChange={(v) => updateCustom(idx, { page_break_before: v })}
-                onRemove={() => removeCustom(idx)}
-              >
-                <label className="field-label" style={{ marginTop: 0 }}>
-                  Description
-                </label>
-                <RichTextEditor
-                  value={item.content}
-                  onChange={(html) => updateCustom(idx, { content: html })}
-                />
-                <label className="field-label">Images</label>
-                <ImageGalleryField
-                  proposalId={Number(id)}
-                  urls={item.image_urls}
-                  onChange={(image_urls) => updateCustom(idx, { image_urls })}
-                />
-              </SectionCard>
-            );
-          })}
+          </Reorder.Group>
 
           <button type="button" className="btn btn-ghost" onClick={addCustom} style={{ alignSelf: "stretch" }}>
             <i className="bi bi-plus-lg" /> Add additional field

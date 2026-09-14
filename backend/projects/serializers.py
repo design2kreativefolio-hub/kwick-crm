@@ -152,7 +152,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             if default_storage.exists(key):
                 default_storage.delete(key)
             saved_path = default_storage.save(key, upload)
-            urls.append(persist_storage_url(request, saved_path))
+            urls.append(persist_storage_url(request, saved_path, filename=getattr(upload, "name", "") or ""))
         instance.attachment_urls = urls
         instance.attachment_url = urls[0] if urls else ""
         instance.save(update_fields=["attachment_urls", "attachment_url", "updated_at"])
@@ -362,7 +362,7 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             if default_storage.exists(key):
                 default_storage.delete(key)
             saved_path = default_storage.save(key, upload)
-            urls.append(persist_storage_url(request, saved_path))
+            urls.append(persist_storage_url(request, saved_path, filename=getattr(upload, "name", "") or ""))
         instance.attachment_urls = urls
         instance.attachment_url = urls[0] if urls else ""
         instance.save(update_fields=["attachment_urls", "attachment_url"])

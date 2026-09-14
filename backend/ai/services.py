@@ -18,8 +18,11 @@ from .models import Conversation, Message
 from .report_intent import maybe_handle_report
 from .visuals import (
     attach_visual_cards,
+    build_client_summary,
     count_tasks_for_person,
+    named_client,
     named_person,
+    wants_client_summary,
     wants_task_cards,
     wants_todo_cards,
 )
@@ -84,6 +87,18 @@ def chat(
     # writing/brainstorming ("give me content for Kreativefolio").
     if not _wants_writing(last) and (wants_todo_cards(last) or wants_task_cards(last, ctx)):
         local = _local_reply(last, ctx)
+        local["links"] = local.get("links") or _suggested_links(last, ctx)
+        local["attachments"] = []
+        local["user_attachments"] = images
+        return _finalize_reply(last, ctx, local)
+
+    # "Details of <client>" / "<client> status" etc. — answer straight from
+    # CONTEXT (mini-projects, content calendar, open tasks, sales info) rather
+    # than risking a flaky LLM round-trip for a question CONTEXT can already
+    # answer exactly.
+    if not _wants_writing(last) and wants_client_summary(last, ctx):
+        client = named_client(last, ctx)
+        local = build_client_summary(ctx, client)
         local["links"] = local.get("links") or _suggested_links(last, ctx)
         local["attachments"] = []
         local["user_attachments"] = images
@@ -420,13 +435,22 @@ def _local_reply(text: str, ctx: dict) -> dict:
         }
 
     if _match(q, ["project"]):
-        lines = [f"Active projects: **{ctx.get('active_projects_count', 0)}**"]
+        active_n = ctx.get("active_projects_count", 0)
+        total_n = ctx.get("total_projects_count", active_n)
+        header = f"Active mini-projects: **{active_n}**"
+        if total_n != active_n:
+            header += f" (of **{total_n}** total, including completed/QC/approved)"
+        lines = [header]
         for p in ctx.get("active_projects") or []:
             members = ", ".join(p.get("members") or []) or "—"
             client = p.get("client") or "—"
             lines.append(f"• {p['name']} [{p['status']}] — client {client}; members: {members}")
         if not ctx.get("active_projects"):
-            lines.append("No active projects assigned to you.")
+            lines.append(
+                "No active mini-projects right now."
+                if not total_n
+                else "None currently active, but there are completed/approved ones on record."
+            )
         return {
             "reply": "\n".join(lines),
             "links": [{"label": "Projects", "href": "/projects", "icon": "bi-kanban-fill"}],

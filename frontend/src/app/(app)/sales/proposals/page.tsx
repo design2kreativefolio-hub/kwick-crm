@@ -12,6 +12,7 @@ import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { defaultEstimateContent } from "@/lib/estimateContent";
 import { defaultContent } from "@/lib/proposalContent";
+import { openUploadedFile } from "@/lib/files";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 
@@ -202,7 +203,7 @@ export default function SalesProposalsPage() {
           ? `/api/sales/proposals/${doc.id}/pdf`
           : `/api/sales/estimates/${doc.id}/pdf`;
       const res = await api<{ file_url: string }>(path, { method: "POST" });
-      window.open(res.file_url, "_blank");
+      void openUploadedFile(res.file_url);
     } catch (err: any) {
       showToast(err instanceof ApiError ? "Couldn't export PDF." : err.message, "error");
     } finally {

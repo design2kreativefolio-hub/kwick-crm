@@ -73,4 +73,4 @@ def render_report_pdf(report: dict, request=None) -> str:
     saved_path = default_storage.save(key, ContentFile(pdf_bytes))
     from common.media_urls import deliver_storage_url
 
-    return deliver_storage_url(request, saved_path)
+    return deliver_storage_url(request, saved_path, filename=f"{slug}-{stamp}.pdf")

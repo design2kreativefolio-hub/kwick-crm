@@ -29,6 +29,13 @@ export type SocialPlatformBlock = {
   platform: SocialPlatform;
   enabled: boolean;
   page_break_before: boolean;
+  // "" -> falls back to the platform's own name (Instagram, Facebook, ...).
+  heading: string;
+  description_label: string;
+  key_problems_label: string;
+  col_category: string;
+  col_details: string;
+  col_goal: string;
   description: string;
   image_urls: string[];
   key_problems: string;
@@ -43,6 +50,9 @@ export type PricingItem = {
   ad_budget: string;
   management_fee_label: string;
   management_fee: string;
+  col_category: string;
+  col_details: string;
+  col_frequency: string;
   rows: PricingRow[];
 };
 
@@ -56,7 +66,58 @@ export type CustomSection = {
   image_urls: string[];
 };
 
+// The nine rich "content" sections (About Kreativefolio … What We Can Do).
+export const CONTENT_SECTION_KEYS = [
+  "about_kreativefolio",
+  "about_client",
+  "traffic",
+  "technical_seo",
+  "keyword_strategy",
+  "onpage_seo",
+  "geo",
+  "social_medias",
+  "what_we_can_do",
+] as const;
+
+// Every section except Home is drag-reorderable. content.content_order holds
+// these built-in keys plus a `custom:<id>` entry for each user-added section,
+// in the order they render. Home stays pinned on top.
+export const REORDERABLE_SECTION_KEYS = [
+  ...CONTENT_SECTION_KEYS,
+  "pricing",
+  "terms",
+  "full_page_image",
+] as const;
+
+export function customSectionKey(id: string): string {
+  return `custom:${id}`;
+}
+
+/** Sanitize a saved order: drop unknown/duplicate keys, then append any
+ *  missing built-in sections (canonical order) and any missing custom
+ *  sections (in `customIds` order) so older proposals — and any section
+ *  added since — still render in a sensible place. */
+export function normalizeContentOrder(value: unknown, customIds: string[] = []): string[] {
+  const validCustom = new Set(customIds.map(customSectionKey));
+  const builtins = new Set<string>(REORDERABLE_SECTION_KEYS);
+  const out: string[] = [];
+  if (Array.isArray(value)) {
+    for (const k of value) {
+      if (typeof k !== "string" || out.includes(k)) continue;
+      if (builtins.has(k) || validCustom.has(k)) out.push(k);
+    }
+  }
+  for (const k of REORDERABLE_SECTION_KEYS) if (!out.includes(k)) out.push(k);
+  for (const id of customIds) {
+    const k = customSectionKey(id);
+    if (!out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
 export type ProposalContent = {
+  // Render order of every non-Home section (built-in keys + `custom:<id>`).
+  content_order: string[];
   home: {
     enabled: boolean;
     qtn_no: string;
@@ -67,23 +128,37 @@ export type ProposalContent = {
     client_email: string;
     client_phone: string;
   };
-  about_kreativefolio: { enabled: boolean; page_break_before: boolean; content: string };
-  about_client: { enabled: boolean; page_break_before: boolean; content: string; image_urls: string[] };
-  traffic: { enabled: boolean; page_break_before: boolean; image_urls: string[] };
-  technical_seo: { enabled: boolean; page_break_before: boolean; content: string };
-  keyword_strategy: { enabled: boolean; page_break_before: boolean; image_urls: string[] };
-  onpage_seo: { enabled: boolean; page_break_before: boolean; content: string; image_urls: string[] };
+  about_kreativefolio: { enabled: boolean; page_break_before: boolean; heading: string; content: string };
+  about_client: { enabled: boolean; page_break_before: boolean; heading: string; content: string; image_urls: string[] };
+  traffic: { enabled: boolean; page_break_before: boolean; heading: string; image_urls: string[] };
+  technical_seo: { enabled: boolean; page_break_before: boolean; heading: string; content: string };
+  keyword_strategy: { enabled: boolean; page_break_before: boolean; heading: string; image_urls: string[] };
+  onpage_seo: { enabled: boolean; page_break_before: boolean; heading: string; content: string; image_urls: string[] };
   geo: {
     enabled: boolean;
     page_break_before: boolean;
+    heading: string;
+    description_label: string;
+    recommendations_label: string;
+    approach_label: string;
     description: string;
     recommendations: string;
     approach: string;
   };
-  social_medias: { enabled: boolean; page_break_before: boolean; platforms: SocialPlatformBlock[] };
-  what_we_can_do: { enabled: boolean; page_break_before: boolean; rows: WhatWeCanDoRow[] };
+  social_medias: { enabled: boolean; page_break_before: boolean; heading: string; platforms: SocialPlatformBlock[] };
+  what_we_can_do: {
+    enabled: boolean;
+    page_break_before: boolean;
+    heading: string;
+    col_area: string;
+    col_details: string;
+    rows: WhatWeCanDoRow[];
+  };
+  // "Pricing" is a repeatable list with no wrapper object, so its section
+  // heading lives at the top level.
+  pricing_heading: string;
   pricing: PricingItem[];
-  terms: { enabled: boolean; page_break_before: boolean; duration: string; payment_percent: string };
+  terms: { enabled: boolean; page_break_before: boolean; heading: string; duration: string; payment_percent: string };
   full_page_image: { enabled: boolean; image_url: string };
   custom_sections: CustomSection[];
 };
@@ -110,10 +185,11 @@ const DEFAULT_ABOUT_KREATIVEFOLIO =
   "<p>Kreativefolio Marketing Management L.L.C is a full-service creative and growth partner, helping brands stand out through:</p>" +
   "<ul><li>Branding</li><li>Graphic Design</li><li>Web Design &amp; Development</li>" +
   "<li>Ads &amp; Leads Management</li><li>Photography &amp; Videography</li>" +
-  "<li>Digital Marketing</li><li>Podcast Production</li></ul>";
+  "<li>Digital Marketing</li><li>Podcast Marketing</li></ul>";
 
 export function defaultContent(): ProposalContent {
   return {
+    content_order: [...REORDERABLE_SECTION_KEYS],
     home: {
       enabled: true,
       qtn_no: "",
@@ -124,17 +200,46 @@ export function defaultContent(): ProposalContent {
       client_email: "",
       client_phone: "",
     },
-    about_kreativefolio: { enabled: true, page_break_before: false, content: DEFAULT_ABOUT_KREATIVEFOLIO },
-    about_client: { enabled: true, page_break_before: false, content: "", image_urls: [] },
-    traffic: { enabled: true, page_break_before: false, image_urls: [] },
-    technical_seo: { enabled: true, page_break_before: false, content: "" },
-    keyword_strategy: { enabled: true, page_break_before: false, image_urls: [] },
-    onpage_seo: { enabled: true, page_break_before: false, content: "", image_urls: [] },
-    geo: { enabled: true, page_break_before: false, description: "", recommendations: "", approach: "" },
-    social_medias: { enabled: true, page_break_before: false, platforms: [] },
-    what_we_can_do: { enabled: true, page_break_before: false, rows: [] },
+    about_kreativefolio: {
+      enabled: true,
+      page_break_before: false,
+      heading: "About Kreativefolio",
+      content: DEFAULT_ABOUT_KREATIVEFOLIO,
+    },
+    about_client: { enabled: true, page_break_before: false, heading: "About the Client", content: "", image_urls: [] },
+    traffic: { enabled: true, page_break_before: false, heading: "Traffic", image_urls: [] },
+    technical_seo: { enabled: true, page_break_before: false, heading: "Technical SEO", content: "" },
+    keyword_strategy: { enabled: true, page_break_before: false, heading: "Keyword Strategy", image_urls: [] },
+    onpage_seo: { enabled: true, page_break_before: false, heading: "Onpage SEO", content: "", image_urls: [] },
+    geo: {
+      enabled: true,
+      page_break_before: false,
+      heading: "GEO",
+      description_label: "Description",
+      recommendations_label: "Recommendations",
+      approach_label: "Our Approach",
+      description: "",
+      recommendations: "",
+      approach: "",
+    },
+    social_medias: { enabled: true, page_break_before: false, heading: "Social Medias", platforms: [] },
+    what_we_can_do: {
+      enabled: true,
+      page_break_before: false,
+      heading: "What We Can Do",
+      col_area: "Area",
+      col_details: "How Kreativefolio Can Help",
+      rows: [],
+    },
+    pricing_heading: "Pricing",
     pricing: [],
-    terms: { enabled: true, page_break_before: false, duration: "6 months", payment_percent: "100" },
+    terms: {
+      enabled: true,
+      page_break_before: false,
+      heading: "Terms",
+      duration: "6 months",
+      payment_percent: "100",
+    },
     full_page_image: { enabled: true, image_url: "" },
     custom_sections: [],
   };
@@ -149,6 +254,9 @@ export function defaultPricingItem(): PricingItem {
     ad_budget: "",
     management_fee_label: "Ad Management Fee",
     management_fee: "",
+    col_category: "Category",
+    col_details: "Details",
+    col_frequency: "Frequency",
     rows: [],
   };
 }
@@ -173,6 +281,12 @@ export function defaultSocialPlatform(platform: SocialPlatform): SocialPlatformB
     platform,
     enabled: true,
     page_break_before: false,
+    heading: "",
+    description_label: "Description",
+    key_problems_label: "Key Problems Identified",
+    col_category: "Category",
+    col_details: "Details",
+    col_goal: "Goal",
     description: "",
     image_urls: [],
     key_problems: "",
@@ -181,10 +295,11 @@ export function defaultSocialPlatform(platform: SocialPlatform): SocialPlatformB
 }
 
 export function termsHtml(terms: { duration: string; payment_percent: string }): string {
+  const duration = (terms.duration || "6 months").replace(/\r\n|\r|\n/g, "<br>");
   return (
     "<ol>" +
     `<li>Payment Terms: ${terms.payment_percent || "100"}% advance payment.</li>` +
-    `<li>Duration: ${terms.duration || "6 months"}.</li>` +
+    `<li>Duration: ${duration}.</li>` +
     "<li>The quoted prices are based on the specified services; prices may vary if the services are changed.</li>" +
     "<li>This proposal is valid for 7 days from the date of issue.</li>" +
     "</ol>"
@@ -221,7 +336,10 @@ export function mergedContent(raw: Partial<ProposalContent> | null | undefined):
   for (const key of Object.keys(base) as (keyof ProposalContent)[]) {
     const value = (raw as any)[key];
     if (value === undefined || value === null) continue;
-    if (key === "pricing" && Array.isArray(value)) {
+    if (key === "content_order") {
+      // Normalized after the loop, once custom_sections (and their ids) are resolved.
+      out.content_order = Array.isArray(value) ? value.slice() : base.content_order;
+    } else if (key === "pricing" && Array.isArray(value)) {
       out.pricing = value.map((item) => ({ ...defaultPricingItem(), ...item }));
     } else if (key === "custom_sections" && Array.isArray(value)) {
       out.custom_sections = value.map((item) => ({
@@ -251,5 +369,9 @@ export function mergedContent(raw: Partial<ProposalContent> | null | undefined):
       out[key] = value;
     }
   }
+  out.content_order = normalizeContentOrder(
+    out.content_order,
+    (out.custom_sections || []).map((s: any) => s?.id).filter(Boolean)
+  );
   return out as ProposalContent;
 }

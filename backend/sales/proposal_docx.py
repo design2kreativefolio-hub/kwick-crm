@@ -149,13 +149,23 @@ def _add_html(container, html_string: str):
 # Layout helpers
 # ---------------------------------------------------------------------------
 
+def _multiline_run(paragraph, text, **style):
+    """add_run() keeps a literal '\\n'; split so newlines typed into the
+    builder become real Word line breaks (headings, labels, cover text)."""
+    parts = str(text if text is not None else "").splitlines() or [""]
+    for i, part in enumerate(parts):
+        if i:
+            paragraph.add_run().add_break(WD_BREAK.LINE)
+        _style_run(paragraph.add_run(part), **style)
+
+
 def _heading(doc, text: str, page_break: bool = False):
     p = doc.add_paragraph()
     if page_break:
         p.paragraph_format.page_break_before = True
     p.paragraph_format.space_before = Pt(16)
     p.paragraph_format.space_after = Pt(10)
-    _style_run(p.add_run(text), size=19, bold=True, color=NAVY)
+    _multiline_run(p, text, size=19, bold=True, color=NAVY)
     return p
 
 
@@ -164,7 +174,7 @@ def _subheading(doc, text: str, page_break: bool = False):
     if page_break:
         p.paragraph_format.page_break_before = True
     p.paragraph_format.space_before = Pt(10)
-    _style_run(p.add_run(text), size=13, bold=True, color=NAVY)
+    _multiline_run(p, text, size=13, bold=True, color=NAVY)
     return p
 
 
@@ -174,8 +184,9 @@ def _labelled_box(doc, label: str, text: str):
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(8)
     _shade(p._p.get_or_add_pPr(), "FAF8F4")
-    _style_run(p.add_run(f"{label.upper()}\n"), size=9, bold=True, color=NAVY)
-    _style_run(p.add_run(text), size=11)
+    _multiline_run(p, label.upper(), size=9, bold=True, color=NAVY)
+    p.add_run().add_break(WD_BREAK.LINE)
+    _multiline_run(p, text, size=11)
 
 
 def _picture(doc, url: str, width_mm=None):
@@ -194,7 +205,7 @@ def _table(doc, headers, rows, keys):
     for i, h in enumerate(headers):
         cell = table.rows[0].cells[i]
         cell.text = ""
-        _style_run(cell.paragraphs[0].add_run(h), bold=True, color=WHITE)
+        _multiline_run(cell.paragraphs[0], h, bold=True, color=WHITE)
         _shade(cell._tc.get_or_add_tcPr(), "1B2559")
     for row in rows:
         cells = table.add_row().cells
@@ -265,24 +276,25 @@ def render_proposal_docx(proposal, request) -> str:
         except Exception:
             pass
 
+        # QTN / Date box sits left-aligned above the title (matches the PDF).
         qtn_table = doc.add_table(rows=2, cols=2)
         qtn_table.style = "Table Grid"
-        qtn_table.alignment = WD_TABLE_ALIGNMENT.RIGHT
+        qtn_table.alignment = WD_TABLE_ALIGNMENT.LEFT
         _style_run(qtn_table.rows[0].cells[0].paragraphs[0].add_run("QTN No:"), bold=True)
-        _style_run(qtn_table.rows[0].cells[1].paragraphs[0].add_run(home.get("qtn_no") or ""))
+        _multiline_run(qtn_table.rows[0].cells[1].paragraphs[0], home.get("qtn_no") or "")
         _style_run(qtn_table.rows[1].cells[0].paragraphs[0].add_run("Date:"), bold=True)
         _style_run(qtn_table.rows[1].cells[1].paragraphs[0].add_run(_format_date(home.get("date"))))
 
         title_p = doc.add_paragraph()
         title_p.paragraph_format.space_before = Pt(26)
-        _style_run(title_p.add_run(home.get("title") or "Brand Audit"), size=30, bold=True, color=NAVY)
+        _multiline_run(title_p, home.get("title") or "Brand Audit", size=30, bold=True, color=NAVY)
 
         to_p = doc.add_paragraph()
-        _style_run(to_p.add_run(f"To: {home.get('client_name') or 'Client'}"), bold=True)
+        _multiline_run(to_p, f"To: {home.get('client_name') or 'Client'}", bold=True)
         if home.get("client_email"):
-            _style_run(doc.add_paragraph().add_run(f"Email: {home['client_email']}"))
+            _multiline_run(doc.add_paragraph(), f"Email: {home['client_email']}")
         if home.get("client_phone"):
-            _style_run(doc.add_paragraph().add_run(f"Contact No: {home['client_phone']}"))
+            _multiline_run(doc.add_paragraph(), f"Contact No: {home['client_phone']}")
 
         doc.add_paragraph()
         try:
@@ -295,101 +307,143 @@ def render_proposal_docx(proposal, request) -> str:
     body_section = doc.add_section(WD_SECTION.NEW_PAGE)
     _set_header_footer(body_section)
 
-    client_display_name = home.get("client_name") or "Client"
-
     def start(title, page_break=False):
         _heading(doc, title, page_break=page_break)
 
-    if content["about_kreativefolio"].get("enabled", True):
-        start("About Kreativefolio", content["about_kreativefolio"].get("page_break_before", False))
-        _add_html(doc, content["about_kreativefolio"].get("content"))
+    def _render_about_kreativefolio():
+        sec = content["about_kreativefolio"]
+        if not sec.get("enabled", True):
+            return
+        start(sec.get("heading") or "About Kreativefolio", sec.get("page_break_before", False))
+        _add_html(doc, sec.get("content"))
 
-    ac = content["about_client"]
-    if ac.get("enabled", True):
-        start(f"About {client_display_name}", ac.get("page_break_before", False))
+    def _render_about_client():
+        ac = content["about_client"]
+        if not ac.get("enabled", True):
+            return
+        start(ac.get("heading") or "About the Client", ac.get("page_break_before", False))
         _add_html(doc, ac.get("content"))
         for url in ac.get("image_urls") or []:
             _picture(doc, url)
 
-    traffic = content["traffic"]
-    if traffic.get("enabled", True):
-        start("Traffic", traffic.get("page_break_before", False))
+    def _render_traffic():
+        traffic = content["traffic"]
+        if not traffic.get("enabled", True):
+            return
+        start(traffic.get("heading") or "Traffic", traffic.get("page_break_before", False))
         for url in traffic.get("image_urls") or []:
             _picture(doc, url)
 
-    tseo = content["technical_seo"]
-    if tseo.get("enabled", True):
-        start("Technical SEO", tseo.get("page_break_before", False))
+    def _render_technical_seo():
+        tseo = content["technical_seo"]
+        if not tseo.get("enabled", True):
+            return
+        start(tseo.get("heading") or "Technical SEO", tseo.get("page_break_before", False))
         _add_html(doc, tseo.get("content"))
 
-    kw = content["keyword_strategy"]
-    if kw.get("enabled", True):
-        start("Keyword Strategy", kw.get("page_break_before", False))
+    def _render_keyword_strategy():
+        kw = content["keyword_strategy"]
+        if not kw.get("enabled", True):
+            return
+        start(kw.get("heading") or "Keyword Strategy", kw.get("page_break_before", False))
         for url in kw.get("image_urls") or []:
             _picture(doc, url)
 
-    opseo = content["onpage_seo"]
-    if opseo.get("enabled", True):
-        start("Onpage SEO", opseo.get("page_break_before", False))
+    def _render_onpage_seo():
+        opseo = content["onpage_seo"]
+        if not opseo.get("enabled", True):
+            return
+        start(opseo.get("heading") or "Onpage SEO", opseo.get("page_break_before", False))
         _add_html(doc, opseo.get("content"))
         for url in opseo.get("image_urls") or []:
             _picture(doc, url)
 
-    geo = content["geo"]
-    if geo.get("enabled", True):
-        start("GEO", geo.get("page_break_before", False))
+    def _render_geo():
+        geo = content["geo"]
+        if not geo.get("enabled", True):
+            return
+        start(geo.get("heading") or "GEO", geo.get("page_break_before", False))
         if geo.get("description"):
-            _labelled_box(doc, "Description", geo["description"])
-        _subheading(doc, "Recommendations")
+            _labelled_box(doc, geo.get("description_label") or "Description", geo["description"])
+        _subheading(doc, geo.get("recommendations_label") or "Recommendations")
         _add_html(doc, geo.get("recommendations"))
-        _subheading(doc, "Our Approach")
+        _subheading(doc, geo.get("approach_label") or "Our Approach")
         _add_html(doc, geo.get("approach"))
 
-    social = content["social_medias"]
-    visible_platforms = [p for p in social.get("platforms", []) if p.get("enabled", True)]
-    if social.get("enabled", True) and visible_platforms:
-        start("Social Medias", social.get("page_break_before", False))
+    def _render_social_medias():
+        social = content["social_medias"]
+        visible_platforms = [p for p in social.get("platforms", []) if p.get("enabled", True)]
+        if not (social.get("enabled", True) and visible_platforms):
+            return
+        start(social.get("heading") or "Social Medias", social.get("page_break_before", False))
         for i, p in enumerate(visible_platforms):
             if i > 0 and not p.get("page_break_before"):
                 _subheading(doc, "")
             label = SOCIAL_PLATFORM_LABELS.get(p.get("platform"), (p.get("platform") or "").title())
-            _subheading(doc, label, page_break=p.get("page_break_before", False))
+            _subheading(doc, p.get("heading") or label, page_break=p.get("page_break_before", False))
             if p.get("description"):
-                _labelled_box(doc, "Description", p["description"])
+                _labelled_box(doc, p.get("description_label") or "Description", p["description"])
             for url in p.get("image_urls") or []:
                 _picture(doc, url)
             if p.get("key_problems"):
-                _subheading(doc, "Key Problems Identified")
+                _subheading(doc, p.get("key_problems_label") or "Key Problems Identified")
                 _add_html(doc, p["key_problems"])
             rows = p.get("strategy_rows") or []
-            _table(doc, ["Category", "Details", "Goal"], rows, ["category", "details", "goal"])
+            _table(
+                doc,
+                [p.get("col_category") or "Category", p.get("col_details") or "Details", p.get("col_goal") or "Goal"],
+                rows,
+                ["category", "details", "goal"],
+            )
 
-    wwcd = content["what_we_can_do"]
-    if wwcd.get("enabled", True) and wwcd.get("rows"):
-        start("What We Can Do", wwcd.get("page_break_before", False))
-        _table(doc, ["Area", "How Kreativefolio Can Help"], wwcd["rows"], ["area", "details"])
+    def _render_what_we_can_do():
+        wwcd = content["what_we_can_do"]
+        if not (wwcd.get("enabled", True) and wwcd.get("rows")):
+            return
+        start(wwcd.get("heading") or "What We Can Do", wwcd.get("page_break_before", False))
+        _table(
+            doc,
+            [wwcd.get("col_area") or "Area", wwcd.get("col_details") or "How Kreativefolio Can Help"],
+            wwcd["rows"],
+            ["area", "details"],
+        )
 
-    visible_pricing = [item for item in content["pricing"] if item.get("enabled", True)]
-    if visible_pricing:
-        start("Pricing")
+    def _render_pricing():
+        visible_pricing = [item for item in content["pricing"] if item.get("enabled", True)]
+        if not visible_pricing:
+            return
+        start(content.get("pricing_heading") or "Pricing")
         for i, item in enumerate(visible_pricing):
             if i > 0 and not item.get("page_break_before"):
                 _subheading(doc, "")
             _subheading(doc, item.get("service_name") or "Service", page_break=item.get("page_break_before", False))
             if item.get("ad_budget"):
-                _labelled_box(doc, "Ad Budget", item["ad_budget"])
+                _labelled_box(doc, item.get("ad_budget_label") or "Ad Budget", item["ad_budget"])
             if item.get("management_fee"):
-                _labelled_box(doc, "Ad Management Fee", item["management_fee"])
-            _table(doc, ["Category", "Details", "Frequency"], item.get("rows") or [], ["category", "details", "frequency"])
+                _labelled_box(doc, item.get("management_fee_label") or "Ad Management Fee", item["management_fee"])
+            _table(
+                doc,
+                [
+                    item.get("col_category") or "Category",
+                    item.get("col_details") or "Details",
+                    item.get("col_frequency") or "Frequency",
+                ],
+                item.get("rows") or [],
+                ["category", "details", "frequency"],
+            )
 
-    terms = content["terms"]
-    if terms.get("enabled", True):
-        start("Terms", terms.get("page_break_before", False))
+    def _render_terms():
+        terms = content["terms"]
+        if not terms.get("enabled", True):
+            return
+        start(terms.get("heading") or "Terms", terms.get("page_break_before", False))
         _add_html(doc, terms_html(terms))
 
-    # ---- Section 13: full-bleed image, no header/footer ----
-    full_img = content["full_page_image"]
-    if full_img.get("enabled", True) and full_img.get("image_url"):
+    def _render_full_page_image(restore_after=False):
+        # Full-bleed image on its own borderless page (no header/footer).
+        full_img = content["full_page_image"]
+        if not (full_img.get("enabled", True) and full_img.get("image_url")):
+            return
         image_section = doc.add_section(WD_SECTION.NEW_PAGE)
         _clear_header_footer(image_section)
         image_section.top_margin = image_section.bottom_margin = Mm(0)
@@ -397,20 +451,51 @@ def render_proposal_docx(proposal, request) -> str:
         stream = _fetch_image(full_img["image_url"])
         if stream:
             doc.add_picture(stream, width=Mm(PAGE_W_MM))
+        if restore_after:
+            # It's not the last section — restore normal margins + header/footer
+            # for whatever follows.
+            resumed = doc.add_section(WD_SECTION.NEW_PAGE)
+            _set_header_footer(resumed)
+            resumed.top_margin = resumed.bottom_margin = Mm(25)
+            resumed.left_margin = resumed.right_margin = Mm(25)
 
-    for item in content.get("custom_sections") or []:
+    def _render_custom(item):
         if not item.get("enabled", True):
-            continue
+            return
         title = (item.get("title") or "").strip() or "Additional section"
         body = (item.get("content") or "").strip()
         images = item.get("image_urls") or []
         if not body and not images:
-            continue
+            return
         start(title, item.get("page_break_before", False))
         if body:
             _add_html(doc, body)
         for url in images:
             _picture(doc, url)
+
+    # Every non-Home section renders in the user's saved drag order (content_order).
+    content_renderers = {
+        "about_kreativefolio": _render_about_kreativefolio,
+        "about_client": _render_about_client,
+        "traffic": _render_traffic,
+        "technical_seo": _render_technical_seo,
+        "keyword_strategy": _render_keyword_strategy,
+        "onpage_seo": _render_onpage_seo,
+        "geo": _render_geo,
+        "social_medias": _render_social_medias,
+        "what_we_can_do": _render_what_we_can_do,
+        "pricing": _render_pricing,
+        "terms": _render_terms,
+    }
+    custom_by_key = {f"custom:{c.get('id') or ''}": c for c in content.get("custom_sections") or []}
+    order = content.get("content_order") or (list(content_renderers) + ["full_page_image"])
+    for idx, section_key in enumerate(order):
+        if section_key == "full_page_image":
+            _render_full_page_image(restore_after=idx != len(order) - 1)
+        elif section_key in content_renderers:
+            content_renderers[section_key]()
+        elif section_key in custom_by_key:
+            _render_custom(custom_by_key[section_key])
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -422,4 +507,4 @@ def render_proposal_docx(proposal, request) -> str:
     saved_path = default_storage.save(key, ContentFile(buf.read()))
     from common.media_urls import deliver_storage_url
 
-    return deliver_storage_url(request, saved_path)
+    return deliver_storage_url(request, saved_path, filename=f"{proposal.title or 'proposal'}.docx")

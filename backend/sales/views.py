@@ -6,7 +6,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from accounts.models import Module
-from common.media_urls import deliver_storage_url, persist_storage_url, sign_media_url
+from common.media_urls import deliver_storage_url, original_upload_name, persist_storage_url, sign_media_url
 from common.permissions import HasModuleAccess
 from common.services import log_activity
 from common.uploads import (
@@ -67,12 +67,14 @@ class ClientViewSet(viewsets.ModelViewSet):
         from common.duplicate import slug_filename
 
         ext = validated_extension(upload, allowed=CLIENT_FILE_EXTENSIONS, max_bytes=MAX_FILE_BYTES)
-        original = (upload.name or "file").replace("\\", "/").split("/")[-1]
+        original = original_upload_name(upload)
         stem = original.rsplit(".", 1)[0] if "." in original else original
         slug = slug_filename(stem, fallback="file")
         key = f"client-files/{client.pk}/{uuid.uuid4().hex[:8]}_{slug}.{ext}"
         saved_path = default_storage.save(key, upload)
-        return Response({"url": deliver_storage_url(request, saved_path), "name": original})
+        return Response(
+            {"url": deliver_storage_url(request, saved_path, filename=original), "name": original}
+        )
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def logo(self, request, pk=None):

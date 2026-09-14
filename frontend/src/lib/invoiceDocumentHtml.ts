@@ -33,46 +33,60 @@ function detailsList(details: string): string {
   return `<ul class="item-details">${lines.map((ln) => `<li>${esc(ln)}</li>`).join("")}</ul>`;
 }
 
+/** Details block for one line item — omitted when the item's "Show details"
+ *  toggle is off. Renders rich-text HTML from the editor as-is; falls back to
+ *  the legacy newline-bullet format for older invoices stored as plain text. */
+function detailsBlock(item: { details: string; show_details?: boolean }): string {
+  if (item.show_details === false) return "";
+  const d = (item.details || "").trim();
+  if (!d) return "";
+  if (/<[a-z!/][\s\S]*>/i.test(d)) {
+    const plain = d.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+    return plain ? `<div class="item-details">${d}</div>` : "";
+  }
+  return detailsList(d);
+}
+
 export function buildInvoiceHtml(content: InvoiceContent): string {
   const currency = content.currency || "AED";
   const total = invoiceSubtotal(content.items);
   const dateDisplay = formatDate(content.date);
   const dueDisplay = formatDate(content.due_date);
-  const payment = content.payment;
   const kind = content.invoice_kind || "standard";
-  const label = invoiceDocLabel(kind);
+  const label = content.doc_heading?.trim() || invoiceDocLabel(kind);
+  const smallLabel = label.length > 9;
   const isPetty = kind === "petty_cash";
 
   const rows = content.items
     .map((item, i) => {
       const amount = lineAmount(item);
+      const qtyBlank = item.qty === null || item.qty === undefined || (item.qty as unknown) === "";
       return `<tr>
         <td class="idx">${i + 1}</td>
         <td>
           <div class="item-desc">${esc(item.description) || "—"}</div>
-          ${detailsList(item.details)}
+          ${detailsBlock(item)}
         </td>
-        <td class="num">${money(Number(item.qty) || 0)}</td>
+        <td class="num">${qtyBlank ? "" : money(Number(item.qty) || 0)}</td>
         <td class="num">${esc(currency)} ${money(Number(item.rate) || 0)}</td>
         <td class="num">${esc(currency)} ${money(amount)}</td>
       </tr>`;
     })
     .join("");
 
+  const descPlain = (content.payment_details || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
   const footerBlock = isPetty
     ? `<div class="footer-block">
           <h3>Authorization</h3>
           <p class="pay-row"><strong>Received by:</strong> ${esc(content.received_by) || "—"}</p>
           <p class="pay-row"><strong>Passed by:</strong> ${esc(content.passed_by) || "—"}</p>
         </div>`
-    : `<div class="footer-block">
-          <h3>Payment Details</h3>
-          <p class="pay-row"><strong>Payment Method:</strong> ${esc(payment.payment_method) || "—"}</p>
-          <p class="pay-row"><strong>Bank Name:</strong> ${esc(payment.bank_name) || "—"}</p>
-          <p class="pay-row"><strong>Account Name:</strong> ${esc(payment.account_name) || "—"}</p>
-          <p class="pay-row"><strong>IBAN / Account Number:</strong> ${esc(payment.iban) || "—"}</p>
-          <p class="pay-row"><strong>Paid Amount:</strong> ${esc(payment.paid_amount) || "—"}</p>
-        </div>`;
+    : descPlain
+    ? `<div class="footer-block">
+          <h3>${esc(content.payment_heading) || "Payment Details"}</h3>
+          <div class="notes-text">${content.payment_details}</div>
+        </div>`
+    : "";
 
   return `
   <table class="layout">
@@ -88,7 +102,7 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
         </p>
       </td>
       <td class="doc-side">
-        <p class="doc-label">${esc(label)}</p>
+        <p class="doc-label${smallLabel ? " doc-label-sm" : ""}">${esc(label)}</p>
         <p class="doc-number"># ${esc(content.invoice_number) || "—"}</p>
       </td>
     </tr>
@@ -103,7 +117,7 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
       </td>
       <td class="dates">
         <div class="row"><span class="label">Invoice Date :</span> ${esc(dateDisplay)}</div>
-        <div class="row"><span class="label">Due Date :</span> ${esc(dueDisplay)}</div>
+        ${isPetty ? "" : `<div class="row"><span class="label">Due Date :</span> ${esc(dueDisplay)}</div>`}
       </td>
     </tr>
   </table>
@@ -112,7 +126,7 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
     <thead>
       <tr>
         <th class="idx">#</th>
-        <th>Item &amp; Description</th>
+        <th>${esc(content.items_heading) || "Item &amp; Description"}</th>
         <th class="num">Qty</th>
         <th class="num">Rate</th>
         <th class="num">Amount</th>
@@ -132,7 +146,7 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
         ${footerBlock}
         ${
           content.notes
-            ? `<div class="footer-block" style="margin-top:16px;"><h3>Notes</h3><p class="notes-text">${esc(content.notes)}</p></div>`
+            ? `<div class="footer-block" style="margin-top:16px;"><h3>${esc(content.notes_heading) || "Notes"}</h3><p class="notes-text">${esc(content.notes)}</p></div>`
             : ""
         }
       </td>
@@ -140,6 +154,6 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
     </tr>
   </table>
   <p class="disclaimer">This is a system-generated ${esc(label.toLowerCase())} and does not require a signature.</p>
-  <div class="powered-by">Powered By Kwick</div>
+  <div class="powered-by">Powered By Kreativefolio</div>
   `;
 }

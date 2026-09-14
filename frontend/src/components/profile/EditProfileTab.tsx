@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
@@ -156,9 +157,9 @@ export function EditProfileTab() {
                       </div>
                     </span>
                     {l.file_url ? (
-                      <a href={l.file_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                      <MediaFileLink url={l.file_url} className="btn btn-ghost btn-sm">
                         <i className="bi bi-download" /> PDF
-                      </a>
+                      </MediaFileLink>
                     ) : (
                       <span className="muted" style={{ fontSize: 12 }}>Pending export</span>
                     )}

@@ -257,6 +257,16 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
     filterset_fields = ["client", "status", "content_type"]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    def paginate_queryset(self, queryset):
+        # Client Calendar UI has no pager — it loads a client's whole history
+        # in one shot (same reasoning as ProjectViewSet below). Left on the
+        # default 25/page before, a client with 25+ items silently lost
+        # anything past page 1 (ordered by scheduled_date, not created_at),
+        # so newly added items could vanish from their own client's calendar
+        # while still existing — exactly what happened once a client's
+        # content list grew past 25.
+        return None
+
     def perform_create(self, serializer):
         item = serializer.save(created_by=self.request.user)
         log_activity(

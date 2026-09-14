@@ -132,6 +132,6 @@ export function buildEstimateHtml(content: EstimateContent): string {
       ? `<div class="footer-block" style="margin-top:16px;"><h3>Terms &amp; Conditions</h3>${termsList(content.terms)}</div>`
       : ""
   }
-  <div class="powered-by">Powered By Kwick</div>
+  <div class="powered-by">Powered By Kreativefolio</div>
   `;
 }

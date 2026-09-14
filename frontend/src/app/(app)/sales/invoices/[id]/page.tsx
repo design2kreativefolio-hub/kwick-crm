@@ -9,16 +9,19 @@ import { DatePicker } from "@/components/DatePicker";
 import { DocNameField } from "@/components/DocNameField";
 import { Select } from "@/components/Select";
 import { InvoicePreview } from "@/components/invoices/InvoicePreview";
+import { RichTextEditor } from "@/components/proposals/RichTextEditor";
 import {
   InvoiceContent,
   InvoiceLineItem,
-  InvoicePayment,
   defaultLineItem,
+  detailsToHtml,
+  invoiceDocLabel,
   invoiceSubtotal,
   lineAmount,
   mergedInvoiceContent,
 } from "@/lib/invoiceContent";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { openUploadedFile } from "@/lib/files";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -63,6 +66,8 @@ export default function InvoiceBuilderPage() {
         if (!merged.invoice_number && inv.invoice_number) {
           merged.invoice_number = inv.invoice_number;
         }
+        // Bring legacy plain-text details into the rich-text editor losslessly.
+        merged.items = merged.items.map((it) => ({ ...it, details: detailsToHtml(it.details) }));
         setContent(merged);
         setStatus(inv.status);
       })
@@ -78,10 +83,6 @@ export default function InvoiceBuilderPage() {
 
   const patch = (partial: Partial<InvoiceContent>) => {
     setContent((prev) => (prev ? { ...prev, ...partial } : prev));
-  };
-
-  const patchPayment = (partial: Partial<InvoicePayment>) => {
-    setContent((prev) => (prev ? { ...prev, payment: { ...prev.payment, ...partial } } : prev));
   };
 
   const pickClient = (clientId: string) => {
@@ -129,6 +130,7 @@ export default function InvoiceBuilderPage() {
         }),
       });
       const next = mergedInvoiceContent(updated.content);
+      next.items = next.items.map((it) => ({ ...it, details: detailsToHtml(it.details) }));
       setContent(next);
       markClean({ content: next, status });
       showToast("Invoice saved.");
@@ -147,7 +149,7 @@ export default function InvoiceBuilderPage() {
     setExporting(true);
     try {
       const res = await api<{ file_url: string }>(`/api/sales/invoices/${id}/pdf`, { method: "POST" });
-      window.open(res.file_url, "_blank");
+      void openUploadedFile(res.file_url);
     } catch (err: any) {
       showToast(err instanceof ApiError ? "Couldn't export PDF." : err.message, "error");
     } finally {
@@ -241,6 +243,18 @@ export default function InvoiceBuilderPage() {
                 </div>
               </div>
               <div>
+                <label className="field-label">Document heading</label>
+                <input
+                  className="input"
+                  value={content.doc_heading}
+                  onChange={(e) => patch({ doc_heading: e.target.value })}
+                  placeholder={invoiceDocLabel(content.invoice_kind)}
+                />
+                <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  The big title in the invoice itself. Leave blank for “{invoiceDocLabel(content.invoice_kind)}”.
+                </p>
+              </div>
+              <div>
                 <label className="field-label">Pick a client</label>
                 <Select
                   value={content.client_id ? String(content.client_id) : ""}
@@ -273,14 +287,16 @@ export default function InvoiceBuilderPage() {
                   <label className="field-label" style={{ marginTop: 0 }}>Invoice date</label>
                   <DatePicker value={content.date || ""} onChange={(v) => patch({ date: v || null })} ariaLabel="Invoice date" />
                 </div>
-                <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Due date</label>
-                  <DatePicker
-                    value={content.due_date || ""}
-                    onChange={(v) => patch({ due_date: v || null })}
-                    ariaLabel="Due date"
-                  />
-                </div>
+                {content.invoice_kind !== "petty_cash" && (
+                  <div>
+                    <label className="field-label" style={{ marginTop: 0 }}>Due date</label>
+                    <DatePicker
+                      value={content.due_date || ""}
+                      onChange={(v) => patch({ due_date: v || null })}
+                      ariaLabel="Due date"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -291,6 +307,15 @@ export default function InvoiceBuilderPage() {
               <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>Line items</span>
             </div>
             <div className="section-card-body">
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Items column heading</label>
+                <input
+                  className="input"
+                  value={content.items_heading}
+                  onChange={(e) => patch({ items_heading: e.target.value })}
+                  placeholder="Item & Description"
+                />
+              </div>
               {content.items.map((item, idx) => (
                 <div key={idx} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -314,26 +339,38 @@ export default function InvoiceBuilderPage() {
                     />
                   </div>
                   <div>
-                    <label className="field-label">Details</label>
-                    <textarea
-                      className="input"
-                      rows={3}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <label className="field-label">Details</label>
+                      <label
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)", cursor: "pointer", userSelect: "none" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={item.show_details !== false}
+                          onChange={(e) => updateItem(idx, { show_details: e.target.checked })}
+                        />
+                        Show in PDF
+                      </label>
+                    </div>
+                    <RichTextEditor
                       value={item.details}
-                      onChange={(e) => updateItem(idx, { details: e.target.value })}
-                      placeholder={"Content creation\nScheduling\n..."}
-                      style={{ resize: "vertical" }}
+                      onChange={(html) => updateItem(idx, { details: html })}
+                      placeholder="Content creation, scheduling, …"
                     />
                   </div>
                   <div style={fieldGrid}>
                     <div>
-                      <label className="field-label" style={{ marginTop: 0 }}>Qty</label>
+                      <label className="field-label" style={{ marginTop: 0 }}>Qty <span className="muted" style={{ fontWeight: 400 }}>(optional)</span></label>
                       <input
                         className="input"
                         type="number"
                         min="0"
                         step="0.01"
-                        value={item.qty}
-                        onChange={(e) => updateItem(idx, { qty: Number(e.target.value) })}
+                        value={item.qty ?? ""}
+                        placeholder="—"
+                        onChange={(e) =>
+                          updateItem(idx, { qty: e.target.value === "" ? null : Number(e.target.value) })
+                        }
                       />
                     </div>
                     <div>
@@ -393,51 +430,28 @@ export default function InvoiceBuilderPage() {
           ) : (
             <div className="section-card">
               <div className="section-card-head">
-                <i className="bi bi-bank" style={{ color: "var(--gold)", fontSize: 16 }} />
-                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>Payment details</span>
+                <i className="bi bi-file-text-fill" style={{ color: "var(--gold)", fontSize: 16 }} />
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>Description</span>
               </div>
               <div className="section-card-body">
                 <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Payment method</label>
+                  <label className="field-label" style={{ marginTop: 0 }}>Section heading</label>
                   <input
                     className="input"
-                    value={content.payment.payment_method}
-                    onChange={(e) => patchPayment({ payment_method: e.target.value })}
+                    value={content.payment_heading}
+                    onChange={(e) => patch({ payment_heading: e.target.value })}
+                    placeholder="Payment Details"
                   />
                 </div>
-                <div>
-                  <label className="field-label">Bank name</label>
-                  <input
-                    className="input"
-                    value={content.payment.bank_name}
-                    onChange={(e) => patchPayment({ bank_name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">Account name</label>
-                  <input
-                    className="input"
-                    value={content.payment.account_name}
-                    onChange={(e) => patchPayment({ account_name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">IBAN / Account number</label>
-                  <input
-                    className="input"
-                    value={content.payment.iban}
-                    onChange={(e) => patchPayment({ iban: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">Paid amount</label>
-                  <input
-                    className="input"
-                    value={content.payment.paid_amount}
-                    onChange={(e) => patchPayment({ paid_amount: e.target.value })}
-                    placeholder="AED 0.00"
-                  />
-                </div>
+                <label className="field-label">Description</label>
+                <RichTextEditor
+                  value={content.payment_details}
+                  onChange={(html) => patch({ payment_details: html })}
+                  placeholder="Bank details, payment terms, anything else…"
+                />
+                <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                  Left out of the document when empty.
+                </p>
               </div>
             </div>
           )}
@@ -448,6 +462,16 @@ export default function InvoiceBuilderPage() {
               <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>Notes</span>
             </div>
             <div className="section-card-body">
+              <div>
+                <label className="field-label" style={{ marginTop: 0 }}>Notes heading</label>
+                <input
+                  className="input"
+                  value={content.notes_heading}
+                  onChange={(e) => patch({ notes_heading: e.target.value })}
+                  placeholder="Notes"
+                />
+              </div>
+              <label className="field-label">Notes text</label>
               <textarea
                 className="input"
                 rows={3}

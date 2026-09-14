@@ -89,6 +89,43 @@ def named_person(query: str, ctx: dict) -> str | None:
     return None
 
 
+def _client_names(ctx: dict) -> list[str]:
+    """Every client name EDITH currently knows about — the always-on Sales
+    directory list plus whatever client names show up in this user's active
+    mini-projects, content calendar items, and open tasks (covers clients not
+    in the Sales directory, and doesn't depend on Sales module access)."""
+    names: set[str] = set()
+    for n in ctx.get("client_names") or []:
+        if n:
+            names.add(n)
+    for row in ctx.get("clients") or []:
+        n = (row.get("name") or "").strip()
+        if n:
+            names.add(n)
+    for p in ctx.get("active_projects") or []:
+        n = (p.get("client") or "").strip()
+        if n:
+            names.add(n)
+    for item in ctx.get("content_calendar") or []:
+        n = (item.get("client") or "").strip()
+        if n:
+            names.add(n)
+    for t in ctx.get("open_tasks") or []:
+        n = (t.get("client_name") or "").strip()
+        if n:
+            names.add(n)
+    return sorted(names, key=len, reverse=True)
+
+
+def named_client(query: str, ctx: dict) -> str | None:
+    """Return a CRM client name mentioned in the question, else None."""
+    q = (query or "").lower()
+    for name in _client_names(ctx):
+        if _name_in_query(name, q):
+            return name
+    return None
+
+
 _PERSON_WORK_HINTS = [
     "task",
     "assigned",
@@ -180,6 +217,11 @@ def _task_item(t: dict) -> dict:
     }
 
 
+def _matches_client(task: dict, client: str) -> bool:
+    name = (task.get("client_name") or "").strip().lower()
+    return bool(name) and name == (client or "").strip().lower()
+
+
 def _matches_person(task: dict, person: str) -> bool:
     target = (person or "").lower().strip()
     if not target:
@@ -202,11 +244,15 @@ def count_tasks_for_person(ctx: dict, person: str) -> int:
     return sum(1 for t in ctx.get("open_tasks") or [] if _matches_person(t, person))
 
 
-def build_task_cards(ctx: dict, *, person: str | None = None, mine: bool = False) -> dict | None:
+def build_task_cards(
+    ctx: dict, *, person: str | None = None, mine: bool = False, client: str | None = None
+) -> dict | None:
     tasks = list(ctx.get("open_tasks") or [])
     me = (ctx.get("user_name") or "").strip()
     if mine and me:
         person = me
+    if client:
+        tasks = [t for t in tasks if _matches_client(t, client)]
     if person:
         tasks = [t for t in tasks if _matches_person(t, person)]
 
@@ -231,6 +277,9 @@ def build_task_cards(ctx: dict, *, person: str | None = None, mine: bool = False
     total = sum(len(g["items"]) for g in grouped)
     if person:
         title = f"{person}'s tasks"
+        subtitle = f"{total} open" if total else "No open tasks"
+    elif client:
+        title = f"{client} — open tasks"
         subtitle = f"{total} open" if total else "No open tasks"
     else:
         title = "Open tasks"
@@ -278,17 +327,20 @@ def attach_visual_cards(query: str, ctx: dict, result: dict) -> dict:
         mine = _contains(q, ["my task", "my tasks", "assigned to me", "pending tasks", "my pending"])
         show_all = _contains(q, ["who is doing", "who's doing", "workload", "everyone", "all task"])
         person = None if show_all else named_person(q, ctx)
+        client = None if (show_all or person) else named_client(q, ctx)
         if mine:
             person = ctx.get("user_name")
-        result["cards"] = build_task_cards(ctx, person=person, mine=mine)
+        result["cards"] = build_task_cards(ctx, person=person, client=client, mine=mine)
         n = sum(len(g.get("items") or []) for g in (result["cards"] or {}).get("groups") or [])
-        who = f" for **{person}**" if person else ""
+        who = f" for **{person}**" if person else (f" for **{client}**" if client else "")
         if n == 0:
             result.setdefault("reply", f"No open tasks{who or ' right now'}.")
         elif not (result.get("reply") or "").strip():
             result["reply"] = f"Here are **{n}** open task(s){who}. Cards below — tap one to open it."
         elif person:
             result["reply"] = _person_task_summary(result.get("reply") or "", person, n)
+        elif client:
+            result["reply"] = _client_task_summary(result.get("reply") or "", client, n)
         else:
             result["reply"] = _shorten_when_cards(result.get("reply") or "", n, who)
     return result
@@ -309,6 +361,23 @@ def _person_task_summary(reply: str, person: str, n: int) -> str:
     if n == 0:
         return f"No open tasks for **{person}** right now."
     return f"**{n}** open task(s) for **{person}**. Cards below — tap one to open it."
+
+
+def _client_task_summary(reply: str, client: str, n: int) -> str:
+    """Same as _person_task_summary, but for a named client."""
+    import re
+
+    cleaned = re.sub(
+        r"\*\*\d+\*\*\s+open shared task\(s\)\.?",
+        f"**{n}** open task(s) for **{client}**.",
+        reply.strip(),
+        count=1,
+    )
+    if cleaned != reply.strip():
+        return cleaned
+    if n == 0:
+        return f"No open tasks for **{client}** right now."
+    return f"**{n}** open task(s) for **{client}**. Cards below — tap one to open it."
 
 
 def _shorten_when_cards(reply: str, n: int, who: str) -> str:
@@ -333,3 +402,66 @@ def _shorten_when_cards(reply: str, n: int, who: str) -> str:
     if not summary:
         summary = f"Here are **{n}** open task(s){who}."
     return summary
+
+
+def wants_client_summary(query: str, ctx: dict) -> bool:
+    """True when the question is a general ask about a named client
+    ("details of gate eight", "gate eight?", "status on nova studio") rather
+    than a task list (that's wants_task_cards' job) or a writing request."""
+    q = (query or "").lower()
+    if _contains(
+        q,
+        ["content for", "write", "draft", "caption", "brainstorm", "ideas", "reel", "script", "email to", "proposal for"],
+    ):
+        return False
+    if not named_client(q, ctx):
+        return False
+    if wants_task_cards(q, ctx):
+        return False
+    return True
+
+
+def build_client_summary(ctx: dict, client: str) -> dict:
+    """Compact, read-only brief for a named client: active mini-projects,
+    upcoming content-calendar items, open task count, and Sales contact info
+    when available. Built from CONTEXT only — no invented figures."""
+    cl = (client or "").strip().lower()
+    lines = [f"**{client}**"]
+
+    sales_row = next(
+        (c for c in ctx.get("clients") or [] if (c.get("name") or "").strip().lower() == cl), None
+    )
+    if sales_row:
+        bits = []
+        company = (sales_row.get("company") or "").strip()
+        if company and company.lower() != cl:
+            bits.append(company)
+        if sales_row.get("poc_name"):
+            bits.append(f"POC {sales_row['poc_name']}")
+        if sales_row.get("contact_email"):
+            bits.append(sales_row["contact_email"])
+        if bits:
+            lines.append(" · ".join(bits))
+
+    projects = [p for p in ctx.get("active_projects") or [] if (p.get("client") or "").strip().lower() == cl]
+    if projects:
+        lines.append(f"Active mini-projects: **{len(projects)}**")
+        for p in projects[:5]:
+            due = f" — due {p['delivery_date']}" if p.get("delivery_date") else ""
+            lines.append(f"• {p['name']} [{p['status']}]{due}")
+    else:
+        lines.append("No active mini-projects right now.")
+
+    cal = [c for c in ctx.get("content_calendar") or [] if (c.get("client") or "").strip().lower() == cl]
+    if cal:
+        lines.append(f"Upcoming content (next 14d): **{len(cal)}**")
+        for c in cal[:5]:
+            lines.append(f"• {c['title']} — {c.get('scheduled_date')} [{c.get('status')}]")
+
+    n_tasks = sum(1 for t in ctx.get("open_tasks") or [] if _matches_client(t, client))
+    lines.append(f"Open tasks: **{n_tasks}**")
+
+    return {
+        "reply": "\n".join(lines),
+        "links": [{"label": "Projects", "href": "/projects", "icon": "bi-kanban-fill"}],
+    }

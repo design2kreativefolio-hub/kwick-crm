@@ -29,6 +29,49 @@ SECTION_ORDER = [
     "custom_sections",
 ]
 
+# The nine rich "content" sections. Mirrored on the frontend as
+# CONTENT_SECTION_KEYS in proposalContent.ts.
+CONTENT_SECTION_KEYS = [
+    "about_kreativefolio",
+    "about_client",
+    "traffic",
+    "technical_seo",
+    "keyword_strategy",
+    "onpage_seo",
+    "geo",
+    "social_medias",
+    "what_we_can_do",
+]
+
+# Every section except Home is drag-reorderable. content["content_order"] holds
+# these built-in keys plus a "custom:<id>" entry for each user-added section,
+# in render order. Home stays pinned on top.
+REORDERABLE_SECTION_KEYS = CONTENT_SECTION_KEYS + ["pricing", "terms", "full_page_image"]
+
+
+def normalize_content_order(value, custom_ids=None) -> list:
+    """Sanitize a saved order: drop unknown/duplicate keys, then append any
+    missing built-in sections (canonical order) and any missing custom
+    sections (in custom_ids order) so older proposals — and any section added
+    since — still render in a sensible place."""
+    custom_ids = custom_ids or []
+    valid_custom = {f"custom:{cid}" for cid in custom_ids}
+    out = []
+    if isinstance(value, list):
+        for key in value:
+            if not isinstance(key, str) or key in out:
+                continue
+            if key in REORDERABLE_SECTION_KEYS or key in valid_custom:
+                out.append(key)
+    for key in REORDERABLE_SECTION_KEYS:
+        if key not in out:
+            out.append(key)
+    for cid in custom_ids:
+        key = f"custom:{cid}"
+        if key not in out:
+            out.append(key)
+    return out
+
 DEFAULT_ABOUT_KREATIVEFOLIO = (
     "<p>Kreativefolio Marketing Management L.L.C is a full-service creative and growth "
     "partner, helping brands stand out through:</p>"
@@ -39,7 +82,7 @@ DEFAULT_ABOUT_KREATIVEFOLIO = (
     "<li>Ads &amp; Leads Management</li>"
     "<li>Photography &amp; Videography</li>"
     "<li>Digital Marketing</li>"
-    "<li>Podcast Production</li>"
+    "<li>Podcast Marketing</li>"
     "</ul>"
 )
 
@@ -55,6 +98,7 @@ DEFAULT_TERMS_CONTENT = (
 
 def default_content() -> dict:
     return {
+        "content_order": list(REORDERABLE_SECTION_KEYS),
         "home": {
             "enabled": True,
             "qtn_no": "",
@@ -65,25 +109,55 @@ def default_content() -> dict:
             "client_email": "",
             "client_phone": "",
         },
-        "about_kreativefolio": {"enabled": True, "page_break_before": False, "content": DEFAULT_ABOUT_KREATIVEFOLIO},
-        "about_client": {"enabled": True, "page_break_before": False, "content": "", "image_urls": []},
-        "traffic": {"enabled": True, "page_break_before": False, "image_urls": []},
-        "technical_seo": {"enabled": True, "page_break_before": False, "content": ""},
-        "keyword_strategy": {"enabled": True, "page_break_before": False, "image_urls": []},
-        "onpage_seo": {"enabled": True, "page_break_before": False, "content": "", "image_urls": []},
+        "about_kreativefolio": {
+            "enabled": True,
+            "page_break_before": False,
+            "heading": "About Kreativefolio",
+            "content": DEFAULT_ABOUT_KREATIVEFOLIO,
+        },
+        "about_client": {
+            "enabled": True,
+            "page_break_before": False,
+            "heading": "About the Client",
+            "content": "",
+            "image_urls": [],
+        },
+        "traffic": {"enabled": True, "page_break_before": False, "heading": "Traffic", "image_urls": []},
+        "technical_seo": {"enabled": True, "page_break_before": False, "heading": "Technical SEO", "content": ""},
+        "keyword_strategy": {"enabled": True, "page_break_before": False, "heading": "Keyword Strategy", "image_urls": []},
+        "onpage_seo": {
+            "enabled": True,
+            "page_break_before": False,
+            "heading": "Onpage SEO",
+            "content": "",
+            "image_urls": [],
+        },
         "geo": {
             "enabled": True,
             "page_break_before": False,
+            "heading": "GEO",
+            "description_label": "Description",
+            "recommendations_label": "Recommendations",
+            "approach_label": "Our Approach",
             "description": "",
             "recommendations": "",
             "approach": "",
         },
-        "social_medias": {"enabled": True, "page_break_before": False, "platforms": []},
-        "what_we_can_do": {"enabled": True, "page_break_before": False, "rows": []},
+        "social_medias": {"enabled": True, "page_break_before": False, "heading": "Social Medias", "platforms": []},
+        "what_we_can_do": {
+            "enabled": True,
+            "page_break_before": False,
+            "heading": "What We Can Do",
+            "col_area": "Area",
+            "col_details": "How Kreativefolio Can Help",
+            "rows": [],
+        },
+        "pricing_heading": "Pricing",
         "pricing": [],
         "terms": {
             "enabled": True,
             "page_break_before": False,
+            "heading": "Terms",
             "duration": "6 months",
             "payment_percent": "100",
         },
@@ -101,6 +175,9 @@ def default_pricing_item() -> dict:
         "ad_budget": "",
         "management_fee_label": "Ad Management Fee",
         "management_fee": "",
+        "col_category": "Category",
+        "col_details": "Details",
+        "col_frequency": "Frequency",
         "rows": [],
     }
 
@@ -121,6 +198,12 @@ def default_social_platform(platform: str) -> dict:
         "platform": platform,
         "enabled": True,
         "page_break_before": False,
+        "heading": "",
+        "description_label": "Description",
+        "key_problems_label": "Key Problems Identified",
+        "col_category": "Category",
+        "col_details": "Details",
+        "col_goal": "Goal",
         "description": "",
         "image_urls": [],
         "key_problems": "",
@@ -156,7 +239,10 @@ def merged_content(raw: dict) -> dict:
         value = raw.get(key)
         if value is None:
             continue
-        if key == "pricing" and isinstance(value, list):
+        if key == "content_order":
+            # Normalized after the loop, once custom_sections (and ids) are resolved.
+            base[key] = list(value) if isinstance(value, list) else base[key]
+        elif key == "pricing" and isinstance(value, list):
             base[key] = [{**default_pricing_item(), **item} for item in value]
         elif key == "custom_sections" and isinstance(value, list):
             base[key] = [
@@ -183,11 +269,14 @@ def merged_content(raw: dict) -> dict:
             base[key] = {**default_value, **value}
         else:
             base[key] = value
+    custom_ids = [s.get("id") for s in (base.get("custom_sections") or []) if s.get("id")]
+    base["content_order"] = normalize_content_order(base.get("content_order"), custom_ids)
     return base
 
 
 def terms_html(terms: dict) -> str:
+    duration = (terms.get("duration") or "6 months").replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
     return DEFAULT_TERMS_CONTENT.format(
         payment_percent=terms.get("payment_percent") or "100",
-        duration=terms.get("duration") or "6 months",
+        duration=duration,
     )

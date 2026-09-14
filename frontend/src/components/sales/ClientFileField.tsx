@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { api, ApiError } from "@/lib/api";
 import { displayUploadedFileName } from "@/lib/files";
 import { useToast } from "@/lib/toast";
@@ -56,9 +57,9 @@ export function ClientFileField({
       )}
       {value ? (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <a href={value} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+          <MediaFileLink url={value} className="btn btn-ghost btn-sm">
             <i className="bi bi-paperclip" /> {fileName.length > 36 ? `${fileName.slice(0, 34)}…` : fileName}
-          </a>
+          </MediaFileLink>
           <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => onChange("")}>
             Remove
           </button>

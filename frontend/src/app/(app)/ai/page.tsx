@@ -9,6 +9,7 @@ import { EdithOrb } from "@/components/EdithOrb";
 import { EdithPlexus } from "@/components/EdithPlexus";
 import { EdithVisualCards, type EdithCards } from "@/components/EdithVisualCards";
 import { Logo } from "@/components/Logo";
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useSpeechToText } from "@/lib/useSpeechToText";
@@ -549,16 +550,23 @@ function EdithPageInner() {
                           <div className="edith-ai__thumbs">
                             {m.attachments.map((a, ai) =>
                               a.type === "document" || (!a.mime && !a.url?.startsWith("data:image")) ? (
-                                <a
-                                  key={ai}
-                                  href={a.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="edith-ai__doc"
-                                >
-                                  <i className="bi bi-file-earmark-pdf-fill" />
-                                  <span>{a.name || "Download PDF"}</span>
-                                </a>
+                                a.url?.startsWith("data:") ? (
+                                  <a
+                                    key={ai}
+                                    href={a.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="edith-ai__doc"
+                                  >
+                                    <i className="bi bi-file-earmark-pdf-fill" />
+                                    <span>{a.name || "Download PDF"}</span>
+                                  </a>
+                                ) : (
+                                  <MediaFileLink key={ai} url={a.url} className="edith-ai__doc">
+                                    <i className="bi bi-file-earmark-pdf-fill" />
+                                    <span>{a.name || "Download PDF"}</span>
+                                  </MediaFileLink>
+                                )
                               ) : (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img key={ai} src={a.url} alt="Attached" className="edith-ai__thumb" />

@@ -1,5 +1,7 @@
 "use client";
 
+import { EditableLabel } from "./EditableLabel";
+
 type Column<T> = { key: keyof T & string; label: string; placeholder?: string };
 
 export function EditableTable<T extends Record<string, any>>({
@@ -8,12 +10,16 @@ export function EditableTable<T extends Record<string, any>>({
   onChange,
   emptyRow,
   addLabel = "Add row",
+  onHeaderChange,
 }: {
   columns: Column<T>[];
   rows: T[];
   onChange: (rows: T[]) => void;
   emptyRow: () => T;
   addLabel?: string;
+  /** When set, each column header becomes pencil-editable and edits are
+   *  reported back by column key (the header text flows into preview + PDF). */
+  onHeaderChange?: (key: string, label: string) => void;
 }) {
   const updateCell = (idx: number, key: keyof T & string, value: string) =>
     onChange(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
@@ -27,7 +33,18 @@ export function EditableTable<T extends Record<string, any>>({
           <thead>
             <tr>
               {columns.map((c) => (
-                <th key={c.key}>{c.label}</th>
+                <th key={c.key}>
+                  {onHeaderChange ? (
+                    <EditableLabel
+                      value={c.label}
+                      onChange={(v) => onHeaderChange(c.key, v)}
+                      fallback={c.key}
+                      ariaLabel="Edit column title"
+                    />
+                  ) : (
+                    c.label
+                  )}
+                </th>
               ))}
               <th style={{ width: 32 }}></th>
             </tr>

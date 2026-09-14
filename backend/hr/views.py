@@ -21,7 +21,7 @@ from accounts.tasks import (
     send_status_change_email,
     send_welcome_email,
 )
-from common.media_urls import persist_storage_url, sign_media_url
+from common.media_urls import original_upload_name, persist_storage_url, sign_media_url
 from common.maintenance import exclude_system_accounts
 from common.permissions import HasModuleAccess, IsActive, has_module_access
 from common.services import log_activity
@@ -305,7 +305,7 @@ class EmployeeCollateralUploadView(APIView):
             doc_type=doc_type,
             generated_by=request.user,
             generated_at=timezone.now(),
-            file_url=persist_storage_url(request, saved_path),
+            file_url=persist_storage_url(request, saved_path, filename=original_upload_name(upload)),
         )
         _notify_document(collateral)
         return Response(
@@ -357,7 +357,7 @@ class EmployeeRecordUploadView(APIView):
             staff=staff,
             title=title,
             uploaded_by=request.user,
-            file_url=persist_storage_url(request, saved_path),
+            file_url=persist_storage_url(request, saved_path, filename=original_upload_name(upload)),
         )
         notify_user(
             user=staff,

@@ -18,6 +18,7 @@ import { KpiCard, KpiTone } from "@/components/KpiCard";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
 import { api, formatApiError } from "@/lib/api";
+import { openUploadedFile } from "@/lib/files";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
@@ -179,7 +180,7 @@ export default function ReportsPage() {
           date_to: dateTo,
         }),
       });
-      if (res.file_url) window.open(res.file_url, "_blank", "noopener,noreferrer");
+      if (res.file_url) void openUploadedFile(res.file_url);
       else showToast("PDF URL missing.", "error");
     } catch (err: any) {
       showToast(formatApiError(err?.data) || err.message || "PDF failed.", "error");

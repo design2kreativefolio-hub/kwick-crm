@@ -54,7 +54,10 @@
     line-height: 1.55;
     margin: 0;
   }
-  h1, h2, h3 { color: #1b2559; margin: 0 0 12px; }
+  /* pre-line keeps newlines typed into the builder's plain fields (cover
+     title, section headings, table column titles, ...) — same trick as
+     table.doc-table td below. */
+  h1, h2, h3 { color: #1b2559; margin: 0 0 12px; white-space: pre-line; }
   h2 { font-size: 20px; border-bottom: 2px solid #e4c9ae; padding-bottom: 8px; margin-bottom: 16px; }
   h3 { font-size: 14.5px; margin-top: 18px; }
   p { margin: 0 0 10px; }
@@ -88,30 +91,30 @@
     background-image: url('{{ cover_full_data_uri }}');
     background-size: cover; background-position: top center;
   }
-  /* Logo centered top; QTN/date box absolutely positioned top-right —
-     avoids flexbox (WeasyPrint's flex support has known gaps around table
-     children that were silently dropping this block off the page) in
-     favor of plain block + absolute positioning, both well-supported. */
+  /* Logo centered top; QTN/date box sits in normal flow, left-aligned,
+     directly above the cover title. Plain block layout (no flexbox —
+     WeasyPrint's flex support has known gaps around table children that
+     were silently dropping this block off the page). */
   .cover-logo-row { text-align: center; padding-top: 40px; }
   .cover-logo { height: 68px; }
-  .qtn-box-wrap { position: absolute; top: 40px; right: 44px; }
+  .qtn-box-wrap { margin: 40px 0 0 44px; }
   .qtn-box { border-collapse: collapse; font-size: 11px; }
-  .qtn-box td { border: 1px solid #1b2559; padding: 4px 10px; }
+  .qtn-box td { border: 1px solid #1b2559; padding: 4px 10px; white-space: pre-line; }
   .qtn-box td:first-child { font-weight: 700; color: #1b2559; background: #f4f0ea; }
-  .cover-title { font-size: 40px; font-weight: 800; padding: 34px 44px 0; }
-  .cover-client { padding: 6px 44px 0; font-size: 12.5px; }
+  .cover-title { font-size: 40px; font-weight: 800; padding: 14px 44px 0; }
+  .cover-client { padding: 6px 44px 0; font-size: 12.5px; white-space: pre-line; }
   .cover-client strong { text-decoration: underline; }
 
   /* ---- Tables (strategy / what-we-can-do / pricing) ---- */
   table.doc-table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 11px; }
-  table.doc-table th, table.doc-table td { border: 1px solid #1b2559; padding: 7px 10px; text-align: left; vertical-align: top; }
+  table.doc-table th, table.doc-table td { border: 1px solid #1b2559; padding: 7px 10px; text-align: left; vertical-align: top; white-space: pre-line; }
   table.doc-table th { background: #1b2559; color: #fff; font-size: 11px; }
   /* Keep Enter / bullet line breaks from the editor (HTML collapses them otherwise). */
   table.doc-table td { white-space: pre-line; }
 
   .platform-block, .pricing-block { margin-bottom: 20px; }
   .platform-block h3, .pricing-block h3 { text-transform: capitalize; }
-  .field-form { border: 1px solid #d8d4cb; background: #faf8f4; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; }
+  .field-form { border: 1px solid #d8d4cb; background: #faf8f4; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; white-space: pre-line; }
   .field-form .label { font-weight: 700; color: #1b2559; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 3px; }
 
   /* ---- Full-bleed image (section 13) — same background-cover approach as
@@ -155,73 +158,76 @@
   </section>
   {% endif %}
 
-  {% if about_kreativefolio.enabled %}
+  {# Content sections render in the user's saved drag order (content_order). #}
+  {% for section_key in content_order %}
+
+  {% if section_key == "about_kreativefolio" and about_kreativefolio.enabled %}
   <section class="doc-section{% if about_kreativefolio.page_break_before %} page-break-before{% endif %}">
-    <h2>About Kreativefolio</h2>
+    <h2>{{ about_kreativefolio.heading|default:"About Kreativefolio" }}</h2>
     {{ about_kreativefolio.content|safe }}
   </section>
   {% endif %}
 
-  {% if about_client.enabled %}
+  {% if section_key == "about_client" and about_client.enabled %}
   <section class="doc-section{% if about_client.page_break_before %} page-break-before{% endif %}">
-    <h2>About {{ client_display_name }}</h2>
+    <h2>{{ about_client.heading|default:"About the Client" }}</h2>
     {{ about_client.content|safe }}
     {% for url in about_client.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
 
-  {% if traffic.enabled %}
+  {% if section_key == "traffic" and traffic.enabled %}
   <section class="doc-section{% if traffic.page_break_before %} page-break-before{% endif %}">
-    <h2>Traffic</h2>
+    <h2>{{ traffic.heading|default:"Traffic" }}</h2>
     {% for url in traffic.image_urls %}<img class="section-image-full" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
 
-  {% if technical_seo.enabled %}
+  {% if section_key == "technical_seo" and technical_seo.enabled %}
   <section class="doc-section{% if technical_seo.page_break_before %} page-break-before{% endif %}">
-    <h2>Technical SEO</h2>
+    <h2>{{ technical_seo.heading|default:"Technical SEO" }}</h2>
     {{ technical_seo.content|safe }}
   </section>
   {% endif %}
 
-  {% if keyword_strategy.enabled %}
+  {% if section_key == "keyword_strategy" and keyword_strategy.enabled %}
   <section class="doc-section{% if keyword_strategy.page_break_before %} page-break-before{% endif %}">
-    <h2>Keyword Strategy</h2>
+    <h2>{{ keyword_strategy.heading|default:"Keyword Strategy" }}</h2>
     {% for url in keyword_strategy.image_urls %}<img class="section-image-full" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
 
-  {% if onpage_seo.enabled %}
+  {% if section_key == "onpage_seo" and onpage_seo.enabled %}
   <section class="doc-section{% if onpage_seo.page_break_before %} page-break-before{% endif %}">
-    <h2>Onpage SEO</h2>
+    <h2>{{ onpage_seo.heading|default:"Onpage SEO" }}</h2>
     {{ onpage_seo.content|safe }}
     {% for url in onpage_seo.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
 
-  {% if geo.enabled %}
+  {% if section_key == "geo" and geo.enabled %}
   <section class="doc-section{% if geo.page_break_before %} page-break-before{% endif %}">
-    <h2>GEO</h2>
-    {% if geo.description %}<div class="field-form"><span class="label">Description</span>{{ geo.description }}</div>{% endif %}
-    <h3>Recommendations</h3>
+    <h2>{{ geo.heading|default:"GEO" }}</h2>
+    {% if geo.description %}<div class="field-form"><span class="label">{{ geo.description_label|default:"Description" }}</span>{{ geo.description }}</div>{% endif %}
+    <h3>{{ geo.recommendations_label|default:"Recommendations" }}</h3>
     {{ geo.recommendations|safe }}
-    <h3>Our Approach</h3>
+    <h3>{{ geo.approach_label|default:"Our Approach" }}</h3>
     {{ geo.approach|safe }}
   </section>
   {% endif %}
 
-  {% if social_medias.enabled and visible_platforms %}
+  {% if section_key == "social_medias" and social_medias.enabled and visible_platforms %}
   <section class="doc-section{% if social_medias.page_break_before %} page-break-before{% endif %}">
-    <h2>Social Medias</h2>
+    <h2>{{ social_medias.heading|default:"Social Medias" }}</h2>
     {% for p in visible_platforms %}
     <div class="platform-block{% if p.page_break_before %} page-break-before{% endif %}">
-      <h3>{{ p.platform_label }}</h3>
-      {% if p.description %}<div class="field-form"><span class="label">Description</span>{{ p.description }}</div>{% endif %}
+      <h3>{{ p.heading|default:p.platform_label }}</h3>
+      {% if p.description %}<div class="field-form"><span class="label">{{ p.description_label|default:"Description" }}</span>{{ p.description }}</div>{% endif %}
       {% for url in p.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
-      {% if p.key_problems %}<h3 style="font-size:12.5px;">Key Problems Identified</h3>{{ p.key_problems|safe }}{% endif %}
+      {% if p.key_problems %}<h3 style="font-size:12.5px;">{{ p.key_problems_label|default:"Key Problems Identified" }}</h3>{{ p.key_problems|safe }}{% endif %}
       {% if p.strategy_rows %}
       <table class="doc-table">
-        <thead><tr><th>Category</th><th>Details</th><th>Goal</th></tr></thead>
+        <thead><tr><th>{{ p.col_category|default:"Category" }}</th><th>{{ p.col_details|default:"Details" }}</th><th>{{ p.col_goal|default:"Goal" }}</th></tr></thead>
         <tbody>
           {% for row in p.strategy_rows %}
           <tr><td>{{ row.category }}</td><td>{{ row.details|linebreaksbr }}</td><td>{{ row.goal|linebreaksbr }}</td></tr>
@@ -234,11 +240,11 @@
   </section>
   {% endif %}
 
-  {% if what_we_can_do.enabled and what_we_can_do.rows %}
+  {% if section_key == "what_we_can_do" and what_we_can_do.enabled and what_we_can_do.rows %}
   <section class="doc-section{% if what_we_can_do.page_break_before %} page-break-before{% endif %}">
-    <h2>What We Can Do</h2>
+    <h2>{{ what_we_can_do.heading|default:"What We Can Do" }}</h2>
     <table class="doc-table">
-      <thead><tr><th>Area</th><th>How Kreativefolio Can Help</th></tr></thead>
+      <thead><tr><th>{{ what_we_can_do.col_area|default:"Area" }}</th><th>{{ what_we_can_do.col_details|default:"How Kreativefolio Can Help" }}</th></tr></thead>
       <tbody>
         {% for row in what_we_can_do.rows %}
         <tr><td>{{ row.area }}</td><td>{{ row.details|linebreaksbr }}</td></tr>
@@ -248,9 +254,9 @@
   </section>
   {% endif %}
 
-  {% if visible_pricing %}
+  {% if section_key == "pricing" and visible_pricing %}
   <section class="doc-section">
-    <h2>Pricing</h2>
+    <h2>{{ pricing_heading|default:"Pricing" }}</h2>
     {% for item in visible_pricing %}
     <div class="pricing-block{% if item.page_break_before %} page-break-before{% endif %}">
       <h3>{{ item.service_name }}</h3>
@@ -258,7 +264,7 @@
       {% if item.management_fee %}<div class="field-form"><span class="label">{{ item.management_fee_label }}</span>{{ item.management_fee }}</div>{% endif %}
       {% if item.rows %}
       <table class="doc-table">
-        <thead><tr><th>Category</th><th>Details</th><th>Frequency</th></tr></thead>
+        <thead><tr><th>{{ item.col_category|default:"Category" }}</th><th>{{ item.col_details|default:"Details" }}</th><th>{{ item.col_frequency|default:"Frequency" }}</th></tr></thead>
         <tbody>
           {% for row in item.rows %}
           <tr><td>{{ row.category }}</td><td>{{ row.details|linebreaksbr }}</td><td>{{ row.frequency|linebreaksbr }}</td></tr>
@@ -271,23 +277,27 @@
   </section>
   {% endif %}
 
-  {% if terms.enabled %}
+  {% if section_key == "terms" and terms.enabled %}
   <section class="doc-section{% if terms.page_break_before %} page-break-before{% endif %}">
-    <h2>Terms</h2>
+    <h2>{{ terms.heading|default:"Terms" }}</h2>
     {{ terms_html|safe }}
   </section>
   {% endif %}
 
-  {% if full_page_image.enabled and full_page_image.image_url %}
+  {% if section_key == "full_page_image" and full_page_image.enabled and full_page_image.image_url %}
   <section class="fullbleed-page" style="background-image: url('{{ full_page_image.image_url }}');"></section>
   {% endif %}
 
   {% for item in custom_sections %}
+  {% if section_key == item.order_key %}
   <section class="doc-section{% if item.page_break_before %} page-break-before{% endif %}">
     <h2>{{ item.title|default:"Additional section" }}</h2>
     {% if item.content %}{{ item.content|safe }}{% endif %}
     {% for url in item.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
   </section>
+  {% endif %}
+  {% endfor %}
+
   {% endfor %}
 
 </body>

@@ -50,7 +50,10 @@ body {
   line-height: 1.55;
   margin: 0;
 }
-h1, h2, h3 { color: #1b2559; margin: 0 0 12px; }
+/* pre-line keeps the newlines typed into the builder's plain fields
+   (cover title, section headings, table column titles, ...) while still
+   collapsing runs of spaces. Same trick as table.doc-table td below. */
+h1, h2, h3 { color: #1b2559; margin: 0 0 12px; white-space: pre-line; }
 h2 { font-size: 20px; border-bottom: 2px solid #e4c9ae; padding-bottom: 8px; margin-bottom: 16px; }
 h3 { font-size: 14.5px; margin-top: 18px; }
 p { margin: 0 0 10px; }
@@ -78,23 +81,25 @@ img.section-image-full {
 }
 .cover-logo-row { text-align: center; padding-top: 40px; }
 .cover-logo { height: 68px; }
-.qtn-box-wrap { position: absolute; top: 40px; right: 44px; }
+/* QTN No / Date sits in normal flow, left-aligned, directly above the cover
+   title (was absolutely positioned top-right next to the logo). */
+.qtn-box-wrap { margin: 40px 0 0 44px; }
 .qtn-box { border-collapse: collapse; font-size: 11px; }
-.qtn-box td { border: 1px solid #1b2559; padding: 4px 10px; }
+.qtn-box td { border: 1px solid #1b2559; padding: 4px 10px; white-space: pre-line; }
 .qtn-box td:first-child { font-weight: 700; color: #1b2559; background: #f4f0ea; }
-.cover-title { font-size: 40px; font-weight: 800; padding: 34px 44px 0; }
-.cover-client { padding: 6px 44px 0; font-size: 12.5px; }
+.cover-title { font-size: 40px; font-weight: 800; padding: 14px 44px 0; }
+.cover-client { padding: 6px 44px 0; font-size: 12.5px; white-space: pre-line; }
 .cover-client strong { text-decoration: underline; }
 
 table.doc-table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 11px; }
-table.doc-table th, table.doc-table td { border: 1px solid #1b2559; padding: 7px 10px; text-align: left; vertical-align: top; }
+table.doc-table th, table.doc-table td { border: 1px solid #1b2559; padding: 7px 10px; text-align: left; vertical-align: top; white-space: pre-line; }
 table.doc-table th { background: #1b2559; color: #fff; font-size: 11px; }
 /* Keep Enter / bullet line breaks from the editor (HTML collapses them otherwise). */
 table.doc-table td { white-space: pre-line; }
 
 .platform-block, .pricing-block { margin-bottom: 20px; }
 .platform-block h3, .pricing-block h3 { text-transform: capitalize; }
-.field-form { border: 1px solid #d8d4cb; background: #faf8f4; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; }
+.field-form { border: 1px solid #d8d4cb; background: #faf8f4; border-radius: 6px; padding: 10px 12px; margin: 0 0 10px; white-space: pre-line; }
 .field-form .label { font-weight: 700; color: #1b2559; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 3px; }
 
 .fullbleed-page {

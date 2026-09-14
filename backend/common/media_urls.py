@@ -1,7 +1,8 @@
 """Helpers for absolute media URLs (avatars, chat attachments, logos).
 
-Local /media/ files are not publicly readable. API responses attach a short
-HMAC so <img> / window.open work; a login cookie or JWT is also accepted.
+Local /media/ files require a logged-in session (media cookie or JWT).
+API responses may still attach a short HMAC for cache-busting query params;
+that signature alone is not enough to read the file.
 """
 
 from __future__ import annotations
@@ -9,13 +10,16 @@ from __future__ import annotations
 import hashlib
 import hmac
 import mimetypes
+import re
 import time
-from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse, urlunparse
 
 from django.conf import settings
 from django.core.files.storage import default_storage
 
 _SIG_KEYS = {"exp", "sig"}
+_DOWNLOAD_NAME_KEY = "name"
+_HEX_PREFIX = re.compile(r"^[0-9a-f]{8}_", re.I)
 
 
 def absolute_media_url(request, storage_url: str) -> str:
@@ -41,16 +45,75 @@ def absolute_media_url(request, storage_url: str) -> str:
 unsigned_absolute_media_url = absolute_media_url
 
 
-def persist_storage_url(request, saved_path: str) -> str:
+def persist_storage_url(request, saved_path: str, filename: str = "") -> str:
     """Unsigned URL to store on models (signatures are added on the way out)."""
-    return absolute_media_url(request, default_storage.url(saved_path))
+    url = absolute_media_url(request, default_storage.url(saved_path))
+    if filename:
+        url = attach_download_name(url, filename)
+    return url
 
 
 storage_file_url = persist_storage_url
 
 
-def deliver_storage_url(request, saved_path: str) -> str:
-    return sign_media_url(persist_storage_url(request, saved_path))
+def deliver_storage_url(request, saved_path: str, filename: str = "") -> str:
+    return sign_media_url(persist_storage_url(request, saved_path, filename=filename))
+
+
+def original_upload_name(upload) -> str:
+    return (getattr(upload, "name", None) or "file").replace("\\", "/").split("/")[-1]
+
+
+def sanitize_download_name(name: str, *, fallback: str = "file") -> str:
+    raw = (name or "").replace("\\", "/").split("/")[-1].strip()
+    raw = re.sub(r"[\r\n\x00\"\\]+", "", raw)
+    if not raw or raw in {".", ".."}:
+        return fallback
+    return raw[:180]
+
+
+def filename_from_storage_key(key: str) -> str:
+    """Human name from a stored path: drop the 8-char uniqueness prefix."""
+    base = (key or "").replace("\\", "/").split("/")[-1]
+    stripped = _HEX_PREFIX.sub("", base, count=1)
+    return sanitize_download_name(stripped or base, fallback=base or "file")
+
+
+def attach_download_name(url: str, filename: str) -> str:
+    filename = sanitize_download_name(filename)
+    if not url or not filename:
+        return url or ""
+    parsed = urlparse(url)
+    qs = {k: v[-1] for k, v in parse_qs(parsed.query, keep_blank_values=True).items()}
+    qs[_DOWNLOAD_NAME_KEY] = filename
+    return urlunparse(
+        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(qs), parsed.fragment)
+    )
+
+
+def download_name_for_key(key: str, requested: str = "") -> str:
+    stored_ext = key.rsplit(".", 1)[-1].lower() if "." in (key or "") else ""
+    base = sanitize_download_name(requested) if requested else ""
+    if not base:
+        base = filename_from_storage_key(key)
+    if stored_ext:
+        if "." in base:
+            given_ext = base.rsplit(".", 1)[-1].lower()
+            if given_ext != stored_ext:
+                base = f"{base.rsplit('.', 1)[0]}.{stored_ext}"
+        else:
+            base = f"{base}.{stored_ext}"
+    return base
+
+
+def content_disposition_header(disposition: str, filename: str) -> str:
+    filename = sanitize_download_name(filename)
+    ascii_name = (
+        filename.encode("ascii", "ignore").decode("ascii").replace('"', "").replace("\\", "").strip()
+        or "file"
+    )
+    encoded = quote(filename, safe="")
+    return f'{disposition}; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded}'
 
 
 def normalize_media_key(key: str) -> str:

@@ -13,6 +13,7 @@ import { api, ApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { InvoiceContent, InvoiceKind, defaultInvoiceContent, mergedInvoiceContent } from "@/lib/invoiceContent";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
+import { openUploadedFile } from "@/lib/files";
 import { useToast } from "@/lib/toast";
 
 type Client = { id: number; name: string };
@@ -174,7 +175,7 @@ export default function SalesInvoicesPage() {
     setExportingId(id);
     try {
       const res = await api<{ file_url: string }>(`/api/sales/invoices/${id}/pdf`, { method: "POST" });
-      window.open(res.file_url, "_blank");
+      void openUploadedFile(res.file_url);
     } catch (err: any) {
       showToast(err instanceof ApiError ? "Couldn't export PDF." : err.message, "error");
     } finally {
@@ -321,13 +322,14 @@ export default function SalesInvoicesPage() {
                       <td>{formatCurrency(inv.amount)}</td>
                       <td>{formatDate(inv.due_date)}</td>
                       <td>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                          <div style={{ width: 120 }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ width: 132, flexShrink: 0 }}>
                             <Select
                               value={inv.status}
                               onChange={(v) => changeStatus(inv.id, v)}
                               options={INVOICE_STATUS_OPTIONS}
                               compact
+                              minPanelWidth={132}
                               ariaLabel="Change status"
                             />
                           </div>

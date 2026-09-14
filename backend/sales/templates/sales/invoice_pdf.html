@@ -7,7 +7,7 @@
     size: A4;
     margin: 24mm 16mm 22mm 16mm;
     @bottom-center {
-      content: "Powered By Kwick";
+      content: "Powered By Kreativefolio";
       font-family: Calibri, Carlito, sans-serif;
       font-size: 9px;
       font-weight: 600;
@@ -89,8 +89,12 @@
   table.items tbody td.num { text-align: right; white-space: nowrap; }
   table.items tbody td.idx { text-align: center; color: #5b6178; }
   .item-desc { font-weight: 600; color: #2a2f45; }
-  .item-details { margin: 6px 0 0; padding-left: 16px; color: #5b6178; font-size: 10.5px; }
+  .item-details { margin: 6px 0 0; color: #5b6178; font-size: 10.5px; }
+  ul.item-details { padding-left: 16px; }
+  .item-details ul, .item-details ol { margin: 0; padding-left: 16px; }
+  .item-details p { margin: 0 0 3px; }
   .item-details li { margin-bottom: 2px; }
+  .item-details > :last-child { margin-bottom: 0; }
 
   table.totals { width: 240px; margin-left: auto; margin-bottom: 22px; border-collapse: collapse; }
   table.totals td { padding: 6px 10px; font-size: 11.5px; }
@@ -103,6 +107,10 @@
   .pay-row { font-size: 10.5px; color: #5b6178; margin: 0 0 4px; }
   .pay-row strong { color: #2a2f45; font-weight: 600; }
   .notes-text { margin: 0; font-size: 10.5px; color: #5b6178; line-height: 1.55; }
+  .notes-text p { margin: 0 0 4px; }
+  .notes-text ul, .notes-text ol { margin: 4px 0; padding-left: 18px; }
+  .notes-text li { margin-bottom: 2px; }
+  .notes-text > :last-child { margin-bottom: 0; }
   .disclaimer {
     margin-top: 22px;
     text-align: center;
@@ -125,7 +133,7 @@
         </p>
       </td>
       <td class="doc-side">
-        <p class="doc-label{% if invoice_kind != 'standard' %} doc-label-sm{% endif %}">{{ doc_label }}</p>
+        <p class="doc-label{% if doc_label_sm %} doc-label-sm{% endif %}">{{ doc_label }}</p>
         <p class="doc-number"># {{ invoice_number }}</p>
       </td>
     </tr>
@@ -142,7 +150,7 @@
       </td>
       <td class="dates">
         <div class="row"><span class="label">Invoice Date :</span> {{ date_display }}</div>
-        <div class="row"><span class="label">Due Date :</span> {{ due_display }}</div>
+        {% if not is_petty_cash %}<div class="row"><span class="label">Due Date :</span> {{ due_display }}</div>{% endif %}
       </td>
     </tr>
   </table>
@@ -153,7 +161,7 @@
     <thead>
       <tr>
         <th class="idx">#</th>
-        <th>Item &amp; Description</th>
+        <th>{{ items_heading|default:"Item & Description" }}</th>
         <th class="num">Qty</th>
         <th class="num">Rate</th>
         <th class="num">Amount</th>
@@ -165,7 +173,9 @@
         <td class="idx">{{ item.index }}</td>
         <td>
           <div class="item-desc">{{ item.description }}</div>
-          {% if item.details_lines %}
+          {% if item.details_html %}
+          <div class="item-details">{{ item.details_html|safe }}</div>
+          {% elif item.details_lines %}
           <ul class="item-details">
             {% for line in item.details_lines %}<li>{{ line }}</li>{% endfor %}
           </ul>
@@ -201,19 +211,15 @@
           <p class="pay-row"><strong>Received by:</strong> {{ received_by|default:"—" }}</p>
           <p class="pay-row"><strong>Passed by:</strong> {{ passed_by|default:"—" }}</p>
         </div>
-        {% else %}
+        {% elif payment_details %}
         <div class="footer-block">
-          <h3>Payment Details</h3>
-          <p class="pay-row"><strong>Payment Method:</strong> {{ payment.payment_method|default:"—" }}</p>
-          <p class="pay-row"><strong>Bank Name:</strong> {{ payment.bank_name|default:"—" }}</p>
-          <p class="pay-row"><strong>Account Name:</strong> {{ payment.account_name|default:"—" }}</p>
-          <p class="pay-row"><strong>IBAN / Account Number:</strong> {{ payment.iban|default:"—" }}</p>
-          <p class="pay-row"><strong>Paid Amount:</strong> {{ payment.paid_amount|default:"—" }}</p>
+          <h3>{{ payment_heading|default:"Payment Details" }}</h3>
+          <div class="notes-text">{{ payment_details|safe }}</div>
         </div>
         {% endif %}
         {% if notes %}
         <div class="footer-block" style="margin-top: 16px;">
-          <h3>Notes</h3>
+          <h3>{{ notes_heading|default:"Notes" }}</h3>
           <p class="notes-text">{{ notes }}</p>
         </div>
         {% endif %}

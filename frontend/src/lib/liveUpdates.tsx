@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { api, refreshSession, unwrapList, wsUrl } from "./api";
 import { useAuth } from "./auth";
@@ -13,12 +13,16 @@ type LiveUpdatesContextValue = {
   notifUnread: number;
   chatUnread: number;
   refreshCounts: () => void;
+  setActiveChatId: (id: number | null) => void;
+  reduceChatUnread: (count: number) => void;
 };
 
 const LiveUpdatesContext = createContext<LiveUpdatesContextValue>({
   notifUnread: 0,
   chatUnread: 0,
   refreshCounts: () => {},
+  setActiveChatId: () => {},
+  reduceChatUnread: () => {},
 });
 
 export function useLiveUpdates() {
@@ -76,15 +80,34 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
   const [notifUnread, setNotifUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
+  const activeChatIdRef = useRef<number | null>(null);
+
+  const setActiveChatId = useCallback((id: number | null) => {
+    activeChatIdRef.current = id;
+  }, []);
+
+  const reduceChatUnread = useCallback((count: number) => {
+    if (count <= 0) return;
+    setChatUnread((n) => Math.max(0, n - count));
+  }, []);
 
   const refreshCounts = () => {
     api<NotificationEventPush[] | { results: NotificationEventPush[] }>("/api/notifications")
       .then((items) => setNotifUnread(unwrapList(items).filter((n) => !n.read_at).length))
       .catch(() => {});
-    api<{ unread_count: number }[] | { results: { unread_count: number }[] }>(
+    api<{ unread_count: number; id?: number }[] | { results: { unread_count: number; id?: number }[] }>(
       "/api/messages/conversations?page_size=200"
     )
-      .then((d) => setChatUnread(unwrapList(d).reduce((sum, c) => sum + (c.unread_count || 0), 0)))
+      .then((d) => {
+        const active = activeChatIdRef.current;
+        const viewing = typeof document !== "undefined" && document.visibilityState === "visible";
+        setChatUnread(
+          unwrapList(d).reduce((sum, c) => {
+            if (viewing && active && c.id === active) return sum;
+            return sum + (c.unread_count || 0);
+          }, 0)
+        );
+      })
       .catch(() => {});
   };
 
@@ -111,6 +134,11 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
         return;
       }
       if ("kind" in payload && payload.kind === "chat_message") {
+        const viewingThis =
+          activeChatIdRef.current === payload.conversation_id &&
+          typeof document !== "undefined" &&
+          document.visibilityState === "visible";
+        if (viewingThis) return;
         setChatUnread((n) => n + 1);
         const chatUrl = `/chat?conversation=${payload.conversation_id}`;
         showToast(`${payload.sender_name}: ${payload.preview}`, "info", () => router.push(chatUrl));
@@ -166,7 +194,9 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
   }, [user?.id]);
 
   return (
-    <LiveUpdatesContext.Provider value={{ notifUnread, chatUnread, refreshCounts }}>
+    <LiveUpdatesContext.Provider
+      value={{ notifUnread, chatUnread, refreshCounts, setActiveChatId, reduceChatUnread }}
+    >
       {children}
     </LiveUpdatesContext.Provider>
   );

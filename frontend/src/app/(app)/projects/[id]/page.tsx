@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { DatePicker } from "@/components/DatePicker";
 import { Combobox } from "@/components/Combobox";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -287,15 +288,13 @@ export default function ProjectDetailPage() {
             <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 6 }}>
               <span className="muted" style={{ fontSize: 12 }}>Attachments</span>
               {files.map((url, i) => (
-                <a
+                <MediaFileLink
                   key={url}
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
+                  url={url}
                   style={{ fontSize: 13.5, display: "inline-flex", alignItems: "center", gap: 6, color: "var(--navy)" }}
                 >
                   <i className="bi bi-paperclip" /> {displayUploadedFileName(url) || `Attachment ${i + 1}`}
-                </a>
+                </MediaFileLink>
               ))}
             </div>
           );

@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { EmojiPicker } from "@/components/EmojiPicker";
+import { MediaFileLink } from "@/components/MediaFileLink";
 import { UserAvatar } from "@/components/UserAvatar";
 import { api, ApiError, refreshSession, unwrapList, wsUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -56,6 +57,15 @@ function attachmentKind(file: File): PendingAttachment["kind"] | null {
   if (mime.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(name)) return "video";
   if (mime === "application/pdf" || name.endsWith(".pdf")) return "document";
   return null;
+}
+
+function fileFromClipboardItem(item: DataTransferItem): File | null {
+  if (item.kind !== "file" || !item.type.startsWith("image/")) return null;
+  const file = item.getAsFile();
+  if (!file) return null;
+  if (file.name && file.name !== "image.png") return file;
+  const ext = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+  return new File([file], `pasted-image.${ext}`, { type: file.type || "image/png" });
 }
 
 function formatBytes(n: number) {
@@ -149,7 +159,7 @@ export default function ChatPage() {
 function ChatPageInner() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const { refreshCounts } = useLiveUpdates();
+  const { refreshCounts, setActiveChatId, reduceChatUnread } = useLiveUpdates();
   const { confirm, ConfirmDialog } = useConfirm();
   const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -158,7 +168,7 @@ function ChatPageInner() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
-  const draftInputRef = useRef<HTMLInputElement>(null);
+  const draftInputRef = useRef<HTMLTextAreaElement>(null);
   const [uploading, setUploading] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -202,7 +212,21 @@ function ChatPageInner() {
     if (raw) setSelectedId(Number(raw));
   }, [searchParams]);
 
+  const conversationsRef = useRef<Conversation[]>([]);
+  conversationsRef.current = conversations;
+
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
+
+  useEffect(() => {
+    setActiveChatId(selectedId);
+    return () => setActiveChatId(null);
+  }, [selectedId, setActiveChatId]);
+
+  const markThreadRead = (conversationId: number) => {
+    api(`/api/messages/conversations/${conversationId}/read`, { method: "POST" })
+      .then(() => refreshCounts())
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!selectedId) return;
@@ -211,17 +235,16 @@ function ChatPageInner() {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     setMenuOpen(false);
 
+    const unread = conversationsRef.current.find((c) => c.id === selectedId)?.unread_count || 0;
+    if (unread > 0) reduceChatUnread(unread);
+    setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, unread_count: 0 } : c)));
+
     api<Message[]>(`/api/messages/conversations/${selectedId}/messages`)
       .then((d) => {
         if (!cancelled) setMessages(Array.isArray(d) ? d : []);
       })
       .catch(() => {});
-    api(`/api/messages/conversations/${selectedId}/read`, { method: "POST" })
-      .then(() => {
-        setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, unread_count: 0 } : c)));
-        refreshCounts();
-      })
-      .catch(() => {});
+    markThreadRead(selectedId);
 
     const handleMessage = (e: MessageEvent) => {
       const data = JSON.parse(e.data);
@@ -255,7 +278,12 @@ function ChatPageInner() {
       }
       const msg = data as Message;
       setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-      setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, last_message: msg } : c)));
+      setConversations((prev) =>
+        prev.map((c) => (c.id === selectedId ? { ...c, last_message: msg, unread_count: 0 } : c))
+      );
+      if (!msg.is_system && msg.sender !== user?.id && document.visibilityState === "visible") {
+        markThreadRead(selectedId);
+      }
     };
 
     const connect = () => {
@@ -280,8 +308,14 @@ function ChatPageInner() {
 
     void connect();
 
+    const onVisible = () => {
+      if (document.visibilityState === "visible") markThreadRead(selectedId);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       wsRef.current?.close();
       wsRef.current = null;
@@ -311,6 +345,13 @@ function ChatPageInner() {
     setDragOver(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [selectedId]);
+
+  useEffect(() => {
+    const el = draftInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 40), 120)}px`;
+  }, [draft, selectedId, pendingAttachment]);
 
   const clearPendingAttachment = () => {
     setPendingAttachment((prev) => {
@@ -393,21 +434,34 @@ function ChatPageInner() {
     if (file) stageAttachment(file);
   };
 
-  const insertEmoji = (emoji: string) => {
+  const insertAtCursor = (text: string) => {
     const el = draftInputRef.current;
     if (!el) {
-      setDraft((d) => d + emoji);
+      setDraft((d) => d + text);
       return;
     }
     const start = el.selectionStart ?? draft.length;
     const end = el.selectionEnd ?? draft.length;
-    const next = `${draft.slice(0, start)}${emoji}${draft.slice(end)}`;
+    const next = `${draft.slice(0, start)}${text}${draft.slice(end)}`;
     setDraft(next);
     requestAnimationFrame(() => {
       el.focus();
-      const pos = start + emoji.length;
+      const pos = start + text.length;
       el.setSelectionRange(pos, pos);
     });
+  };
+
+  const insertEmoji = (emoji: string) => insertAtCursor(emoji);
+
+  const onComposerPaste = (e: React.ClipboardEvent) => {
+    const clip = e.clipboardData;
+    if (!clip) return;
+    const fromItems = [...clip.items].map(fileFromClipboardItem).find((f): f is File => !!f);
+    const fromFiles = clip.files?.[0];
+    const file = fromItems || (fromFiles && attachmentKind(fromFiles) ? fromFiles : null);
+    if (!file || !attachmentKind(file)) return;
+    e.preventDefault();
+    stageAttachment(file);
   };
 
   const clearChat = async () => {
@@ -818,21 +872,16 @@ function ChatPageInner() {
                               ) : m.attachment_type === "video" ? (
                                 <video src={m.attachment_url} controls style={attachmentMedia} />
                               ) : (
-                                <a
-                                  href={m.attachment_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={documentLink}
-                                >
+                                <MediaFileLink url={m.attachment_url} style={documentLink}>
                                   <i className="bi bi-file-earmark-pdf-fill" style={{ fontSize: 22, color: "var(--danger)" }} />
                                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                     {m.attachment_name || "Document.pdf"}
                                   </span>
                                   <i className="bi bi-download" style={{ fontSize: 13 }} />
-                                </a>
+                                </MediaFileLink>
                               )}
                               {m.body ? (
-                                <div style={{ padding: m.attachment_type === "document" ? "8px 0 0" : "8px 8px 4px", fontSize: 13.5, lineHeight: 1.4 }}>
+                                <div style={{ padding: m.attachment_type === "document" ? "8px 0 0" : "8px 8px 4px", fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
                                   {m.body}
                                 </div>
                               ) : null}
@@ -912,9 +961,10 @@ function ChatPageInner() {
                   <i className="bi bi-plus-lg" />
                 </button>
                 <EmojiPicker onPick={insertEmoji} disabled={uploading} />
-                <input
+                <textarea
                   ref={draftInputRef}
                   className="input"
+                  rows={1}
                   placeholder={
                     uploading
                       ? "Sending…"
@@ -924,14 +974,19 @@ function ChatPageInner() {
                   }
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
+                  onPaste={onComposerPaste}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    if (e.key !== "Enter") return;
+                    if (e.ctrlKey || e.metaKey || e.shiftKey) {
                       e.preventDefault();
-                      void sendMessage();
+                      insertAtCursor("\n");
+                      return;
                     }
+                    e.preventDefault();
+                    void sendMessage();
                   }}
                   disabled={uploading}
-                  style={{ flex: 1 }}
+                  style={composerInput}
                 />
                 <button
                   className="icon-btn-anim"
@@ -1124,16 +1179,14 @@ function ChatPageInner() {
           >
             <i className="bi bi-x-lg" />
           </button>
-          <a
-            href={previewImage}
-            target="_blank"
-            rel="noreferrer"
+          <MediaFileLink
+            url={previewImage}
             style={imagePreviewDownloadBtn}
             onClick={(e) => e.stopPropagation()}
             aria-label="Open original"
           >
             <i className="bi bi-download" />
-          </a>
+          </MediaFileLink>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={previewImage}
@@ -1318,6 +1371,7 @@ const bubble: React.CSSProperties = {
   fontSize: 13.5,
   lineHeight: 1.4,
   wordBreak: "break-word",
+  whiteSpace: "pre-wrap",
 };
 const bubbleOther: React.CSSProperties = {
   background: "var(--elevated)",
@@ -1349,8 +1403,16 @@ const documentLink: React.CSSProperties = {
 const inputRow: React.CSSProperties = {
   display: "flex",
   gap: 10,
-  alignItems: "center",
+  alignItems: "flex-end",
   padding: "14px 20px",
+};
+const composerInput: React.CSSProperties = {
+  flex: 1,
+  resize: "none",
+  minHeight: 40,
+  maxHeight: 120,
+  overflowY: "auto",
+  lineHeight: 1.4,
 };
 const composerShell: React.CSSProperties = {
   borderTop: "1px solid var(--border)",

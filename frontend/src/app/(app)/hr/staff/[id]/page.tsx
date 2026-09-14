@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
 import { DatePicker } from "@/components/DatePicker";
+import { DonutCard, DonutSlice } from "@/components/DonutCard";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
 import { api, ApiError } from "@/lib/api";
@@ -84,6 +85,28 @@ const URGENCY_BADGE: Record<string, string> = {
 function dateLabel(iso: string | null | undefined) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** Taken / Pending / Remaining breakdown for the Leave Balance donut — same
+ *  chart component + color tokens as the main Dashboard's status donuts.
+ *  "Taken" is capped at the allowance and anything past it becomes its own
+ *  "Over allowance" slice, since a negative "Remaining" can't be a pie slice. */
+function buildLeaveDonutSlices(leaveBalance: {
+  annual_allowance: number;
+  used: number;
+  pending: number;
+  remaining: number;
+}): DonutSlice[] {
+  const { annual_allowance, used, pending, remaining } = leaveBalance;
+  const taken = Math.min(used, annual_allowance);
+  const overAllowance = Math.max(used - annual_allowance, 0);
+  const left = Math.max(remaining, 0);
+  return [
+    { label: "Taken", value: taken, color: "var(--chart-1)" },
+    { label: "Pending", value: pending, color: "var(--chart-2)" },
+    { label: "Remaining", value: left, color: "var(--chart-4)" },
+    { label: "Over allowance", value: overAllowance, color: "var(--danger)" },
+  ].filter((s) => s.value > 0);
 }
 
 function submittedLabel(iso: string) {
@@ -203,6 +226,7 @@ export default function StaffDetailPage() {
   const pendingLeaves = leaves.filter((l) => l.status === "pending");
   const openTickets = tickets.filter((t) => t.status === "open");
   const displayName = staff.full_name || staff.email;
+  const leaveDonutSlices = buildLeaveDonutSlices(leave_balance);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -339,15 +363,16 @@ export default function StaffDetailPage() {
 
         {tab === "leave" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <DonutCard
+              title={`Leave Balance — ${leave_balance.year}`}
+              slices={leaveDonutSlices.length ? leaveDonutSlices : [{ label: "No leave yet", value: 1, color: "var(--border)" }]}
+            />
+
             <div className="card">
               <span className="card-title">
                 Leave Requests
                 {pendingLeaves.length > 0 && <span className="badge badge-warning">{pendingLeaves.length} pending</span>}
               </span>
-              <p style={{ fontSize: 12.5, marginTop: -8, marginBottom: 0, color: leave_balance.remaining < 0 ? "var(--danger)" : "var(--text-muted)" }}>
-                {leave_balance.used}/{leave_balance.annual_allowance} days used · {leave_balance.remaining} remaining ({leave_balance.year})
-                {leave_balance.remaining < 0 ? " · over allowance" : ""}
-              </p>
               {leaves.length === 0 && <p className="muted">No leave requests yet.</p>}
               {leaves.length > 0 && (
                 <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
