@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { PageLoader } from "@/components/Loader";
+import { RouteProgress } from "@/components/RouteProgress";
 import { MaintenanceBar, MaintenanceProvider } from "@/components/MaintenanceBar";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { PageTransition } from "@/components/PageTransition";
@@ -38,7 +40,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (loading || !user) {
     return (
       <div style={{ display: "grid", placeItems: "center", height: "100vh" }}>
-        <span className="muted">Loading…</span>
+        <PageLoader />
       </div>
     );
   }
@@ -57,6 +59,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <LiveUpdatesProvider>
       <MaintenanceProvider>
+        <RouteProgress />
         <div className={`shell${isMobile ? " is-mobile-app" : ""}`}>
           <Sidebar
             role={user.role}

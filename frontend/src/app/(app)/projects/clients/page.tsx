@@ -8,6 +8,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/Modal";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Client = {
   id: number;
@@ -303,7 +304,7 @@ export default function ProjectClientsPage() {
           <i className="bi bi-person-lines-fill" style={{ color: "var(--gold)" }} />
           All Clients
         </span>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && clients.length === 0 && <p className="muted">No clients yet.</p>}
         {!loading && clients.length > 0 && (
           <div style={cardGrid}>

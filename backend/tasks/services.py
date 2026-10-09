@@ -116,7 +116,12 @@ def sync_task_reminders(task: Task) -> None:
         return
 
     marker_prefix = f"[kwick:task:{task.id}"
-    terminal = {Task.Status.COMPLETED, Task.Status.QC_COMPLETED, Task.Status.APPROVED}
+    terminal = {
+        Task.Status.COMPLETED,
+        Task.Status.QC_COMPLETED,
+        Task.Status.APPROVED,
+        Task.Status.INVOICED,
+    }
 
     if task.status in terminal:
         ManualReminder.objects.filter(description__contains=marker_prefix).update(done=True)

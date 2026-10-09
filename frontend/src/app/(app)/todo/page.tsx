@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Reveal } from "@/components/Reveal";
 import { api, ApiError, unwrapList } from "@/lib/api";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type TodoItem = {
   id: number;
@@ -180,7 +181,7 @@ export default function TodoPage() {
               </button>
             </div>
 
-            {loading && <p className="muted">Loading…</p>}
+            {loading && <Loader />}
             {!loading && visible.length === 0 && <p className="muted">Nothing here.</p>}
 
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>

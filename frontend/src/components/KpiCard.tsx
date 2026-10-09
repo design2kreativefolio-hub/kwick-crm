@@ -1,3 +1,4 @@
+import { CountUp } from "@/components/CountUp";
 import { Sparkline } from "@/components/Sparkline";
 
 // Semantic tones via CSS variables so dark mode can remap contrast safely.
@@ -61,7 +62,7 @@ export function KpiCard({
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
         <div>
           <div className="kpi-card-value" style={{ color: t.accent }}>
-            {value}
+            {typeof value === "number" ? <CountUp value={value} /> : value}
           </div>
           {trend !== undefined && trend !== null && (
             <div className="kpi-card-trend">

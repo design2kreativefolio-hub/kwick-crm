@@ -70,7 +70,11 @@ class ClientViewSet(viewsets.ModelViewSet):
         original = original_upload_name(upload)
         stem = original.rsplit(".", 1)[0] if "." in original else original
         slug = slug_filename(stem, fallback="file")
-        key = f"client-files/{client.pk}/{uuid.uuid4().hex[:8]}_{slug}.{ext}"
+        # Uniqueness lives in its own path segment (not glued onto the
+        # filename with "_") so the URL's last segment — what a browser tab
+        # / PDF viewer shows when it can't use our Content-Disposition name —
+        # is already the clean original name, not "<hex>_<name>".
+        key = f"client-files/{client.pk}/{uuid.uuid4().hex[:8]}/{slug}.{ext}"
         saved_path = default_storage.save(key, upload)
         return Response(
             {"url": deliver_storage_url(request, saved_path, filename=original), "name": original}

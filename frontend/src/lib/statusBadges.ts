@@ -21,6 +21,7 @@ export const STATUS_BADGE: Record<string, string> = {
   qc_completed: "badge-warning",
   approved: "badge-teal",
   published: "badge-teal",
+  invoiced: "badge-success",
   // Projects
   started: "badge-purple",
   waiting_approval: "badge-warning",
@@ -42,6 +43,7 @@ export const STATUS_COLOR: Record<string, string> = {
   done: "#1E9E62",
   approved: "#0D9488",
   published: "#0D9488",
+  invoiced: "#1E9E62",
 };
 
 export const TASK_STATUS_OPTIONS = [
@@ -52,8 +54,11 @@ export const TASK_STATUS_OPTIONS = [
   { value: "approved", label: "Approved / Published" },
 ] as const;
 
-/** Mini-projects use the same workflow as tasks. */
-export const PROJECT_STATUS_OPTIONS = TASK_STATUS_OPTIONS;
+/** Mini-projects use the task workflow plus a final Invoiced stage. */
+export const PROJECT_STATUS_OPTIONS = [
+  ...TASK_STATUS_OPTIONS,
+  { value: "invoiced", label: "Invoiced" },
+] as const;
 
 export const TASK_STATUS_LABEL: Record<string, string> = {
   assigned: "Assigned",
@@ -67,12 +72,13 @@ export const TASK_STATUS_LABEL: Record<string, string> = {
   waiting_approval: "QC Completed",
   approved: "Approved / Published",
   published: "Approved / Published",
+  invoiced: "Invoiced",
 };
 
 export const PROJECT_STATUS_LABEL = TASK_STATUS_LABEL;
 
 export type TaskStatus = (typeof TASK_STATUS_OPTIONS)[number]["value"];
-export type ProjectStatus = TaskStatus;
+export type ProjectStatus = (typeof PROJECT_STATUS_OPTIONS)[number]["value"];
 
 export function statusBadgeClass(status: string): string {
   return STATUS_BADGE[status] ?? "badge-muted";
@@ -80,7 +86,7 @@ export function statusBadgeClass(status: string): string {
 
 /** Final shipped state — hide due date / strike title. */
 export function isTaskApproved(status: string | null | undefined): boolean {
-  return status === "approved" || status === "published";
+  return status === "approved" || status === "published" || status === "invoiced";
 }
 
 /** Completed through approval — not overdue / not "ongoing". */
@@ -89,6 +95,7 @@ export function isProjectTerminal(status: string | null | undefined): boolean {
     status === "completed" ||
     status === "qc_completed" ||
     status === "approved" ||
-    status === "published"
+    status === "published" ||
+    status === "invoiced"
   );
 }

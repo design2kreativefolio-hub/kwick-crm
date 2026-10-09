@@ -22,6 +22,7 @@ import {
   isTaskApproved,
 } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Task = {
   id: number;
@@ -548,7 +549,7 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && visibleTasks.length === 0 && (
           <p className="muted">
             {dateMode === "pending"

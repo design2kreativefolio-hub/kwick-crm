@@ -6,6 +6,7 @@ import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess, type Module } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Employee = { id: number; full_name: string; email: string };
 type Grant = {
@@ -250,7 +251,7 @@ export default function RolesPage() {
               ariaLabel="Select employee"
             />
           </div>
-          {loading && <p className="muted">Loading…</p>}
+          {loading && <Loader />}
           {!loading && employees.length === 0 && (
             <p className="muted" style={{ fontSize: 13 }}>No active employees yet.</p>
           )}

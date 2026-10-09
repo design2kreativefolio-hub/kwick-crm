@@ -13,6 +13,7 @@ urlpatterns = [
     path("api/hr/", include("hr.urls")),
     path("api/sales/", include("sales.urls")),
     path("api/projects/", include("projects.urls")),
+    path("api/public/calendar/", include("projects.public_urls")),
     path("api/calendar/", include("calendar_app.urls")),
     path("api/kanban/", include("kanban.urls")),
     path("api/messages/", include("messaging.urls")),

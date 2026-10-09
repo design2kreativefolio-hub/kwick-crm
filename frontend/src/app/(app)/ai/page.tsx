@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { EdithOrb } from "@/components/EdithOrb";
+import { PageLoader } from "@/components/Loader";
 import { EdithPlexus } from "@/components/EdithPlexus";
 import { EdithVisualCards, type EdithCards } from "@/components/EdithVisualCards";
 import { Logo } from "@/components/Logo";
@@ -69,7 +70,7 @@ async function compressImage(file: File): Promise<Attachment> {
 
 export default function EdithPage() {
   return (
-    <Suspense fallback={<p className="muted" style={{ padding: 20 }}>Loading…</p>}>
+    <Suspense fallback={<PageLoader />}>
       <EdithPageInner />
     </Suspense>
   );

@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Combobox } from "@/components/Combobox";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/Modal";
 import { Reveal } from "@/components/Reveal";
+import { FileDropZone } from "@/components/FileDropZone";
+import { MultiSelect } from "@/components/MultiSelect";
 import { Select } from "@/components/Select";
 import { MediaFileLink } from "@/components/MediaFileLink";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
@@ -16,6 +18,7 @@ import { useAuth } from "@/lib/auth";
 import { displayUploadedFileName } from "@/lib/files";
 import { STATUS_BADGE, PROJECT_STATUS_LABEL, PROJECT_STATUS_OPTIONS, isProjectTerminal, type ProjectStatus } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type ProjectPriority = "low" | "medium" | "high";
 
@@ -62,7 +65,7 @@ const emptyForm = {
   name: "",
   description: "",
   client: "",
-  assignee: "",
+  assignees: [] as string[],
   status: "assigned" as ProjectStatus,
   priority: "medium" as ProjectPriority,
   delivery_date: "",
@@ -139,14 +142,12 @@ export default function ProjectsPage() {
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [createAttachments, setCreateAttachments] = useState<File[]>([]);
-  const createAttachRef = useRef<HTMLInputElement>(null);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editForm, setEditForm] = useState(emptyForm);
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editAttachments, setEditAttachments] = useState<File[]>([]);
-  const editAttachRef = useRef<HTMLInputElement>(null);
 
   const loadProjects = (silent = false) => {
     if (!silent) setLoading(true);
@@ -191,7 +192,7 @@ export default function ProjectsPage() {
   const openCreate = () => {
     setForm({
       ...emptyForm,
-      assignee: user?.id ? String(user.id) : "",
+      assignees: user?.id ? [String(user.id)] : [],
     });
     setCreateAttachments([]);
     setError(null);
@@ -203,8 +204,7 @@ export default function ProjectsPage() {
     setError(null);
     setCreating(true);
     try {
-      const assigneeId = form.assignee || (user?.id ? String(user.id) : "");
-      const members = assigneeId ? [Number(assigneeId)] : [];
+      const members = (form.assignees.length ? form.assignees : user?.id ? [String(user.id)] : []).map(Number);
       await api<Project>("/api/projects", {
         method: "POST",
         body: buildProjectBody(
@@ -224,7 +224,7 @@ export default function ProjectsPage() {
       setCreateAttachments([]);
       setForm({
         ...emptyForm,
-        assignee: user?.id ? String(user.id) : "",
+        assignees: user?.id ? [String(user.id)] : [],
       });
       showToast("Project added.");
       loadProjects(true);
@@ -241,7 +241,7 @@ export default function ProjectsPage() {
       name: p.name,
       description: p.description || "",
       client: p.client || "",
-      assignee: p.members[0] ? String(p.members[0]) : user?.id ? String(user.id) : "",
+      assignees: p.members?.length ? p.members.map(String) : user?.id ? [String(user.id)] : [],
       status: p.status,
       priority: p.priority,
       delivery_date: p.delivery_date || "",
@@ -256,11 +256,7 @@ export default function ProjectsPage() {
     setEditError(null);
     setSaving(true);
     try {
-      const members = editForm.assignee
-        ? [Number(editForm.assignee)]
-        : user?.id
-          ? [user.id]
-          : [];
+      const members = editForm.assignees.length ? editForm.assignees.map(Number) : user?.id ? [user.id] : [];
       await api(`/api/projects/${editingProject.id}`, {
         method: "PATCH",
         body: buildProjectBody(
@@ -374,11 +370,12 @@ export default function ProjectsPage() {
                 />
               </div>
               <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
-                <Select
-                  value={form.assignee}
-                  onChange={(v) => setForm((f) => ({ ...f, assignee: v }))}
+                <label className="field-label" style={{ marginTop: 0 }}>Assign to (one or more)</label>
+                <MultiSelect
+                  values={form.assignees}
+                  onChange={(vals) => setForm((f) => ({ ...f, assignees: vals }))}
                   options={assigneeOptions}
+                  placeholder="Select one or more people…"
                   ariaLabel="Assign to"
                 />
               </div>
@@ -411,51 +408,13 @@ export default function ProjectsPage() {
             </div>
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Attachments</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <input
-                  ref={createAttachRef}
-                  type="file"
-                  multiple
-                  hidden
-                  accept={ATTACH_ACCEPT}
-                  onChange={(e) => {
-                    const picked = Array.from(e.target.files || []);
-                    e.target.value = "";
-                    if (!picked.length) return;
-                    setCreateAttachments((prev) => [...prev, ...picked].slice(0, 5));
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => createAttachRef.current?.click()}
-                  disabled={createAttachments.length >= 5}
-                >
-                  <i className="bi bi-paperclip" /> Choose files
-                </button>
-                <span className="muted" style={{ fontSize: 12.5 }}>
-                  Up to 5{createAttachments.length ? ` · ${createAttachments.length} selected` : ""}
-                </span>
-              </div>
-              {createAttachments.length > 0 && (
-                <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {createAttachments.map((f, idx) => (
-                    <li key={`${f.name}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
-                      <i className="bi bi-file-earmark" style={{ color: "var(--gold)" }} />
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: "2px 8px", color: "var(--danger)" }}
-                        onClick={() => setCreateAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                        aria-label="Remove file"
-                      >
-                        <i className="bi bi-x-lg" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <FileDropZone
+                files={createAttachments}
+                onChange={setCreateAttachments}
+                max={5}
+                accept={ATTACH_ACCEPT}
+                hint="PDF, Office files or images · up to 5"
+              />
             </div>
             {error && <p style={{ color: "var(--danger)", fontSize: 13, margin: 0 }}>{error}</p>}
             <div style={{ display: "flex", gap: 10 }}>
@@ -476,7 +435,7 @@ export default function ProjectsPage() {
           <i className="bi bi-kanban-fill" style={{ color: "var(--gold)" }} />
           All Mini-Projects
         </span>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && rows.length === 0 && <p className="muted">No projects yet.</p>}
         {!loading && rows.length > 0 && (
           <div className="table-wrap">
@@ -495,12 +454,17 @@ export default function ProjectsPage() {
               <tbody>
                 {rows.map((p) => {
                   const memberIds = Array.isArray(p.members) ? p.members : [];
-                  const named = p.member_names?.[0];
-                  const fromDir = memberIds[0] ? directoryById.get(memberIds[0]) : undefined;
-                  const assigneeLabel =
-                    named?.name ||
-                    (fromDir ? fromDir.full_name || fromDir.email : null) ||
-                    (user && memberIds[0] === user.id ? user.full_name || user.email : null);
+                  const assigneeNames = memberIds
+                    .map((id) => {
+                      const named = p.member_names?.find((m) => m.id === id)?.name;
+                      if (named) return named;
+                      const fromDir = directoryById.get(id);
+                      if (fromDir) return fromDir.full_name || fromDir.email;
+                      if (user && id === user.id) return user.full_name || user.email;
+                      return null;
+                    })
+                    .filter((n): n is string => !!n);
+                  const assigneeLabel = assigneeNames.join(", ");
                   const overdue = isOverdue(p.delivery_date, p.status);
                   const files = projectAttachmentUrls(p);
                   const priority = (PRIORITY_LABEL[p.priority] ? p.priority : "medium") as ProjectPriority;
@@ -525,7 +489,7 @@ export default function ProjectsPage() {
                         </div>
                       </td>
                       <td>{p.client || "—"}</td>
-                      <td>{assigneeLabel || "—"}</td>
+                      <td title={assigneeLabel || undefined}>{assigneeLabel || "—"}</td>
                       <td>
                         <span className={`badge ${PRIORITY_BADGE[priority]}`}>{PRIORITY_LABEL[priority]}</span>
                       </td>
@@ -615,11 +579,12 @@ export default function ProjectsPage() {
                 />
               </div>
               <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
-                <Select
-                  value={editForm.assignee}
-                  onChange={(v) => setEditForm((f) => ({ ...f, assignee: v }))}
+                <label className="field-label" style={{ marginTop: 0 }}>Assign to (one or more)</label>
+                <MultiSelect
+                  values={editForm.assignees}
+                  onChange={(vals) => setEditForm((f) => ({ ...f, assignees: vals }))}
                   options={assigneeOptions}
+                  placeholder="Select one or more people…"
                   ariaLabel="Assign to"
                 />
               </div>
@@ -652,51 +617,13 @@ export default function ProjectsPage() {
             </div>
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Attachments</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <input
-                  ref={editAttachRef}
-                  type="file"
-                  multiple
-                  hidden
-                  accept={ATTACH_ACCEPT}
-                  onChange={(e) => {
-                    const picked = Array.from(e.target.files || []);
-                    e.target.value = "";
-                    if (!picked.length) return;
-                    setEditAttachments((prev) => [...prev, ...picked].slice(0, 5));
-                  }}
-                />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => editAttachRef.current?.click()}
-                  disabled={editAttachments.length >= 5}
-                >
-                  <i className="bi bi-paperclip" /> {editAttachments.length || (editingProject && projectAttachmentUrls(editingProject).length) ? "Replace files" : "Choose files"}
-                </button>
-                <span className="muted" style={{ fontSize: 12.5 }}>
-                  Up to 5{editAttachments.length ? ` · ${editAttachments.length} selected` : ""}
-                </span>
-              </div>
-              {editAttachments.length > 0 && (
-                <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {editAttachments.map((f, idx) => (
-                    <li key={`${f.name}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
-                      <i className="bi bi-file-earmark" style={{ color: "var(--gold)" }} />
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: "2px 8px", color: "var(--danger)" }}
-                        onClick={() => setEditAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                        aria-label="Remove file"
-                      >
-                        <i className="bi bi-x-lg" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <FileDropZone
+                files={editAttachments}
+                onChange={setEditAttachments}
+                max={5}
+                accept={ATTACH_ACCEPT}
+                hint="Up to 5 · new files replace the current attachments"
+              />
               {editingProject && !editAttachments.length && projectAttachmentUrls(editingProject).length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
                   {projectAttachmentUrls(editingProject).map((url, i) => (

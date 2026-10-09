@@ -1,31 +1,25 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
-
 /**
- * Clean route enter — fade only (no slide).
+ * Route enter: soft rise + unblur. Keyed on pathname so every page switch
+ * remounts the wrapper and replays the CSS page-enter animation. The cascade
+ * on cards and table rows lives in globals.css.
  */
 export function PageTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
 
   return (
-    <motion.div
+    <div
       key={pathname}
       className="page-transition"
-      initial={reduceMotion ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={
-        reduceMotion
-          ? { duration: 0 }
-          : { duration: 0.28, ease: EASE }
-      }
+      style={reduceMotion ? undefined : { animation: "page-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both" }}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }

@@ -12,11 +12,13 @@ import {
   YAxis,
 } from "recharts";
 
+import { CountUp } from "@/components/CountUp";
+import { ChartLoader } from "@/components/Loader";
 import { Select } from "@/components/Select";
 import { api } from "@/lib/api";
 
 type Granularity = "daily" | "weekly" | "monthly";
-type Point = { bucket: string; completed: number; created: number };
+type Point = { bucket: string; completed: number; due: number };
 
 function trendPct(current: number, previous: number): number | null {
   if (previous === 0) return current > 0 ? 100 : null;
@@ -32,7 +34,7 @@ function renderLegend() {
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--blue-300)" }} />
-        Created
+        Due
       </span>
     </div>
   );
@@ -50,14 +52,17 @@ export function PerformanceChart({
   const [granularity, setGranularity] = useState<Granularity>("daily");
   const [scope, setScope] = useState<"self" | "company">("self");
   const [series, setSeries] = useState<Point[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Toggle re-queries rather than re-labelling (spec §15.4).
+    setLoading(true);
     api<{ series: Point[] }>(
       `/api/dashboard/performance?granularity=${granularity}&scope=${scope}`
     )
       .then((d) => setSeries(d.series))
-      .catch(() => setSeries([]));
+      .catch(() => setSeries([]))
+      .finally(() => setLoading(false));
   }, [granularity, scope]);
 
   const pct = trendPct(headlineValue, previousValue);
@@ -68,7 +73,7 @@ export function PerformanceChart({
         <div>
           <span className="card-title" style={{ marginBottom: 4 }}>Performance</span>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span style={{ fontSize: 32, fontWeight: 700, color: "var(--navy)" }}>{headlineValue}</span>
+            <span style={{ fontSize: 32, fontWeight: 700, color: "var(--navy)" }}><CountUp value={headlineValue} /></span>
             {pct !== null && (
               <span className={`badge ${pct >= 0 ? "badge-success" : "badge-danger"}`}>
                 {pct >= 0 ? "+" : ""}
@@ -105,6 +110,9 @@ export function PerformanceChart({
       </div>
 
       <div style={{ height: 260, marginTop: 8 }}>
+        {loading ? (
+          <ChartLoader height={260} label="Loading performance" />
+        ) : (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={series} margin={{ top: 16, right: 4, left: -20, bottom: 0 }} barGap={4}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
@@ -124,24 +132,24 @@ export function PerformanceChart({
             <Bar
               dataKey="completed"
               name="Completed"
-              stackId="a"
               fill="var(--blue-800)"
-              radius={[0, 0, 0, 0]}
-              animationDuration={900}
+              radius={[6, 6, 0, 0]}
+              isAnimationActive
+              animationDuration={1200}
               animationEasing="ease-out"
             />
             <Bar
-              dataKey="created"
-              name="Created"
-              stackId="a"
+              dataKey="due"
+              name="Due"
               fill="var(--blue-300)"
               radius={[6, 6, 0, 0]}
-              animationDuration={900}
+              isAnimationActive
+              animationDuration={1200}
               animationEasing="ease-out"
-              animationBegin={150}
             />
           </BarChart>
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   );

@@ -112,6 +112,8 @@ class Leave(TimeStampedModel):
     end_date = models.DateField()
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     reason = models.TextField(blank=True)
+    # Note from HR / the admin about the decision — visible to the employee.
+    admin_comment = models.TextField(blank=True, default="")
 
     @property
     def days(self) -> int:

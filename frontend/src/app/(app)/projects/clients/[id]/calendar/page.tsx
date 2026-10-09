@@ -4,6 +4,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
+import { ClientPostModal } from "@/components/calendar/ClientPostModal";
+import { ClientShareModal } from "@/components/calendar/ClientShareModal";
 import { MediaFileLink } from "@/components/MediaFileLink";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
@@ -20,6 +22,7 @@ import { detectMeetingUrl } from "@/lib/meetingLinks";
 import { STATUS_BADGE, STATUS_COLOR, TASK_STATUS_OPTIONS, isTaskApproved, isProjectTerminal } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
 import { useShellFillHeight } from "@/lib/useShellFillHeight";
+import { Loader } from "@/components/Loader";
 
 type Client = { id: number; client_id: string; name: string; poc_name: string; accent_color: string; logo_url: string };
 type Contact = { id: number; full_name: string; email: string };
@@ -38,6 +41,9 @@ type ContentItem = {
   my_task_id: number | null;
   attachment_url: string;
   attachment_urls: string[];
+  client_post_files: string[];
+  client_post_caption: string;
+  comment_count: number;
   created_by_name: string;
   created_at: string;
 };
@@ -163,14 +169,16 @@ export default function ClientCalendarPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [postItemId, setPostItemId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const formBaseline = useRef("");
 
   const accent = client?.accent_color || DEFAULT_ACCENT;
 
-  const loadItems = () => {
-    setLoading(true);
+  const loadItems = (silent = false) => {
+    if (!silent) setLoading(true);
     Promise.all([
       api<ContentItem[] | { results: ContentItem[] }>(`/api/projects/content-calendar?client=${clientId}`),
       api<LinkedTask[] | { results: LinkedTask[] }>(`/api/tasks?client=${clientId}`),
@@ -503,6 +511,11 @@ export default function ClientCalendarPage() {
                   {client.client_id}
                 </span>
               )}
+              {client && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShareOpen(true)}>
+                  <i className="bi bi-share-fill" /> Share with client
+                </button>
+              )}
             </div>
             {client?.poc_name ? (
               <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>
@@ -555,7 +568,7 @@ export default function ClientCalendarPage() {
             ))}
           </div>
           {loading ? (
-            <p className="muted" style={{ padding: 20 }}>Loading…</p>
+            <Loader />
           ) : (
             <div
               className="client-cal-month"
@@ -867,6 +880,18 @@ export default function ClientCalendarPage() {
                           {statusLabel(it.status)}
                         </span>
                       </div>
+                      {(it.status === "qc_completed" || it.status === "approved" || it.status === "published" || it.client_post_files?.length > 0 || it.comment_count > 0) && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ marginTop: 6, fontSize: 11.5 }}
+                          onClick={() => setPostItemId(it.id)}
+                        >
+                          <i className={`bi ${it.client_post_files?.length ? "bi-check2-circle" : "bi-upload"}`} />{" "}
+                          {it.client_post_files?.length ? "Client post" : "Upload post"}
+                          {it.comment_count > 0 ? ` · ${it.comment_count} comment${it.comment_count === 1 ? "" : "s"}` : ""}
+                        </button>
+                      )}
                       {(it.created_at || it.created_by_name) && (
                         <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
                           <i className="bi bi-clock" style={{ marginRight: 4 }} />
@@ -921,6 +946,20 @@ export default function ClientCalendarPage() {
           </div>
         </div>
       </div>
+
+      {client && (
+        <ClientShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          clientId={clientId}
+          clientName={client.name}
+        />
+      )}
+      <ClientPostModal
+        item={items.find((i) => i.id === postItemId) ?? null}
+        onClose={() => setPostItemId(null)}
+        onChanged={() => loadItems(true)}
+      />
 
       <Modal open={modalOpen} onClose={requestCloseModal} wide>
         <form onSubmit={save}>

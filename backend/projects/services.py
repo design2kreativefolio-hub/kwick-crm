@@ -67,8 +67,9 @@ def sync_mini_project_task(project) -> None:
         Project.Status.COMPLETED: Task.BoardStatus.DONE,
         Project.Status.QC_COMPLETED: Task.BoardStatus.DONE,
         Project.Status.APPROVED: Task.BoardStatus.DONE,
+        Project.Status.INVOICED: Task.BoardStatus.DONE,
     }
-    published = project.status == Project.Status.APPROVED
+    published = project.status in (Project.Status.APPROVED, Project.Status.INVOICED)
     due_date = None if published else project.delivery_date
     board_status = board_map.get(project.status, Task.BoardStatus.TODO)
 

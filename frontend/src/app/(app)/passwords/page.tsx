@@ -10,6 +10,7 @@ import { PinInput } from "@/components/PinInput";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type PasswordEntry = {
   id: number;
@@ -398,7 +399,7 @@ export default function PasswordsPage() {
           />
         </div>
         {vaultGate === "checking" && <p className="muted">Checking vault…</p>}
-        {unlocked && loading && <p className="muted">Loading…</p>}
+        {unlocked && loading && <Loader />}
         {unlocked && !loading && filtered.length === 0 && <p className="muted">No entries yet.</p>}
         {unlocked && !loading && groupedByClient.length > 0 && (
           <div className="password-vault-groups">

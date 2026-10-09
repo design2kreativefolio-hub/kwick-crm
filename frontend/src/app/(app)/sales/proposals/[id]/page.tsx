@@ -36,6 +36,7 @@ import { openUploadedFile } from "@/lib/files";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
 import { useDirtySnapshot, useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { Loader } from "@/components/Loader";
 
 type Client = { id: number; name: string; contact_email: string; contact_phone: string };
 
@@ -294,7 +295,7 @@ export default function ProposalBuilderPage() {
   };
 
   if (loading || !content) {
-    return <p className="muted">Loading…</p>;
+    return <Loader />;
   }
 
   const home = content.home;

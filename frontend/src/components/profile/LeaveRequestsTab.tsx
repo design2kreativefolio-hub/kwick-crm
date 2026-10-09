@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { DatePicker } from "@/components/DatePicker";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
 type LeaveBalance = {
@@ -18,12 +19,15 @@ type LeaveBalance = {
 
 type Leave = {
   id: number;
+  staff: number;
+  staff_name: string;
   leave_type: string;
   start_date: string;
   end_date: string;
   days: number;
   status: string;
   reason: string;
+  admin_comment?: string;
   created_at: string;
 };
 
@@ -56,6 +60,7 @@ function submittedLabel(iso: string) {
 
 export function LeaveRequestsTab() {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [balance, setBalance] = useState<LeaveBalance | null>(null);
   const [leaves, setLeaves] = useState<Leave[]>([]);
   const [form, setForm] = useState({ leave_type: "annual", start_date: "", end_date: "", reason: "" });
@@ -105,6 +110,8 @@ export function LeaveRequestsTab() {
     }
   };
 
+  // Superadmin gets everyone's requests; show whose each one is.
+  const showOwner = leaves.some((l) => l.staff !== user?.id);
   const overAllowance = balance ? balance.used + balance.pending > balance.annual_allowance : false;
   const pct = balance
     ? Math.min(100, Math.round(((balance.used + balance.pending) / Math.max(1, balance.annual_allowance)) * 100))
@@ -212,13 +219,14 @@ export function LeaveRequestsTab() {
       </div>
 
       <div className="card">
-        <span className="card-title">History</span>
+        <span className="card-title">{showOwner ? "All leave requests" : "History"}</span>
         {leaves.length === 0 && <p className="muted">No leave requests yet.</p>}
         {leaves.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">
               <thead>
                 <tr>
+                  {showOwner && <th>Employee</th>}
                   <th>Type</th>
                   <th>Dates</th>
                   <th>Days</th>
@@ -231,6 +239,7 @@ export function LeaveRequestsTab() {
               <tbody>
                 {leaves.map((l) => (
                   <tr key={l.id}>
+                    {showOwner && <td>{l.staff_name}</td>}
                     <td>{LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type}</td>
                     <td>
                       {new Date(l.start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
@@ -240,6 +249,11 @@ export function LeaveRequestsTab() {
                     <td>{l.days}</td>
                     <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {l.reason || "—"}
+                      {l.admin_comment && (
+                        <div style={{ fontSize: 12, color: "var(--navy)", whiteSpace: "normal" }}>
+                          <i className="bi bi-chat-left-text" /> HR: {l.admin_comment}
+                        </div>
+                      )}
                     </td>
                     <td className="muted" style={{ whiteSpace: "nowrap" }}>{submittedLabel(l.created_at)}</td>
                     <td>

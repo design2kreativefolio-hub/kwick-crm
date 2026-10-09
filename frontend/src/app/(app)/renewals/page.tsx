@@ -7,6 +7,7 @@ import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type SubjectType = "client" | "staff" | "other";
 type RenewalType = "hosting" | "domain" | "contract" | "visa" | "other";
@@ -524,7 +525,7 @@ export default function RenewalsPage() {
           </div>
         </div>
 
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && renewals.length === 0 && <p className="muted">No renewals found.</p>}
         {!loading && renewals.length > 0 && (
           <div className="table-wrap">

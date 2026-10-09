@@ -196,8 +196,11 @@ class ReminderRestoreView(APIView):
 class PerformanceView(APIView):
     """
     GET /api/dashboard/performance?granularity=daily|weekly|monthly&scope=self|company
-    Two-series time-series — completed vs. created — so the toggle re-queries
+    Two-series time-series — completed vs. due — so the toggle re-queries
     rather than re-labelling (spec §15.4). scope=company is manager-only.
+
+    A task belongs to the day it is due. Approved / Invoiced tasks have their
+    due date cleared, so those fall on the day they were completed instead.
     """
 
     permission_classes = [IsActive]
@@ -225,18 +228,27 @@ class PerformanceView(APIView):
                 .annotate(count=Count("id"))
                 .order_by("bucket")
             )
-            return {
-                row["bucket"].date().isoformat(): row["count"]
-                for row in rows
-                if row["bucket"] is not None
-            }
+            out = {}
+            for row in rows:
+                bucket = row["bucket"]
+                if bucket is None:
+                    continue
+                # DateField truncs give a date, DateTimeField truncs a datetime.
+                key = (bucket.date() if hasattr(bucket, "date") else bucket).isoformat()
+                out[key] = out.get(key, 0) + row["count"]
+            return out
 
         completed = _bucketed(
             base.filter(status__in=Task.TERMINAL_STATUSES, completed_at__isnull=False), "completed_at"
         )
-        created = _bucketed(base, "created_at")
+        due = _bucketed(base.filter(due_date__isnull=False), "due_date")
+        # No due date left (Approved / Invoiced): count it on the day it shipped.
+        for key, count in _bucketed(
+            base.filter(due_date__isnull=True, completed_at__isnull=False), "completed_at"
+        ).items():
+            due[key] = due.get(key, 0) + count
 
-        buckets = sorted(set(completed) | set(created))
+        buckets = sorted(set(completed) | set(due))
         return Response(
             {
                 "granularity": granularity,
@@ -245,7 +257,7 @@ class PerformanceView(APIView):
                     {
                         "bucket": bucket,
                         "completed": completed.get(bucket, 0),
-                        "created": created.get(bucket, 0),
+                        "due": due.get(bucket, 0),
                     }
                     for bucket in buckets
                 ],

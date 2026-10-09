@@ -193,6 +193,8 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "auth": "8/min",
         "vault_pin": "8/min",
+        "public_share": "300/min",
+        "public_comment": "10/min",
     },
 }
 

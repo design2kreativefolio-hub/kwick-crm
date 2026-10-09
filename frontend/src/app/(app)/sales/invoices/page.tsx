@@ -15,6 +15,7 @@ import { InvoiceContent, InvoiceKind, defaultInvoiceContent, mergedInvoiceConten
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { openUploadedFile } from "@/lib/files";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Client = { id: number; name: string };
 
@@ -287,7 +288,7 @@ export default function SalesInvoicesPage() {
             <i className="bi bi-receipt" style={{ color: "var(--gold)" }} />
             All Invoices
           </span>
-          {loading && <p className="muted">Loading…</p>}
+          {loading && <Loader />}
           {!loading && invoices.length === 0 && <p className="muted">No invoices yet.</p>}
           {!loading && invoices.length > 0 && (
             <div className="table-wrap">

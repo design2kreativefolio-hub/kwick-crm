@@ -5,10 +5,13 @@ import { useEffect, useState } from "react";
 import { DatePicker } from "@/components/DatePicker";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 
 type Ticket = {
   id: number;
+  raised_by: number;
+  raised_by_name: string;
   date: string;
   description: string;
   urgency: string;
@@ -38,6 +41,7 @@ function submittedLabel(iso: string) {
 
 export function RaiseTicketTab() {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [form, setForm] = useState({ date: todayIso(), description: "", urgency: "medium" });
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +70,8 @@ export function RaiseTicketTab() {
       setBusy(false);
     }
   };
+
+  const showOwner = tickets.some((t) => t.raised_by !== user?.id);
 
   return (
     <div className="profile-split-grid">
@@ -104,13 +110,14 @@ export function RaiseTicketTab() {
       </form>
 
       <div className="card">
-        <span className="card-title">My Tickets</span>
+        <span className="card-title">{showOwner ? "All Tickets" : "My Tickets"}</span>
         {tickets.length === 0 && <p className="muted">No tickets raised yet.</p>}
         {tickets.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">
               <thead>
                 <tr>
+                  {showOwner && <th>Employee</th>}
                   <th>Description</th>
                   <th>Date</th>
                   <th>Urgency</th>
@@ -121,6 +128,7 @@ export function RaiseTicketTab() {
               <tbody>
                 {tickets.map((t) => (
                   <tr key={t.id}>
+                    {showOwner && <td>{t.raised_by_name}</td>}
                     <td style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {t.description}
                     </td>

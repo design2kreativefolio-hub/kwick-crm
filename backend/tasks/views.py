@@ -156,7 +156,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         status_changed = task.status != before_status
         project.status = task.status
         project.priority = task.priority
-        if task.status == Task.Status.APPROVED:
+        if task.status in (Task.Status.APPROVED, Task.Status.INVOICED):
             project.delivery_date = None
         elif task.due_date is not None:
             project.delivery_date = task.due_date

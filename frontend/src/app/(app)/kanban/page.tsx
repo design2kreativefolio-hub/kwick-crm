@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { STATUS_COLOR } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type BoardStatus = "todo" | "doing" | "done";
 const ORDER: BoardStatus[] = ["todo", "doing", "done"];
@@ -153,7 +154,7 @@ export default function KanbanPage() {
         </p>
       </div>
 
-      {loading && <p className="muted">Loading…</p>}
+      {loading && <Loader />}
 
       {!loading && board && (
         <div style={boardRow}>

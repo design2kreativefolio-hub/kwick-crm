@@ -9,6 +9,7 @@ import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Project = { id: number; name: string };
 type ClientOption = { id: number; name: string };
@@ -379,7 +380,7 @@ export default function ArtworkGeneratorPage() {
           <i className="bi bi-clock-history" style={{ color: "var(--gold)" }} />
           Recently Generated
         </span>
-        {loadingArtworks && <p className="muted">Loading…</p>}
+        {loadingArtworks && <Loader />}
         {!loadingArtworks && sortedArtworks.length === 0 && <p className="muted">No artwork IDs generated yet.</p>}
         {!loadingArtworks && sortedArtworks.length > 0 && (
           <div className="table-wrap">

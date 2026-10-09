@@ -10,6 +10,7 @@ import { api, ApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { SalesClient } from "@/lib/salesClient";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 export default function SalesClientsPage() {
   const { user } = useAuth();
@@ -91,7 +92,7 @@ export default function SalesClientsPage() {
           <i className="bi bi-person-lines-fill" style={{ color: "var(--gold)" }} />
           All Clients
         </span>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && clients.length === 0 && <p className="muted">No clients yet.</p>}
         {!loading && clients.length > 0 && (
           <div className="table-wrap">

@@ -4,7 +4,7 @@ from common.media_urls import persist_storage_url, sign_media_url
 from common.uploads import CALENDAR_FILE_EXTENSIONS, MAX_FILE_BYTES, validated_extension
 from sales.models import Client
 
-from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient, ProjectUpdate
+from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarComment, ContentCalendarItem, Project, ProjectClient, ProjectUpdate
 
 
 def _person_label(user) -> str:
@@ -300,11 +300,29 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             "attachment",
             "attachment_url",
             "attachment_urls",
+            "client_post_files",
+            "client_post_caption",
+            "client_post_uploaded_at",
+            "comment_count",
             "created_by",
             "created_by_name",
             "created_at",
         ]
-        read_only_fields = ["attachment_url", "attachment_urls", "created_by", "created_at", "my_task_id"]
+        read_only_fields = [
+            "attachment_url",
+            "attachment_urls",
+            "client_post_files",
+            "client_post_caption",
+            "client_post_uploaded_at",
+            "created_by",
+            "created_at",
+            "my_task_id",
+        ]
+
+    comment_count = serializers.SerializerMethodField()
+
+    def get_comment_count(self, obj):
+        return len(obj.comments.all())
 
     def get_assignee_names(self, obj):
         return [{"id": u.id, "name": u.full_name or u.email} for u in obj.assignees.all()]
@@ -342,6 +360,7 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
         if not urls and instance.attachment_url:
             urls = [instance.attachment_url]
         data["attachment_urls"] = [sign_media_url(u) for u in urls]
+        data["client_post_files"] = [sign_media_url(u) for u in (instance.client_post_files or [])]
         if data["attachment_urls"] and not data.get("attachment_url"):
             data["attachment_url"] = data["attachment_urls"][0]
         elif data.get("attachment_url"):
@@ -430,3 +449,9 @@ class ProjectUpdateSerializer(serializers.ModelSerializer):
 
     def get_author_name(self, obj):
         return _person_label(obj.author)
+
+
+class ContentCalendarCommentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContentCalendarComment
+        fields = ["id", "from_client", "author_name", "body", "created_at"]

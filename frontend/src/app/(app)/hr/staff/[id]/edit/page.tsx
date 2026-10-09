@@ -10,6 +10,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type StaffDetail = {
   staff: {
@@ -236,7 +237,7 @@ export default function StaffEditPage() {
     }
   };
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <Loader />;
   if (!data) return <p className="muted">Staff not found.</p>;
 
   const isActive = data.staff.status === "active";

@@ -9,6 +9,7 @@ import { MediaFileLink } from "@/components/MediaFileLink";
 import { DatePicker } from "@/components/DatePicker";
 import { Combobox } from "@/components/Combobox";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { MultiSelect } from "@/components/MultiSelect";
 import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
@@ -16,6 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { displayUploadedFileName } from "@/lib/files";
 import { STATUS_BADGE, PROJECT_STATUS_LABEL, PROJECT_STATUS_OPTIONS, isProjectTerminal, type ProjectStatus } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type ProjectPriority = "low" | "medium" | "high";
 
@@ -96,7 +98,7 @@ export default function ProjectDetailPage() {
     name: "",
     description: "",
     client: "",
-    assignee: "",
+    assignees: [] as string[],
     status: "assigned" as ProjectStatus,
     priority: "medium" as ProjectPriority,
     delivery_date: "",
@@ -142,13 +144,19 @@ export default function ProjectDetailPage() {
   const clientNames = useMemo(() => clients.map((c) => c.name), [clients]);
 
   const assigneeLabel = (() => {
-    if (!project?.members[0]) return null;
-    const named = project.member_names?.[0];
-    if (named?.name) return named.name;
-    const fromDir = directoryById.get(project.members[0]);
-    if (fromDir) return fromDir.full_name || fromDir.email;
-    if (user && project.members[0] === user.id) return user.full_name || user.email;
-    return null;
+    const ids = project?.members ?? [];
+    if (!ids.length) return null;
+    const names = ids
+      .map((id) => {
+        const named = project?.member_names?.find((m) => m.id === id)?.name;
+        if (named) return named;
+        const fromDir = directoryById.get(id);
+        if (fromDir) return fromDir.full_name || fromDir.email;
+        if (user && id === user.id) return user.full_name || user.email;
+        return null;
+      })
+      .filter((n): n is string => !!n);
+    return names.length ? names.join(", ") : null;
   })();
   const overdue = project ? isOverdue(project.delivery_date, project.status) : false;
   const isAssignee = Boolean(
@@ -193,7 +201,7 @@ export default function ProjectDetailPage() {
       name: project.name,
       description: project.description || "",
       client: project.client || "",
-      assignee: project.members[0] ? String(project.members[0]) : user?.id ? String(user.id) : "",
+      assignees: project.members?.length ? project.members.map(String) : user?.id ? [String(user.id)] : [],
       status: project.status,
       priority: project.priority,
       delivery_date: project.delivery_date || "",
@@ -217,7 +225,7 @@ export default function ProjectDetailPage() {
           status: editForm.status,
           priority: editForm.priority,
           delivery_date: editForm.delivery_date || null,
-          members: editForm.assignee ? [Number(editForm.assignee)] : [],
+          members: editForm.assignees.map(Number),
         }),
       });
       setProject(updated);
@@ -251,7 +259,7 @@ export default function ProjectDetailPage() {
     }
   };
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <Loader />;
   if (notFound || !project) return <p className="muted">Project not found.</p>;
 
   return (
@@ -435,11 +443,12 @@ export default function ProjectDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="field-label" style={{ marginTop: 0 }}>Assign to</label>
-                  <Select
-                    value={editForm.assignee}
-                    onChange={(v) => setEditForm((f) => ({ ...f, assignee: v }))}
+                  <label className="field-label" style={{ marginTop: 0 }}>Assign to (one or more)</label>
+                  <MultiSelect
+                    values={editForm.assignees}
+                    onChange={(vals) => setEditForm((f) => ({ ...f, assignees: vals }))}
                     options={assigneeOptions}
+                    placeholder="Select one or more people…"
                     ariaLabel="Assign to"
                   />
                 </div>

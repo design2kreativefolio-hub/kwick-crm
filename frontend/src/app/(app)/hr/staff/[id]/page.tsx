@@ -5,12 +5,16 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { DonutCard, DonutSlice } from "@/components/DonutCard";
+import { Modal } from "@/components/Modal";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
 import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Staff = {
   id: number;
@@ -44,6 +48,7 @@ type StaffDetail = {
     days: number;
     status: string;
     reason: string;
+    admin_comment?: string;
     created_at: string;
   }[];
   tickets: {
@@ -122,6 +127,9 @@ export default function StaffDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isSuperadmin = user?.role === "superadmin";
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [data, setData] = useState<StaffDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -165,6 +173,27 @@ export default function StaffDetailPage() {
     } finally {
       setUploadingAvatar(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const [leaveEdit, setLeaveEdit] = useState<{ id: number; status: string; comment: string } | null>(null);
+  const [savingLeaveEdit, setSavingLeaveEdit] = useState(false);
+
+  const saveLeaveEdit = async () => {
+    if (!leaveEdit) return;
+    setSavingLeaveEdit(true);
+    try {
+      await api(`/api/hr/leaves/${leaveEdit.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: leaveEdit.status, admin_comment: leaveEdit.comment }),
+      });
+      showToast("Leave request updated.");
+      setLeaveEdit(null);
+      load();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't update the leave request." : err.message, "error");
+    } finally {
+      setSavingLeaveEdit(false);
     }
   };
 
@@ -219,7 +248,26 @@ export default function StaffDetailPage() {
     }
   };
 
-  if (loading) return <p className="muted">Loading…</p>;
+  const deleteTicket = async (ticketId: number) => {
+    const ok = await confirm("Delete this ticket? This cannot be undone.", {
+      title: "Delete Ticket",
+      danger: true,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    setBusyKey(`ticket-${ticketId}`);
+    try {
+      await api(`/api/hr/tickets/${ticketId}`, { method: "DELETE" });
+      showToast("Ticket deleted.");
+      load();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't delete ticket." : err.message, "error");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  if (loading) return <Loader />;
   if (!data) return <p className="muted">Staff not found.</p>;
 
   const { staff, leave_balance, leaves, tickets } = data;
@@ -230,6 +278,7 @@ export default function StaffDetailPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {ConfirmDialog}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <BackLink href="/hr/staff" label="Back to Staff" />
         <Link href={`/hr/staff/${id}/edit`} className="btn btn-sm">
@@ -394,6 +443,11 @@ export default function StaffDetailPage() {
                             {l.reason}
                           </div>
                         )}
+                        {l.admin_comment && (
+                          <div style={{ fontSize: 12, marginTop: 4, color: "var(--navy)" }}>
+                            <i className="bi bi-chat-left-text" /> HR note: {l.admin_comment}
+                          </div>
+                        )}
                       </span>
                       {l.status === "pending" ? (
                         <span style={{ display: "flex", gap: 6 }}>
@@ -415,11 +469,56 @@ export default function StaffDetailPage() {
                       ) : (
                         <span className={`badge ${LEAVE_STATUS_BADGE[l.status] ?? ""}`}>{l.status}</span>
                       )}
+                      {l.status !== "cancelled" && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          title="Change decision or add a comment"
+                          onClick={() => setLeaveEdit({ id: l.id, status: l.status, comment: l.admin_comment || "" })}
+                        >
+                          <i className="bi bi-pencil-fill" /> Edit
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
             </div>
+
+            <Modal open={!!leaveEdit} onClose={() => setLeaveEdit(null)} maxWidth={460}>
+              <span className="card-title" style={{ margin: 0 }}>Edit leave request</span>
+              <p className="muted" style={{ fontSize: 12.5, margin: "6px 0 12px" }}>
+                Changing the decision updates the employee&apos;s leave balance and notifies them. The comment is
+                visible to the employee.
+              </p>
+              <label className="field-label" style={{ marginTop: 0 }}>Decision</label>
+              <Select
+                value={leaveEdit?.status ?? "pending"}
+                onChange={(v) => setLeaveEdit((e) => (e ? { ...e, status: v } : e))}
+                options={[
+                  { value: "approved", label: "Approved" },
+                  { value: "rejected", label: "Rejected" },
+                  { value: "pending", label: "Pending" },
+                ]}
+                ariaLabel="Decision"
+              />
+              <label className="field-label">Comment (optional)</label>
+              <textarea
+                className="input"
+                rows={3}
+                maxLength={1000}
+                placeholder="e.g. Approved — please hand over your tasks first."
+                value={leaveEdit?.comment ?? ""}
+                onChange={(e) => setLeaveEdit((cur) => (cur ? { ...cur, comment: e.target.value } : cur))}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button type="button" className="btn" disabled={savingLeaveEdit} onClick={saveLeaveEdit}>
+                  {savingLeaveEdit ? "Saving…" : "Save"}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => setLeaveEdit(null)}>
+                  Cancel
+                </button>
+              </div>
+            </Modal>
 
             <form className="card" onSubmit={addLeave}>
               <span className="card-title">Add leave (already taken)</span>
@@ -509,6 +608,18 @@ export default function StaffDetailPage() {
                       </button>
                     ) : (
                       <span className="badge badge-success">resolved</span>
+                    )}
+                    {isSuperadmin && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: "var(--danger)" }}
+                        disabled={busyKey === `ticket-${t.id}`}
+                        onClick={() => deleteTicket(t.id)}
+                        aria-label="Delete ticket"
+                      >
+                        <i className="bi bi-trash-fill" />
+                      </button>
                     )}
                   </li>
                 ))}

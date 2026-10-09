@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { DEFAULT_SOURCE_META, NotificationEvent, SOURCE_META, notificationHref, timeAgo } from "@/lib/notifications";
+import { Loader } from "@/components/Loader";
 
 type Filter = "all" | "unread";
 
@@ -95,7 +96,7 @@ export default function Page() {
       </div>
 
       <div className="card" style={{ padding: 0 }}>
-        {loading && <p className="muted" style={{ padding: 20, margin: 0 }}>Loading…</p>}
+        {loading && <Loader />}
         {!loading && visible.length === 0 && (
           <div style={{ padding: "48px 20px", textAlign: "center" }}>
             <i className="bi bi-inbox-fill" style={{ fontSize: 30, color: "var(--text-muted)" }} />

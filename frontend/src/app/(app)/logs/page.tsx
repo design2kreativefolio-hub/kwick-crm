@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { Loader } from "@/components/Loader";
 
 type LogEntry = {
   id: number;
@@ -54,7 +55,7 @@ export default function LogsPage() {
           <i className="bi bi-clock-history" style={{ color: "var(--gold)" }} />
           Recent Activity
         </span>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && logs.length === 0 && <p className="muted">No activity recorded yet.</p>}
         {!loading && logs.length > 0 && (
           <div className="table-wrap">

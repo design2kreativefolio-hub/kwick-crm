@@ -12,6 +12,7 @@ import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { DOC_TYPES, DocType, defaultLetterContent, docTypeLabel } from "@/lib/hrLetterContent";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Letter = {
   id: number;
@@ -200,7 +201,7 @@ export default function HrDocumentsPage() {
           <i className="bi bi-folder2-open" style={{ color: "var(--gold)" }} />
           All Documents
         </span>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && letters.length === 0 && <p className="muted">No documents yet.</p>}
         {!loading && letters.length > 0 && (
           <div className="table-wrap">

@@ -447,7 +447,7 @@ function ReportPreview({ report }: { report: ReportPayload }) {
                   cursor={{ fill: "var(--panel-muted)" }}
                   contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", fontSize: 12.5 }}
                 />
-                <Bar dataKey="value" radius={[8, 8, 4, 4]} maxBarSize={42}>
+                <Bar dataKey="value" radius={[8, 8, 4, 4]} maxBarSize={42} isAnimationActive animationDuration={1200} animationEasing="ease-out">
                   {overviewBars.map((d) => (
                     <Cell key={d.name} fill={d.fill} />
                   ))}
@@ -470,6 +470,13 @@ function ReportPreview({ report }: { report: ReportPayload }) {
                   outerRadius="92%"
                   paddingAngle={2}
                   stroke="none"
+                  startAngle={90}
+                  endAngle={-270}
+                  cornerRadius={4}
+                  isAnimationActive
+                  animationBegin={150}
+                  animationDuration={1300}
+                  animationEasing="ease-out"
                 >
                   {donutSlices.map((slice) => (
                     <Cell key={slice.label} fill={slice.color} />

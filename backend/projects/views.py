@@ -1,3 +1,6 @@
+import secrets
+
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -5,18 +8,30 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
+from common.uploads import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, validated_extension
 from common.permissions import IsActive, IsSuperadminOrReadOnly
 from common.services import log_activity
 from notifications.services import notify_user
 from sales.models import Client
 from tasks.services import combine_due_datetime, notify_task_assignment, notify_task_edit
 
-from .models import Artwork, ArtworkType, CategoryCode, ContentCalendarItem, Project, ProjectClient, ProjectUpdate
+from .models import (
+    Artwork,
+    ArtworkType,
+    CategoryCode,
+    ClientCalendarShare,
+    ContentCalendarComment,
+    ContentCalendarItem,
+    Project,
+    ProjectClient,
+    ProjectUpdate,
+)
 from .serializers import (
     ArtworkSerializer,
     ArtworkTypeSerializer,
     CategoryCodeSerializer,
     ClientDirectorySerializer,
+    ContentCalendarCommentSerializer,
     ContentCalendarItemSerializer,
     ProjectClientSerializer,
     ProjectSerializer,
@@ -250,7 +265,7 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
     Clients directory itself."""
 
     queryset = ContentCalendarItem.objects.select_related("client", "created_by").prefetch_related(
-        "assignees", "tasks"
+        "assignees", "tasks", "comments"
     )
     serializer_class = ContentCalendarItemSerializer
     permission_classes = [IsActive]
@@ -266,6 +281,155 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
         # while still existing — exactly what happened once a client's
         # content list grew past 25.
         return None
+
+    # --- Client share link + client-facing post -------------------------
+
+    CLIENT_POST_STATUSES = frozenset(
+        {ContentCalendarItem.Status.QC_COMPLETED, ContentCalendarItem.Status.APPROVED}
+    )
+    CLIENT_POST_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | frozenset({"pdf"})
+    CLIENT_POST_MAX_BYTES = 30 * 1024 * 1024  # nginx client_max_body_size is 32M
+    CLIENT_POST_MAX_FILES = 10
+
+    @staticmethod
+    def _share_payload(share):
+        if share is None:
+            return {"active": False, "token": "", "expires_at": None, "expired": False}
+        return {
+            "active": share.is_usable(),
+            "token": share.token if share.is_active else "",
+            "expires_at": share.expires_at,
+            "expired": share.is_active and not share.is_usable(),
+        }
+
+    @action(detail=False, methods=["get", "post", "delete"], url_path="share")
+    def share(self, request):
+        """Manage the read-only client calendar link for ?client=<id>."""
+        client = get_object_or_404(Client, pk=request.query_params.get("client") or 0)
+        share = ClientCalendarShare.objects.filter(client=client).first()
+
+        if request.method == "GET":
+            return Response(self._share_payload(share))
+
+        if request.method == "DELETE":
+            if share is not None:
+                share.is_active = False
+                share.save(update_fields=["is_active", "updated_at"])
+                log_activity(actor=request.user, action=f"turned off calendar share link for {client.name}")
+            return Response(self._share_payload(share))
+
+        expires_at = None
+        raw = request.data.get("expires_at")
+        if raw:
+            from datetime import datetime, time
+
+            from django.utils.dateparse import parse_date, parse_datetime
+
+            parsed = parse_datetime(str(raw))
+            if parsed is None:
+                day = parse_date(str(raw))
+                if day is not None:
+                    parsed = datetime.combine(day, time(23, 59, 59))
+            if parsed is None:
+                return Response({"detail": "Invalid expiry date."}, status=status.HTTP_400_BAD_REQUEST)
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed)
+            if parsed <= timezone.now():
+                return Response({"detail": "Expiry must be in the future."}, status=status.HTTP_400_BAD_REQUEST)
+            expires_at = parsed
+
+        regenerate = bool(request.data.get("regenerate")) or share is None or not share.is_active
+        if share is None:
+            share = ClientCalendarShare(client=client, created_by=request.user)
+        if regenerate:
+            share.token = secrets.token_urlsafe(32)
+        share.is_active = True
+        share.expires_at = expires_at
+        share.save()
+        log_activity(actor=request.user, action=f"updated calendar share link for {client.name}")
+        return Response(self._share_payload(share))
+
+    @action(detail=True, methods=["post"], url_path="client-post")
+    def client_post(self, request, pk=None):
+        """Upload the final post the client will see (QC Completed / Approved only)."""
+        item = self.get_object()
+        if item.status not in self.CLIENT_POST_STATUSES:
+            return Response(
+                {"detail": "Mark the item QC Completed or Approved before uploading the post."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from django.core.files.storage import default_storage
+
+        from common.media_urls import persist_storage_url
+
+        uploads = [f for f in request.FILES.getlist("files") if f]
+        existing = list(item.client_post_files or [])
+        if len(existing) + len(uploads) > self.CLIENT_POST_MAX_FILES:
+            return Response(
+                {"detail": f"A post can have at most {self.CLIENT_POST_MAX_FILES} files."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        for upload in uploads:
+            ext = validated_extension(
+                upload, allowed=self.CLIENT_POST_EXTENSIONS, max_bytes=self.CLIENT_POST_MAX_BYTES
+            )
+            key = f"client-share/{item.client_id}/{item.pk}_{secrets.token_hex(4)}.{ext}"
+            saved = default_storage.save(key, upload)
+            existing.append(persist_storage_url(request, saved, filename=getattr(upload, "name", "") or ""))
+        if not existing:
+            return Response({"detail": "Choose at least one file."}, status=status.HTTP_400_BAD_REQUEST)
+
+        item.client_post_files = existing
+        if "caption" in request.data:
+            item.client_post_caption = str(request.data.get("caption") or "")[:5000]
+        item.client_post_uploaded_at = timezone.now()
+        item.save(
+            update_fields=["client_post_files", "client_post_caption", "client_post_uploaded_at", "updated_at"]
+        )
+        log_activity(
+            actor=request.user,
+            action=f'uploaded client post for "{item.title}" ({item.client.name})',
+        )
+        return Response(self.get_serializer(item).data)
+
+    @client_post.mapping.delete
+    def client_post_remove(self, request, pk=None):
+        """Remove one uploaded file (?index=n) or the whole post."""
+        item = self.get_object()
+        files = list(item.client_post_files or [])
+        raw = request.query_params.get("index")
+        if raw is not None:
+            try:
+                files.pop(int(raw))
+            except (ValueError, IndexError):
+                return Response({"detail": "No such file."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            files = []
+        item.client_post_files = files
+        if not files:
+            item.client_post_caption = ""
+            item.client_post_uploaded_at = None
+        item.save(
+            update_fields=["client_post_files", "client_post_caption", "client_post_uploaded_at", "updated_at"]
+        )
+        return Response(self.get_serializer(item).data)
+
+    @action(detail=True, methods=["get", "post"], url_path="comments")
+    def comments(self, request, pk=None):
+        """Client comments thread — staff can read it and reply."""
+        item = self.get_object()
+        if request.method == "POST":
+            body = str(request.data.get("body") or "").strip()
+            if not body:
+                return Response({"detail": "Comment cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
+            ContentCalendarComment.objects.create(
+                item=item,
+                from_client=False,
+                author=request.user,
+                author_name=(request.user.full_name or request.user.email)[:120],
+                body=body[:2000],
+            )
+        return Response(ContentCalendarCommentSerializer(item.comments.all(), many=True).data)
 
     def perform_create(self, serializer):
         item = serializer.save(created_by=self.request.user)

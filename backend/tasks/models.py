@@ -12,6 +12,7 @@ class Task(TimeStampedModel):
         COMPLETED = "completed", "Completed"
         QC_COMPLETED = "qc_completed", "QC Completed"
         APPROVED = "approved", "Approved / Published"
+        INVOICED = "invoiced", "Invoiced"
 
     class Priority(models.TextChoices):
         LOW = "low", "Low"
@@ -25,7 +26,7 @@ class Task(TimeStampedModel):
 
     # Done / closed enough to leave "pending" and "open" lists.
     TERMINAL_STATUSES = frozenset(
-        {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED}
+        {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED, Status.INVOICED}
     )
 
     title = models.CharField(max_length=200)
@@ -93,7 +94,7 @@ class Task(TimeStampedModel):
             self.completed_at = timezone.now()
         elif self.status not in self.TERMINAL_STATUSES:
             self.completed_at = None
-        if self.status == self.Status.APPROVED:
+        if self.status in (self.Status.APPROVED, self.Status.INVOICED):
             self.due_date = None
             self.due_time = None
         super().save(*args, **kwargs)

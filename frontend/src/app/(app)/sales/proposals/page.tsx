@@ -15,6 +15,7 @@ import { defaultContent } from "@/lib/proposalContent";
 import { openUploadedFile } from "@/lib/files";
 import { sendDocumentViaEmail } from "@/lib/sendDocumentEmail";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Client = { id: number; name: string };
 
@@ -325,7 +326,7 @@ export default function SalesProposalsPage() {
           <i className="bi bi-file-earmark-text-fill" style={{ color: "var(--gold)" }} />
           All Documents
         </span>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && docs.length === 0 && <p className="muted">No proposals or estimates yet.</p>}
         {!loading && docs.length > 0 && (
           <div className="table-wrap">

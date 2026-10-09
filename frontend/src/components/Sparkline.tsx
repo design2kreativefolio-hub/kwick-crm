@@ -22,7 +22,9 @@ export function Sparkline({ data, color }: { data: number[]; color: string }) {
             strokeWidth={1.75}
             fill={`url(#spark-${color.replace(/[^a-zA-Z0-9]/g, "")})`}
             isAnimationActive
-            animationDuration={800}
+            animationBegin={300}
+            animationDuration={1400}
+            animationEasing="ease-out"
           />
         </AreaChart>
       </ResponsiveContainer>

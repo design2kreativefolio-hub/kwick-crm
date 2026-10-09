@@ -10,7 +10,7 @@ export function AuthBackdrop() {
 
   return (
     <div className="auth-backdrop" aria-hidden>
-      <div className="auth-backdrop__glow auth-backdrop__glow--a" />
+      <div className="auth-backqdrop__glow auth-backdrop__glow--a" />
       <div className="auth-backdrop__glow auth-backdrop__glow--b" />
       <EdithPlexus mode="intro" className="auth-backdrop__plexus" paused={!!reduceMotion} />
     </div>

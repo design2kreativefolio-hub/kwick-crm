@@ -8,6 +8,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Staff = {
   id: number;
@@ -291,7 +292,7 @@ export default function HrPage() {
           <i className="bi bi-people-fill" style={{ color: "var(--gold)" }} />
           All Staff
         </span>
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <Loader />}
         {!loading && staff.length === 0 && <p className="muted">No staff yet.</p>}
         {!loading && staff.length > 0 && (
           <div className="table-wrap">

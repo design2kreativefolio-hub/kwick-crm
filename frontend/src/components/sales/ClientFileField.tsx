@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 
+import { useConfirm } from "@/components/ConfirmDialog";
 import { MediaFileLink } from "@/components/MediaFileLink";
 import { api, ApiError } from "@/lib/api";
 import { displayUploadedFileName } from "@/lib/files";
@@ -24,6 +25,7 @@ export function ClientFileField({
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const upload = async (file: File) => {
     if (!clientId) {
@@ -48,8 +50,18 @@ export function ClientFileField({
 
   const fileName = value ? displayUploadedFileName(value) : "";
 
+  const remove = async () => {
+    const ok = await confirm(`Remove "${fileName || (label ? label.toLowerCase() : "this file")}"? You'll need to upload it again if you change your mind.`, {
+      title: `Remove ${label || "file"}?`,
+      danger: true,
+      confirmLabel: "Remove",
+    });
+    if (ok) onChange("");
+  };
+
   return (
     <div>
+      {ConfirmDialog}
       {label && (
         <label className="field-label" style={{ marginTop: 0 }}>
           {label}
@@ -60,7 +72,7 @@ export function ClientFileField({
           <MediaFileLink url={value} className="btn btn-ghost btn-sm">
             <i className="bi bi-paperclip" /> {fileName.length > 36 ? `${fileName.slice(0, 34)}…` : fileName}
           </MediaFileLink>
-          <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => onChange("")}>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={remove}>
             Remove
           </button>
         </div>

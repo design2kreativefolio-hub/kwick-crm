@@ -16,6 +16,7 @@ import { assigneeSelectOptions } from "@/lib/assigneeOptions";
 import { useAuth } from "@/lib/auth";
 import { STATUS_BADGE, TASK_STATUS_LABEL, TASK_STATUS_OPTIONS, isTaskApproved } from "@/lib/statusBadges";
 import { useToast } from "@/lib/toast";
+import { Loader } from "@/components/Loader";
 
 type Task = {
   id: number;
@@ -312,7 +313,7 @@ export default function TaskDetailPage() {
     }
   };
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <Loader />;
   if (notFound || !task || !form) return <p className="muted">Task not found.</p>;
 
   return (

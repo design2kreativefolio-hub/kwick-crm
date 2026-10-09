@@ -23,7 +23,7 @@ from accounts.tasks import (
 )
 from common.media_urls import original_upload_name, persist_storage_url, sign_media_url
 from common.maintenance import exclude_system_accounts
-from common.permissions import HasModuleAccess, IsActive, has_module_access
+from common.permissions import HasModuleAccess, IsActive, has_module_access, is_superadmin
 from common.services import log_activity
 from common.uploads import HR_FILE_EXTENSIONS, IMAGE_EXTENSIONS, MAX_FILE_BYTES, MAX_IMAGE_BYTES, validated_extension
 from notifications.services import (
@@ -394,6 +394,28 @@ class MyCollateralsView(APIView):
         return Response(EmployeeCollateralSerializer(qs, many=True).data)
 
 
+def _scope_requests(view, qs, id_field: str, owner_field: str):
+    """Who may see which leave / ticket records.
+
+    * Superadmin sees everyone's (optionally narrowed with ?staff=<id>).
+    * Everyone else's *list* is strictly their own — including people who were
+      granted an HR page, so the personal Leave Requests / Raise Ticket tabs
+      never show colleagues' requests.
+    * HR-granted staff can still open/decide a specific record by id (that is
+      how the HR → Staff approval flow works) or list one person with ?staff=.
+    """
+    user = view.request.user
+    staff = view.request.query_params.get("staff")
+    if is_superadmin(user):
+        return qs.filter(**{id_field: staff}) if staff else qs
+    if has_module_access(user, Module.HR):
+        if staff:
+            return qs.filter(**{id_field: staff})
+        if view.action != "list":
+            return qs
+    return qs.filter(**{owner_field: user})
+
+
 class LeaveViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveSerializer
     permission_classes = [IsActive]
@@ -402,10 +424,7 @@ class LeaveViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Leave.objects.select_related("staff")
-        if has_module_access(self.request.user, Module.HR):
-            staff = self.request.query_params.get("staff")
-            return qs.filter(staff_id=staff) if staff else qs
-        return qs.filter(staff=self.request.user)
+        return _scope_requests(self, qs, "staff_id", "staff")
 
     def perform_create(self, serializer):
         """Employees request for themselves (pending). HR/superadmin can log
@@ -473,22 +492,62 @@ class LeaveViewSet(viewsets.ModelViewSet):
     def decision(self, request, pk=None):
         """PATCH approve/reject (spec §5.3: PATCH /api/hr/leaves/{id})."""
         leave = self.get_object()
-        new_status = request.data.get("status")
-        if new_status not in {Leave.Status.APPROVED, Leave.Status.REJECTED}:
+        if leave.status == Leave.Status.CANCELLED:
             return Response(
-                {"detail": "status must be 'approved' or 'rejected'."},
+                {"detail": "This request was retracted by the employee and can't be changed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if leave.status != Leave.Status.PENDING:
+        new_status = request.data.get("status") or leave.status
+        if new_status not in {Leave.Status.APPROVED, Leave.Status.REJECTED, Leave.Status.PENDING}:
             return Response(
-                {"detail": "Only pending leave requests can be decided."},
+                {"detail": "status must be 'approved', 'rejected' or 'pending'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        comment = leave.admin_comment
+        if "admin_comment" in request.data:
+            comment = str(request.data.get("admin_comment") or "").strip()[:1000]
+
+        status_changed = new_status != leave.status
+        comment_changed = comment != leave.admin_comment
+        if not status_changed and not comment_changed:
+            return Response(LeaveSerializer(leave).data)
+
         leave.status = new_status
-        leave.save(update_fields=["status", "updated_at"])
+        leave.admin_comment = comment
+        leave.save(update_fields=["status", "admin_comment", "updated_at"])
         self._recalc_balance(leave.staff)
-        # Everyone with HR access stops receiving the reminder the instant it's actioned (spec §5.5).
-        stop_recurring_reminder(object_ref=f"leave:{leave.id}")
+
+        ref = f"leave:{leave.id}"
+        if leave.status == Leave.Status.PENDING:
+            start_recurring_reminder(
+                source="leave_request",
+                title="Leave request pending",
+                body=f"{leave.staff.full_name or leave.staff.email} requested {leave.leave_type} leave.",
+                object_ref=ref,
+                users=users_with_module_access(Module.HR),
+            )
+        else:
+            # Everyone with HR access stops receiving the reminder the instant it's actioned (spec §5.5).
+            stop_recurring_reminder(object_ref=ref)
+
+        log_activity(
+            actor=request.user,
+            action=f"set {leave.leave_type} leave for \"{leave.staff.full_name or leave.staff.email}\" to {leave.status}",
+        )
+        if leave.staff_id != request.user.id:
+            label = {"approved": "approved", "rejected": "rejected", "pending": "set back to pending"}[leave.status]
+            title = (
+                f"Your {leave.leave_type} leave was {label}"
+                if status_changed
+                else f"HR commented on your {leave.leave_type} leave"
+            )
+            notify_user(
+                user=leave.staff,
+                source="leave_request",
+                title=title,
+                body=leave.admin_comment[:200],
+                object_ref=f"leave:{leave.id}:update:{int(leave.updated_at.timestamp())}",
+            )
         return Response(LeaveSerializer(leave).data)
 
     # PATCH on the detail route also approves/rejects, matching the spec path exactly.
@@ -532,10 +591,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Ticket.objects.select_related("raised_by")
-        if has_module_access(self.request.user, Module.HR):
-            staff = self.request.query_params.get("staff")
-            return qs.filter(raised_by_id=staff) if staff else qs
-        return qs.filter(raised_by=self.request.user)
+        return _scope_requests(self, qs, "raised_by_id", "raised_by")
 
     def perform_create(self, serializer):
         ticket = serializer.save(raised_by=self.request.user)
@@ -557,6 +613,15 @@ class TicketViewSet(viewsets.ModelViewSet):
         if ticket.status == Ticket.Status.RESOLVED:
             stop_recurring_reminder(object_ref=f"ticket:{ticket.id}")
         return Response(TicketSerializer(ticket).data)
+
+    def destroy(self, request, *args, **kwargs):
+        # Superadmin only (spec §5.3-adjacent) — anyone with HR access can
+        # resolve a ticket, but deleting the record is a superadmin call.
+        if not is_superadmin(request.user):
+            return Response({"detail": "Superadmin access required."}, status=status.HTTP_403_FORBIDDEN)
+        ticket = self.get_object()
+        stop_recurring_reminder(object_ref=f"ticket:{ticket.id}")
+        return super().destroy(request, *args, **kwargs)
 
 
 class HrLetterViewSet(viewsets.ModelViewSet):

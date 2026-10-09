@@ -12,10 +12,11 @@ class Project(TimeStampedModel):
         COMPLETED = "completed", "Completed"
         QC_COMPLETED = "qc_completed", "QC Completed"
         APPROVED = "approved", "Approved / Published"
+        INVOICED = "invoiced", "Invoiced"
 
     # Closed enough to leave "ongoing" / open project lists.
     TERMINAL_STATUSES = frozenset(
-        {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED}
+        {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED, Status.INVOICED}
     )
 
     class Priority(models.TextChoices):
@@ -189,11 +190,65 @@ class ContentCalendarItem(TimeStampedModel):
         related_name="+",
     )
 
+    # Final creative uploaded once the item is QC Completed / Approved. Only
+    # ever exposed to the client through their shared calendar link.
+    client_post_files = models.JSONField(default=list, blank=True)
+    client_post_caption = models.TextField(blank=True, default="")
+    client_post_uploaded_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ["scheduled_date"]
 
     def __str__(self):
         return f"{self.title} ({self.client_id}, {self.scheduled_date})"
+
+
+def _new_share_token() -> str:
+    import secrets
+
+    return secrets.token_urlsafe(32)
+
+
+class ClientCalendarShare(TimeStampedModel):
+    """Secret read-only link that lets a client view their own content calendar."""
+
+    client = models.OneToOneField(
+        "sales.Client", on_delete=models.CASCADE, related_name="calendar_share"
+    )
+    token = models.CharField(max_length=64, unique=True, default=_new_share_token)
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+
+    def is_usable(self) -> bool:
+        from django.utils import timezone
+
+        if not self.is_active:
+            return False
+        return self.expires_at is None or self.expires_at > timezone.now()
+
+    def __str__(self):
+        return f"Calendar share for client {self.client_id}"
+
+
+class ContentCalendarComment(TimeStampedModel):
+    """Comment thread on a calendar item — left by the client (via the share
+    link) or by staff replying."""
+
+    item = models.ForeignKey(
+        ContentCalendarItem, on_delete=models.CASCADE, related_name="comments"
+    )
+    from_client = models.BooleanField(default=False)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    author_name = models.CharField(max_length=120, blank=True, default="")
+    body = models.TextField()
+
+    class Meta:
+        ordering = ["created_at"]
 
 
 class Artwork(TimeStampedModel):

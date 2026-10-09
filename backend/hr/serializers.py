@@ -222,21 +222,27 @@ class EmployeeRecordSerializer(serializers.ModelSerializer):
 
 class LeaveSerializer(serializers.ModelSerializer):
     days = serializers.IntegerField(read_only=True)
+    staff_name = serializers.SerializerMethodField()
+
+    def get_staff_name(self, obj):
+        return (obj.staff.full_name or obj.staff.email) if obj.staff_id else ""
 
     class Meta:
         model = Leave
         fields = [
             "id",
             "staff",
+            "staff_name",
             "leave_type",
             "start_date",
             "end_date",
             "days",
             "status",
             "reason",
+            "admin_comment",
             "created_at",
         ]
-        read_only_fields = ["staff", "status", "created_at"]
+        read_only_fields = ["staff", "status", "admin_comment", "created_at"]
 
 
 class LeaveBalanceSerializer(serializers.ModelSerializer):
@@ -272,11 +278,17 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
 
 
 class TicketSerializer(serializers.ModelSerializer):
+    raised_by_name = serializers.SerializerMethodField()
+
+    def get_raised_by_name(self, obj):
+        return (obj.raised_by.full_name or obj.raised_by.email) if obj.raised_by_id else ""
+
     class Meta:
         model = Ticket
         fields = [
             "id",
             "raised_by",
+            "raised_by_name",
             "date",
             "description",
             "urgency",

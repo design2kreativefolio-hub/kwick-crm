@@ -1,5 +1,6 @@
 "use client";
 
+import { CountUp } from "@/components/CountUp";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 export type DonutSlice = { label: string; value: number; color: string };
@@ -21,7 +22,12 @@ export function DonutCard({ title, slices }: { title: string; slices: DonutSlice
               outerRadius="100%"
               paddingAngle={2}
               stroke="none"
-              animationDuration={900}
+              startAngle={90}
+              endAngle={-270}
+              cornerRadius={4}
+              isAnimationActive
+              animationBegin={150}
+              animationDuration={1300}
               animationEasing="ease-out"
             >
               {slices.map((s) => (
@@ -33,7 +39,7 @@ export function DonutCard({ title, slices }: { title: string; slices: DonutSlice
         </ResponsiveContainer>
         <div style={centerLabel}>
           <div className="muted" style={{ fontSize: 12 }}>Total</div>
-          <div style={{ fontSize: 30, fontWeight: 700, color: "var(--navy)" }}>{total}</div>
+          <div style={{ fontSize: 30, fontWeight: 700, color: "var(--navy)" }}><CountUp value={total} /></div>
         </div>
       </div>
       <div className="seg-legend" style={{ marginTop: 12 }}>
