@@ -45,6 +45,13 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        if User.objects.filter(email__iexact=email).exists():
+            # Same response as a fresh signup so emails can't be enumerated.
+            return Response(
+                {"detail": "Registered. Awaiting approval.", "status": "awaiting_approval"},
+                status=status.HTTP_201_CREATED,
+            )
         user = serializer.save()
         name = user.full_name or user.email
         refresh_daily_reminder(
@@ -332,7 +339,7 @@ class ForgotPasswordView(APIView):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response({"detail": "A password reset link has been sent to your email."})
+        return Response({"detail": "If an active account exists for that email, a reset link has been sent."})
 
 
 class SetPasswordView(APIView):

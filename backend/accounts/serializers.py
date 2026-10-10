@@ -55,11 +55,6 @@ class RegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=8)
     full_name = serializers.CharField()
 
-    def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
-        return value
-
     def create(self, validated):
         user = User.objects.create_user(
             email=validated["email"],
@@ -80,27 +75,20 @@ class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
+        # Never reveal whether an account exists — the response is identical
+        # either way; mail only goes out for a real, active account.
         email = (value or "").strip()
-        try:
-            user = User.objects.get(email__iexact=email)
-        except User.DoesNotExist:
-            raise serializers.ValidationError(
-                "No registered account for this email. Please contact your admin."
-            )
-        if user.status != UserStatus.ACTIVE or not user.is_active:
-            raise serializers.ValidationError(
-                "This account is not active yet. Please contact your admin."
-            )
-        self.context["reset_user"] = user
+        user = User.objects.filter(email__iexact=email).first()
+        if user and user.status == UserStatus.ACTIVE and user.is_active:
+            self.context["reset_user"] = user
         return email
 
     def save(self):
         from .tasks import dispatch_email_task, send_forgot_password_email
 
         user = self.context.get("reset_user")
-        if not user:
-            user = User.objects.get(email__iexact=self.validated_data["email"])
-        dispatch_email_task(send_forgot_password_email, user.id)
+        if user:
+            dispatch_email_task(send_forgot_password_email, user.id)
 
 
 class SetPasswordSerializer(serializers.Serializer):

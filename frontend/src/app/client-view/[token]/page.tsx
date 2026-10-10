@@ -17,7 +17,7 @@ type Item = {
   comment_count: number;
 };
 type Calendar = {
-  client: { name: string; accent_color: string };
+  client: { name: string; accent_color: string; logo_url?: string };
   expires_at: string | null;
   items: Item[];
 };
@@ -70,6 +70,7 @@ export default function ClientViewPage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [selected, setSelected] = useState(() => iso(new Date()));
   const [openId, setOpenId] = useState<number | null>(null);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const load = () =>
     fetch(base, { cache: "no-store" })
@@ -143,7 +144,12 @@ export default function ClientViewPage() {
 
       <header style={{ background: `linear-gradient(135deg, ${accent}, ${accent}b3)`, color: "#fff" }}>
         <div className="cv-wrap" style={{ display: "flex", alignItems: "center", gap: 16, padding: "28px 16px" }}>
-          <span style={avatar}>{initial}</span>
+          {data.client.logo_url && !logoFailed ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={data.client.logo_url} alt="" onError={() => setLogoFailed(true)} style={{ ...avatar, objectFit: "contain", background: "#fff", padding: 6 }} />
+          ) : (
+            <span style={avatar}>{initial}</span>
+          )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12, letterSpacing: 1.2, opacity: 0.85, fontWeight: 600 }}>CONTENT CALENDAR</div>
             <h1 style={{ margin: "2px 0 0", fontSize: 26, lineHeight: 1.2, color: "#fff", fontWeight: 700 }}>
@@ -343,14 +349,14 @@ function ItemCard({
   }, [open, comments, base, item.id]);
 
   const send = async () => {
-    if (!body.trim() || sending) return;
+    if (!name.trim() || !body.trim() || sending) return;
     setSending(true);
     setError("");
     try {
       const res = await fetch(`${base}/items/${item.id}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, body }),
+        body: JSON.stringify({ name: name.trim(), body }),
       });
       if (res.status === 429) throw new Error("You're commenting too fast — please wait a minute.");
       if (!res.ok) {
@@ -474,10 +480,10 @@ function ItemCard({
               </div>
             )}
             <div style={{ display: "grid", gap: 8 }}>
-              <input className="cv-input" placeholder="Your name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
-              <textarea className="cv-input" style={{ resize: "vertical" }} rows={2} placeholder="Leave a comment…" value={body} maxLength={2000} onChange={(e) => setBody(e.target.value)} />
+              <input className="cv-input" placeholder="Your name *" required value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
+              <textarea className="cv-input" style={{ resize: "vertical" }} rows={2} placeholder="Leave a comment… *" required value={body} maxLength={2000} onChange={(e) => setBody(e.target.value)} />
               {error && <span style={{ color: "#dc2626", fontSize: 12.5 }}>{error}</span>}
-              <button type="button" onClick={send} disabled={sending || !body.trim()} className="cv-send" style={{ background: accent }}>
+              <button type="button" onClick={send} disabled={sending || !name.trim() || !body.trim()} className="cv-send" style={{ background: accent }}>
                 {sending ? "Sending…" : "Send comment"}
               </button>
             </div>

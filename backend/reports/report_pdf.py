@@ -59,10 +59,10 @@ def build_pdf_context(report: dict) -> dict:
 
 def render_report_pdf(report: dict, request=None) -> str:
     from django.conf import settings
-    from weasyprint import HTML
+    from common.pdf import render_pdf
 
     html = render_to_string("reports/report_pdf.html", build_pdf_context(report))
-    pdf_bytes = HTML(string=html).write_pdf()
+    pdf_bytes = render_pdf(html)
 
     subject = report.get("subject") or {}
     kind = report.get("type") or "report"

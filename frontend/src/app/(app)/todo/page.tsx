@@ -21,7 +21,7 @@ export default function TodoPage() {
   const { showToast } = useToast();
   const [items, setItems] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("open");
   const [newText, setNewText] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);

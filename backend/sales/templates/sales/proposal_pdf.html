@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load safe_html %}
 <html>
 <head>
 <meta charset="utf-8">
@@ -164,14 +165,14 @@
   {% if section_key == "about_kreativefolio" and about_kreativefolio.enabled %}
   <section class="doc-section{% if about_kreativefolio.page_break_before %} page-break-before{% endif %}">
     <h2>{{ about_kreativefolio.heading|default:"About Kreativefolio" }}</h2>
-    {{ about_kreativefolio.content|safe }}
+    {{ about_kreativefolio.content|clean_html }}
   </section>
   {% endif %}
 
   {% if section_key == "about_client" and about_client.enabled %}
   <section class="doc-section{% if about_client.page_break_before %} page-break-before{% endif %}">
     <h2>{{ about_client.heading|default:"About the Client" }}</h2>
-    {{ about_client.content|safe }}
+    {{ about_client.content|clean_html }}
     {% for url in about_client.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
@@ -186,7 +187,7 @@
   {% if section_key == "technical_seo" and technical_seo.enabled %}
   <section class="doc-section{% if technical_seo.page_break_before %} page-break-before{% endif %}">
     <h2>{{ technical_seo.heading|default:"Technical SEO" }}</h2>
-    {{ technical_seo.content|safe }}
+    {{ technical_seo.content|clean_html }}
   </section>
   {% endif %}
 
@@ -200,7 +201,7 @@
   {% if section_key == "onpage_seo" and onpage_seo.enabled %}
   <section class="doc-section{% if onpage_seo.page_break_before %} page-break-before{% endif %}">
     <h2>{{ onpage_seo.heading|default:"Onpage SEO" }}</h2>
-    {{ onpage_seo.content|safe }}
+    {{ onpage_seo.content|clean_html }}
     {% for url in onpage_seo.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}
@@ -210,9 +211,9 @@
     <h2>{{ geo.heading|default:"GEO" }}</h2>
     {% if geo.description %}<div class="field-form"><span class="label">{{ geo.description_label|default:"Description" }}</span>{{ geo.description }}</div>{% endif %}
     <h3>{{ geo.recommendations_label|default:"Recommendations" }}</h3>
-    {{ geo.recommendations|safe }}
+    {{ geo.recommendations|clean_html }}
     <h3>{{ geo.approach_label|default:"Our Approach" }}</h3>
-    {{ geo.approach|safe }}
+    {{ geo.approach|clean_html }}
   </section>
   {% endif %}
 
@@ -224,7 +225,7 @@
       <h3>{{ p.heading|default:p.platform_label }}</h3>
       {% if p.description %}<div class="field-form"><span class="label">{{ p.description_label|default:"Description" }}</span>{{ p.description }}</div>{% endif %}
       {% for url in p.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
-      {% if p.key_problems %}<h3 style="font-size:12.5px;">{{ p.key_problems_label|default:"Key Problems Identified" }}</h3>{{ p.key_problems|safe }}{% endif %}
+      {% if p.key_problems %}<h3 style="font-size:12.5px;">{{ p.key_problems_label|default:"Key Problems Identified" }}</h3>{{ p.key_problems|clean_html }}{% endif %}
       {% if p.strategy_rows %}
       <table class="doc-table">
         <thead><tr><th>{{ p.col_category|default:"Category" }}</th><th>{{ p.col_details|default:"Details" }}</th><th>{{ p.col_goal|default:"Goal" }}</th></tr></thead>
@@ -280,7 +281,7 @@
   {% if section_key == "terms" and terms.enabled %}
   <section class="doc-section{% if terms.page_break_before %} page-break-before{% endif %}">
     <h2>{{ terms.heading|default:"Terms" }}</h2>
-    {{ terms_html|safe }}
+    {{ terms_html|clean_html }}
   </section>
   {% endif %}
 
@@ -292,7 +293,7 @@
   {% if section_key == item.order_key %}
   <section class="doc-section{% if item.page_break_before %} page-break-before{% endif %}">
     <h2>{{ item.title|default:"Additional section" }}</h2>
-    {% if item.content %}{{ item.content|safe }}{% endif %}
+    {% if item.content %}{{ item.content|clean_html }}{% endif %}
     {% for url in item.image_urls %}<img class="section-image" src="{{ url }}" />{% endfor %}
   </section>
   {% endif %}

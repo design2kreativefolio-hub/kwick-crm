@@ -154,12 +154,12 @@ def build_context(proposal) -> dict:
 def render_proposal_pdf(proposal, request) -> str:
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
-    from weasyprint import HTML
+    from common.pdf import render_pdf
 
     from common.duplicate import slug_filename
 
     html = render_to_string("sales/proposal_pdf.html", build_context(proposal))
-    pdf_bytes = HTML(string=html).write_pdf()
+    pdf_bytes = render_pdf(html)
 
     raw_name = (proposal.title or "").strip() or f"proposal-{proposal.pk}"
     slug = slug_filename(raw_name, fallback=f"proposal-{proposal.pk}")

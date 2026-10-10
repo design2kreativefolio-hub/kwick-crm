@@ -45,6 +45,13 @@ class Renewal(TimeStampedModel):
     # Whether this renews on its own on a schedule vs. a one-off due date.
     # Informational only for now — no automated recurrence engine.
     is_recurring = models.BooleanField(default=False)
+    # How often a recurring renewal comes round (only meaningful when is_recurring).
+    recurrence_interval = models.CharField(
+        max_length=10,
+        choices=[("monthly", "Monthly"), ("yearly", "Yearly")],
+        blank=True,
+        default="",
+    )
     # [{ "question": "...", "answer": "..." }, ...] — one or more, e.g. domain
     # registrar / hosting provider account recovery questions. Plain text,
     # same as PasswordEntry.security_question (not vault-encrypted).

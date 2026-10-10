@@ -44,9 +44,11 @@ def _resolve_user(request):
 
 
 def _client_ip(request) -> str:
+    # nginx overwrites X-Forwarded-For with the real peer address, so the
+    # right-most entry is the only one a client cannot forge.
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR") or ""
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     return request.META.get("REMOTE_ADDR") or "unknown"
 
 

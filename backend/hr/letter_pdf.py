@@ -89,12 +89,12 @@ def build_context(letter) -> dict:
 def render_letter_pdf(letter, request) -> str:
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
-    from weasyprint import HTML
+    from common.pdf import render_pdf
 
     import re
 
     html = render_to_string("hr/letter_pdf.html", build_context(letter))
-    pdf_bytes = HTML(string=html).write_pdf()
+    pdf_bytes = render_pdf(html)
 
     raw_name = (letter.title or "").strip() or DOC_TYPE_LABELS.get(letter.doc_type, "letter")
     slug = re.sub(r"[^\w\-]+", "_", raw_name, flags=re.UNICODE).strip("_")[:80] or "letter"

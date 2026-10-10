@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load safe_html %}
 <html>
 <head>
 <meta charset="utf-8">
@@ -174,7 +175,7 @@
         <td>
           <div class="item-desc">{{ item.description }}</div>
           {% if item.details_html %}
-          <div class="item-details">{{ item.details_html|safe }}</div>
+          <div class="item-details">{{ item.details_html|clean_html }}</div>
           {% elif item.details_lines %}
           <ul class="item-details">
             {% for line in item.details_lines %}<li>{{ line }}</li>{% endfor %}
@@ -214,7 +215,7 @@
         {% elif payment_details %}
         <div class="footer-block">
           <h3>{{ payment_heading|default:"Payment Details" }}</h3>
-          <div class="notes-text">{{ payment_details|safe }}</div>
+          <div class="notes-text">{{ payment_details|clean_html }}</div>
         </div>
         {% endif %}
         {% if notes %}

@@ -104,13 +104,13 @@ def build_context(invoice) -> dict:
 def render_invoice_pdf(invoice, request) -> str:
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
-    from weasyprint import HTML
+    from common.pdf import render_pdf
 
     from common.duplicate import slug_filename
 
     content = merged_content(invoice.content)
     html = render_to_string("sales/invoice_pdf.html", build_context(invoice))
-    pdf_bytes = HTML(string=html).write_pdf()
+    pdf_bytes = render_pdf(html)
 
     raw_name = (content.get("title") or "").strip() or invoice.invoice_number or f"invoice-{invoice.pk}"
     slug = slug_filename(raw_name, fallback=f"invoice-{invoice.pk}")

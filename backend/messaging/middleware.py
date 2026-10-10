@@ -6,7 +6,6 @@ param is still accepted for non-browser clients so it is not logged from the
 app itself.
 """
 from http.cookies import SimpleCookie
-from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
@@ -27,8 +26,8 @@ def _access_token_from_scope(scope) -> str:
                 return morsel.value
         except Exception:
             pass
-    query = parse_qs(scope.get("query_string", b"").decode())
-    return (query.get("token") or [""])[0] or ""
+    # No ?token= fallback: URLs end up in logs. Browsers use the HttpOnly cookie.
+    return ""
 
 
 @database_sync_to_async

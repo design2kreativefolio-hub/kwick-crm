@@ -30,6 +30,7 @@ type Renewal = {
   due_date: string;
   registered_date: string | null;
   is_recurring: boolean;
+  recurrence_interval: "" | "monthly" | "yearly";
   security_qa: SecurityQa[];
   notes: string;
   status: RenewalStatus;
@@ -85,6 +86,7 @@ const emptyForm = {
   due_date: "",
   registered_date: "",
   is_recurring: false,
+  recurrence_interval: "yearly" as "monthly" | "yearly",
   security_qa: [] as SecurityQa[],
   notes: "",
 };
@@ -193,6 +195,7 @@ export default function RenewalsPage() {
       due_date: r.due_date || "",
       registered_date: r.registered_date || "",
       is_recurring: r.is_recurring,
+      recurrence_interval: r.recurrence_interval || "yearly",
       security_qa: (r.security_qa || []).map((qa) => ({ ...qa })),
       notes: r.notes || "",
     });
@@ -245,6 +248,7 @@ export default function RenewalsPage() {
         due_date: form.due_date,
         registered_date: form.registered_date || null,
         is_recurring: form.is_recurring,
+        recurrence_interval: form.is_recurring ? form.recurrence_interval : "",
         security_qa: form.security_qa
           .map((qa) => ({ question: qa.question.trim(), answer: qa.answer.trim() }))
           .filter((qa) => qa.question || qa.answer),
@@ -439,9 +443,20 @@ export default function RenewalsPage() {
                   onClick={() => setForm((f) => ({ ...f, is_recurring: !f.is_recurring }))}
                   aria-label="Toggle recurring"
                 />
-                <span className="muted" style={{ fontSize: 12.5 }}>
-                  {form.is_recurring ? "Repeats automatically" : "One-time"}
-                </span>
+                {form.is_recurring ? (
+                  <select
+                    className="input"
+                    style={{ width: "auto", minWidth: 110 }}
+                    value={form.recurrence_interval}
+                    onChange={(e) => setForm((f) => ({ ...f, recurrence_interval: e.target.value as "monthly" | "yearly" }))}
+                    aria-label="Recurrence interval"
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                ) : (
+                  <span className="muted" style={{ fontSize: 12.5 }}>One-time</span>
+                )}
               </div>
             </div>
 
@@ -569,7 +584,7 @@ export default function RenewalsPage() {
                           <i
                             className="bi bi-arrow-repeat"
                             style={{ color: "var(--gold)", marginLeft: 6 }}
-                            title="Recurring"
+                            title={r.recurrence_interval === "monthly" ? "Recurring monthly" : "Recurring yearly"}
                             aria-label="Recurring"
                           />
                         )}

@@ -87,13 +87,13 @@ def _fmt_money(value) -> str:
 def render_estimate_pdf(estimate, request) -> str:
     from django.core.files.base import ContentFile
     from django.core.files.storage import default_storage
-    from weasyprint import HTML
+    from common.pdf import render_pdf
 
     from common.duplicate import slug_filename
 
     content = merged_content(estimate.content)
     html = render_to_string("sales/estimate_pdf.html", build_context(estimate))
-    pdf_bytes = HTML(string=html).write_pdf()
+    pdf_bytes = render_pdf(html)
 
     raw_name = (
         (estimate.title or "").strip()

@@ -190,6 +190,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.OrderingFilter",
     ),
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "NUM_PROXIES": int(env("NUM_PROXIES", "1")),
     "DEFAULT_THROTTLE_RATES": {
         "auth": "8/min",
         "vault_pin": "8/min",

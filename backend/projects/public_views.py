@@ -18,6 +18,7 @@ from common.media_urls import (
     content_disposition_header,
     download_name_for_key,
     media_key_from_url,
+    sign_media_url,
 )
 from common.uploads import BLOCKED_EXTENSIONS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
@@ -104,7 +105,11 @@ class PublicCalendarView(_PublicBase):
             )
         return Response(
             {
-                "client": {"name": client.name, "accent_color": client.accent_color or ""},
+                "client": {
+                    "name": client.name,
+                    "accent_color": client.accent_color or "",
+                    "logo_url": sign_media_url(client.logo_url) if client.logo_url else "",
+                },
                 "expires_at": share.expires_at,
                 "items": out,
             }
@@ -155,14 +160,16 @@ class PublicCalendarCommentsView(_PublicBase):
         item = self.get_item(self.get_share(token), item_id)
         body = str(request.data.get("body") or "").strip()
         name = str(request.data.get("name") or "").strip()[:120]
+        if not name:
+            return Response({"detail": "Please enter your name."}, status=status.HTTP_400_BAD_REQUEST)
         if not body:
             return Response({"detail": "Comment cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
         if item.comments.count() >= 200:
             return Response({"detail": "Comment limit reached."}, status=status.HTTP_400_BAD_REQUEST)
         ContentCalendarComment.objects.create(
-            item=item, from_client=True, author_name=name or "Client", body=body[:2000]
+            item=item, from_client=True, author_name=name, body=body[:2000]
         )
-        self._notify_team(item, name or "Client", body)
+        self._notify_team(item, name, body)
         return Response([_comment_payload(c) for c in item.comments.all()], status=status.HTTP_201_CREATED)
 
     @staticmethod

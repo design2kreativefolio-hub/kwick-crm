@@ -26,6 +26,7 @@ class RenewalSerializer(serializers.ModelSerializer):
             "due_date",
             "registered_date",
             "is_recurring",
+            "recurrence_interval",
             "security_qa",
             "notes",
             "status",
@@ -88,5 +89,12 @@ class RenewalSerializer(serializers.ModelSerializer):
             attrs["renewal_type_detail"] = str(type_detail).strip()
         else:
             attrs["renewal_type_detail"] = ""
+
+        is_recurring = attrs.get("is_recurring", getattr(self.instance, "is_recurring", False))
+        interval = attrs.get("recurrence_interval", getattr(self.instance, "recurrence_interval", "")) or ""
+        if is_recurring:
+            attrs["recurrence_interval"] = interval or "yearly"
+        else:
+            attrs["recurrence_interval"] = ""
 
         return attrs
