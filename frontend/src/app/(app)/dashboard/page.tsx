@@ -255,10 +255,6 @@ export default function DashboardPage() {
           </div>
         </Reveal>
 
-        <Reveal index={1}>
-          <TimeTracker />
-        </Reveal>
-
         {isSuperadmin && (summary?.pending_approval_users?.length ?? 0) > 0 && (
           <Reveal index={1}>
             <div className="card">
@@ -393,7 +389,7 @@ export default function DashboardPage() {
 
       {/* Reminders card — calendar reminders + to-dos + notifications.
           Tick only dismisses from this card (not mark done / not mark read). */}
-      <Reveal index={0} style={{ position: "sticky", top: 24 }}>
+      <Reveal index={0} style={{ position: "sticky", top: 24, display: "flex", flexDirection: "column", gap: 22 }}>
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <span className="card-title" style={{ margin: 0, color: "var(--danger)" }}>
@@ -460,6 +456,7 @@ export default function DashboardPage() {
             </a>
           )}
         </div>
+        <TimeTracker />
       </Reveal>
     </div>
   );
