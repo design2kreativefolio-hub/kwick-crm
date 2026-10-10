@@ -69,6 +69,32 @@ class ProjectViewSet(viewsets.ModelViewSet):
         # Mini-Projects UI has no pager — always return a bare array.
         return None
 
+    @action(detail=True, methods=["delete"], url_path=r"attachments/(?P<index>\d+)")
+    def delete_attachment(self, request, pk=None, index=None):
+        """DELETE /api/projects/{id}/attachments/{index} — remove one attachment
+        (position in the list shown on the project page) and its stored file."""
+        from django.core.files.storage import default_storage
+
+        from common.media_urls import media_key_from_url
+
+        project = self.get_object()
+        raw = project.attachment_urls
+        urls = [u for u in raw if isinstance(u, str) and u] if isinstance(raw, (list, tuple)) else []
+        if not urls and project.attachment_url:
+            urls = [project.attachment_url]
+        idx = int(index)
+        if idx >= len(urls):
+            return Response({"detail": "Attachment not found."}, status=status.HTTP_404_NOT_FOUND)
+        removed = urls.pop(idx)
+        key = media_key_from_url(removed)
+        if key and key.startswith(f"projects/{project.pk}/") and default_storage.exists(key):
+            default_storage.delete(key)
+        project.attachment_urls = urls
+        project.attachment_url = urls[0] if urls else ""
+        project.save(update_fields=["attachment_urls", "attachment_url", "updated_at"])
+        log_activity(actor=request.user, action=f'removed an attachment from project "{project.name}"')
+        return Response(self.get_serializer(project).data)
+
     def _notify_new_members(self, project, before_ids):
         after_ids = set(project.members.values_list("id", flat=True))
         newly_assigned = after_ids - before_ids

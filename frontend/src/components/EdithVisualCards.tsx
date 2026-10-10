@@ -24,6 +24,11 @@ export type EdithCards = {
   title?: string;
   subtitle?: string;
   groups?: { person: string; items: EdithCardItem[] }[];
+  stats?: { label: string; value: number }[];
+  sections?: {
+    title: string;
+    items: { title: string; status?: string; status_label?: string; date?: string | null; href?: string }[];
+  }[];
 };
 
 function formatDue(iso?: string | null): { label: string; tone: "overdue" | "soon" | "ok" } | null {
@@ -43,6 +48,7 @@ function formatDue(iso?: string | null): { label: string; tone: "overdue" | "soo
 
 export function EdithVisualCards({ cards }: { cards?: EdithCards | null }) {
   if (!cards?.kind) return null;
+  if (cards.kind === "client_summary") return <ClientSummaryCard cards={cards} />;
   const groups = cards.groups?.filter((g) => g.items?.length) || [];
   const isTodo = cards.kind === "todo_cards";
   const allHref = isTodo ? "/todo" : "/tasks";
@@ -113,4 +119,64 @@ function initials(name: string) {
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() || "")
     .join("");
+}
+
+function ClientSummaryCard({ cards }: { cards: EdithCards }) {
+  const stats = cards.stats || [];
+  const sections = cards.sections?.filter((s) => s.items?.length) || [];
+  return (
+    <div className="edith-cards edith-client">
+      <div className="edith-client__head">
+        <span className="edith-cards__avatar edith-client__logo">{initials(cards.title || "?")}</span>
+        <div style={{ minWidth: 0 }}>
+          <strong className="edith-client__name">{cards.title}</strong>
+          {cards.subtitle && <span className="edith-client__sub">{cards.subtitle}</span>}
+        </div>
+      </div>
+      {stats.length > 0 && (
+        <div className="edith-client__stats">
+          {stats.map((s) => (
+            <div key={s.label} className="edith-client__stat">
+              <span className="edith-client__stat-value">{s.value}</span>
+              <span className="edith-client__stat-label">{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {sections.map((section) => (
+        <div key={section.title} className="edith-client__section">
+          <div className="edith-client__section-title">{section.title}</div>
+          <div className="edith-client__rows">
+            {section.items.map((item, i) => {
+              const due = formatDue(item.date);
+              const row = (
+                <>
+                  <span className="edith-client__row-title">{item.title}</span>
+                  <span className="edith-client__row-meta">
+                    {due && (
+                      <span className={`edith-task-card__due is-${due.tone}`}>
+                        <i className="bi bi-calendar3" /> {due.label}
+                      </span>
+                    )}
+                    <span className={`badge ${STATUS_BADGE[item.status || "assigned"] || "badge-muted"}`}>
+                      {item.status_label || item.status}
+                    </span>
+                  </span>
+                </>
+              );
+              return item.href ? (
+                <Link key={`${item.title}-${i}`} href={item.href} className="edith-client__row">
+                  {row}
+                </Link>
+              ) : (
+                <div key={`${item.title}-${i}`} className="edith-client__row">
+                  {row}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }

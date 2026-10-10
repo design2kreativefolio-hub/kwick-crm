@@ -11,6 +11,7 @@ import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { Loader } from "@/components/Loader";
+import { useImageCrop } from "@/components/AvatarCropModal";
 
 type StaffDetail = {
   staff: {
@@ -233,9 +234,10 @@ export default function StaffEditPage() {
       showToast(err instanceof ApiError ? "Couldn't upload photo." : err.message, "error");
     } finally {
       setUploadingAvatar(false);
-      if (avatarRef.current) avatarRef.current.value = "";
     }
   };
+
+  const avatarCrop = useImageCrop(uploadAvatar);
 
   if (loading) return <Loader />;
   if (!data) return <p className="muted">Staff not found.</p>;
@@ -269,14 +271,16 @@ export default function StaffEditPage() {
                 <i className="bi bi-camera-fill" />
               </span>
             </div>
-            <input
+            {avatarCrop.cropModal}
+<input
               ref={avatarRef}
               type="file"
               accept="image/*"
               hidden
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) uploadAvatar(file);
+                if (file) avatarCrop.start(file);
+                e.target.value = "";
               }}
             />
             <button

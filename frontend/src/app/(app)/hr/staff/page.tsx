@@ -9,6 +9,7 @@ import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { Loader } from "@/components/Loader";
+import { useImageCrop } from "@/components/AvatarCropModal";
 
 type Staff = {
   id: number;
@@ -82,10 +83,18 @@ export default function HrPage() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const pickAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
+  const setCroppedAvatar = (file: File) => {
     setAvatarFile(file);
-    setAvatarPreview(file ? URL.createObjectURL(file) : null);
+    setAvatarPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  };
+  const avatarCrop = useImageCrop(setCroppedAvatar);
+
+  const pickAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    avatarCrop.start(e.target.files?.[0]);
+    e.target.value = "";
   };
 
   const submitStaff = async (payload: Record<string, unknown>) => {
@@ -180,7 +189,8 @@ export default function HrPage() {
                   <i className="bi bi-camera-fill" />
                 </span>
               </div>
-              <input
+              {avatarCrop.cropModal}
+<input
                 ref={avatarInputRef}
                 type="file"
                 accept="image/*"

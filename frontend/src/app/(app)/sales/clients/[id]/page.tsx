@@ -16,6 +16,7 @@ import {
   formFromClient,
 } from "@/lib/salesClient";
 import { useToast } from "@/lib/toast";
+import { useImageCrop } from "@/components/AvatarCropModal";
 
 export default function SalesClientDetailPage() {
   const params = useParams<{ id: string }>();
@@ -59,9 +60,7 @@ export default function SalesClientDetailPage() {
 
   const accent = (editing ? form.accent_color : client?.accent_color) || DEFAULT_CLIENT_ACCENT;
 
-  const onLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadLogoFile = async (file: File) => {
     setUploadingLogo(true);
     try {
       const body = new FormData();
@@ -76,8 +75,14 @@ export default function SalesClientDetailPage() {
       showToast(err instanceof ApiError ? "Couldn't upload logo." : err.message, "error");
     } finally {
       setUploadingLogo(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const logoCrop = useImageCrop(uploadLogoFile, { shape: "rect", title: "Crop logo" });
+
+  const onLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    logoCrop.start(e.target.files?.[0]);
+    if (fileRef.current) fileRef.current.value = "";
   };
 
   const cancelEdit = () => {
@@ -158,7 +163,8 @@ export default function SalesClientDetailPage() {
                 <span style={{ fontSize: 30, fontWeight: 700, color: "#fff" }}>{initial}</span>
               )}
             </div>
-            <input ref={fileRef} type="file" accept="image/*" onChange={onLogoChange} style={{ display: "none" }} />
+            {logoCrop.cropModal}
+<input ref={fileRef} type="file" accept="image/*" onChange={onLogoChange} style={{ display: "none" }} />
             <button
               type="button"
               onClick={() => fileRef.current?.click()}

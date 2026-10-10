@@ -461,7 +461,73 @@ def build_client_summary(ctx: dict, client: str) -> dict:
     n_tasks = sum(1 for t in ctx.get("open_tasks") or [] if _matches_client(t, client))
     lines.append(f"Open tasks: **{n_tasks}**")
 
+    # Structured version for the chat UI (stat tiles + tappable rows); the
+    # plain-text reply stays short so it reads well aloud too.
+    contact = []
+    if sales_row:
+        company = (sales_row.get("company") or "").strip()
+        if company and company.lower() != cl:
+            contact.append(company)
+        if sales_row.get("poc_name"):
+            contact.append(f"POC {sales_row['poc_name']}")
+        if sales_row.get("contact_email"):
+            contact.append(sales_row["contact_email"])
+
+    def _label(status):
+        return STATUS_LABEL.get(status) or str(status or "").replace("_", " ").title()
+
+    sections = []
+    if projects:
+        sections.append(
+            {
+                "title": "Active mini-projects",
+                "items": [
+                    {
+                        "title": p["name"],
+                        "status": p.get("status"),
+                        "status_label": _label(p.get("status")),
+                        "date": p.get("delivery_date"),
+                        "href": f"/projects/{p['id']}" if p.get("id") else "/projects",
+                    }
+                    for p in projects[:5]
+                ],
+            }
+        )
+    if cal:
+        sections.append(
+            {
+                "title": "Upcoming content - next 14 days",
+                "items": [
+                    {
+                        "title": c["title"],
+                        "status": c.get("status"),
+                        "status_label": _label(c.get("status")),
+                        "date": c.get("scheduled_date"),
+                        "href": f"/projects/clients/{c['client_id']}/calendar"
+                        if c.get("client_id")
+                        else "/projects/clients",
+                    }
+                    for c in cal[:5]
+                ],
+            }
+        )
+
+    reply = f"Here's the latest on **{client}**."
+    if not projects and not cal and not n_tasks:
+        reply = f"**{client}** has no active mini-projects, upcoming content or open tasks right now."
+
     return {
-        "reply": "\n".join(lines),
+        "reply": reply,
+        "cards": {
+            "kind": "client_summary",
+            "title": client,
+            "subtitle": " · ".join(contact),
+            "stats": [
+                {"label": "Mini-projects", "value": len(projects)},
+                {"label": "Upcoming content", "value": len(cal)},
+                {"label": "Open tasks", "value": n_tasks},
+            ],
+            "sections": sections,
+        },
         "links": [{"label": "Projects", "href": "/projects", "icon": "bi-kanban-fill"}],
     }

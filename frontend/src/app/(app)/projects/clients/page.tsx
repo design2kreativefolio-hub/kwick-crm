@@ -9,6 +9,7 @@ import { Modal } from "@/components/Modal";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { Loader } from "@/components/Loader";
+import { useImageCrop } from "@/components/AvatarCropModal";
 
 type Client = {
   id: number;
@@ -180,9 +181,13 @@ export default function ProjectClientsPage() {
       showToast("Couldn't upload logo.", "error");
     } finally {
       setUploadingLogo(false);
-      if (logoInputRef.current) logoInputRef.current.value = "";
     }
   };
+
+  const logoCrop = useImageCrop(
+    (file) => (editingClient ? uploadLogo(editingClient.id, file) : undefined),
+    { shape: "rect", title: "Crop logo" }
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -408,14 +413,16 @@ export default function ProjectClientsPage() {
                 aria-label="Accent color"
               />
               <span className="muted" style={{ fontSize: 12.5, fontFamily: "monospace" }}>{editingAccent}</span>
-              <input
+              {logoCrop.cropModal}
+<input
                 ref={logoInputRef}
                 type="file"
                 accept="image/*"
                 hidden
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) uploadLogo(editingClient.id, file);
+                  if (file) logoCrop.start(file);
+                  e.target.value = "";
                 }}
               />
               <button

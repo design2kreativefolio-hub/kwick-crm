@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useImageCrop } from "@/components/AvatarCropModal";
 import { api, ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 
@@ -63,12 +64,15 @@ export function ClientLogoField({
     }
   };
 
+  const crop = useImageCrop(pick, { shape: "rect", title: "Crop logo" });
+
   const clearPending = () => {
     onPendingFile?.(null);
   };
 
   return (
     <div>
+      {crop.cropModal}
       <label className="field-label" style={{ marginTop: 0 }}>
         Logo
       </label>
@@ -120,7 +124,7 @@ export function ClientLogoField({
         hidden
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) pick(file);
+          if (file) crop.start(file);
           e.target.value = "";
         }}
       />

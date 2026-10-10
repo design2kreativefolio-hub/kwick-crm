@@ -15,6 +15,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { Loader } from "@/components/Loader";
+import { useImageCrop } from "@/components/AvatarCropModal";
 
 type Staff = {
   id: number;
@@ -156,9 +157,8 @@ export default function StaffDetailPage() {
 
   useEffect(load, [id]);
 
-  const onAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !data) return;
+  const uploadAvatarFile = async (file: File) => {
+    if (!data) return;
     setUploadingAvatar(true);
     try {
       const body = new FormData();
@@ -172,8 +172,14 @@ export default function StaffDetailPage() {
       showToast(err instanceof ApiError ? "Couldn't update photo." : err.message, "error");
     } finally {
       setUploadingAvatar(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const avatarCrop = useImageCrop(uploadAvatarFile);
+
+  const onAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    avatarCrop.start(e.target.files?.[0]);
+    if (fileRef.current) fileRef.current.value = "";
   };
 
   const [leaveEdit, setLeaveEdit] = useState<{ id: number; status: string; comment: string } | null>(null);
@@ -301,7 +307,8 @@ export default function StaffDetailPage() {
                   </span>
                 )}
               </div>
-              <input ref={fileRef} type="file" accept="image/*" onChange={onAvatarChange} style={{ display: "none" }} />
+              {avatarCrop.cropModal}
+<input ref={fileRef} type="file" accept="image/*" onChange={onAvatarChange} style={{ display: "none" }} />
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}

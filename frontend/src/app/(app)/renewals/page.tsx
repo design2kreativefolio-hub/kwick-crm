@@ -97,12 +97,6 @@ function formatDate(iso: string) {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-function subjectIcon(type: SubjectType) {
-  if (type === "client") return "bi-building";
-  if (type === "staff") return "bi-person-fill";
-  return "bi-three-dots";
-}
-
 export default function RenewalsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -444,16 +438,17 @@ export default function RenewalsPage() {
                   aria-label="Toggle recurring"
                 />
                 {form.is_recurring ? (
-                  <select
-                    className="input"
-                    style={{ width: "auto", minWidth: 110 }}
-                    value={form.recurrence_interval}
-                    onChange={(e) => setForm((f) => ({ ...f, recurrence_interval: e.target.value as "monthly" | "yearly" }))}
-                    aria-label="Recurrence interval"
-                  >
-                    <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
+                  <div style={{ minWidth: 130 }}>
+                    <Select
+                      value={form.recurrence_interval}
+                      onChange={(v) => setForm((f) => ({ ...f, recurrence_interval: v as "monthly" | "yearly" }))}
+                      options={[
+                        { value: "monthly", label: "Monthly" },
+                        { value: "yearly", label: "Yearly" },
+                      ]}
+                      ariaLabel="Recurrence interval"
+                    />
+                  </div>
                 ) : (
                   <span className="muted" style={{ fontSize: 12.5 }}>One-time</span>
                 )}
@@ -573,10 +568,7 @@ export default function RenewalsPage() {
                   return (
                     <tr key={r.id}>
                       <td>
-                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <i className={`bi ${subjectIcon(r.subject_type)}`} style={{ color: "var(--text-muted)" }} />
-                          {subjectLabel}
-                        </span>
+                        {subjectLabel}
                       </td>
                       <td>
                         <span className="badge">{typeLabel}</span>

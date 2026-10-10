@@ -238,6 +238,19 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const deleteAttachment = async (index: number, name: string) => {
+    if (!project) return;
+    if (!(await confirm(`Are you sure you want to delete "${name}"? This cannot be undone.`, { title: "Delete attachment", danger: true, confirmLabel: "Delete" })))
+      return;
+    try {
+      const updated = await api<Project>(`/api/projects/${project.id}/attachments/${index}`, { method: "DELETE" });
+      setProject(updated);
+      showToast("Attachment deleted.");
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't delete attachment." : err.message, "error");
+    }
+  };
+
   const deleteProject = async () => {
     if (!project) return;
     if (
@@ -295,15 +308,29 @@ export default function ProjectDetailPage() {
           return (
             <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 6 }}>
               <span className="muted" style={{ fontSize: 12 }}>Attachments</span>
-              {files.map((url, i) => (
-                <MediaFileLink
-                  key={url}
-                  url={url}
-                  style={{ fontSize: 13.5, display: "inline-flex", alignItems: "center", gap: 6, color: "var(--navy)" }}
-                >
-                  <i className="bi bi-paperclip" /> {displayUploadedFileName(url) || `Attachment ${i + 1}`}
-                </MediaFileLink>
-              ))}
+              {files.map((url, i) => {
+                const label = displayUploadedFileName(url) || `Attachment ${i + 1}`;
+                return (
+                  <div key={url} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <MediaFileLink
+                      url={url}
+                      style={{ fontSize: 13.5, display: "inline-flex", alignItems: "center", gap: 6, color: "var(--navy)" }}
+                    >
+                      <i className="bi bi-paperclip" /> {label}
+                    </MediaFileLink>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ color: "var(--danger)", padding: "2px 8px" }}
+                      title="Delete attachment"
+                      aria-label={`Delete ${label}`}
+                      onClick={() => deleteAttachment(i, label)}
+                    >
+                      <i className="bi bi-trash-fill" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           );
         })()}

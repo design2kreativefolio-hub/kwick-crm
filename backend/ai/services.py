@@ -80,7 +80,7 @@ def chat(
         if not cleaned[-1]["content"]:
             cleaned[-1]["content"] = "Please analyze the attached image(s)."
 
-    ctx = build_crm_context(user)
+    ctx = _cached_crm_context(user)
     last = cleaned[-1]["content"]
 
     # Visual task/to-do cards skip the LLM only for list questions — not for
@@ -132,6 +132,9 @@ def chat(
                 logging.getLogger(__name__).warning(
                     "EDITH LLM attempt %s failed: %s", attempt, exc
                 )
+                # Only transient failures (timeout / rate limit / 5xx) are worth a retry.
+                if not _is_transient_llm_error(exc):
+                    break
         local = _local_reply(last, ctx)
         if not _is_crm_query(last, ctx) or _wants_writing(last):
             local["reply"] = (
@@ -1103,6 +1106,34 @@ def _llm_message_payload(messages: list[dict]) -> list[dict]:
     return out
 
 
+def _cached_crm_context(user) -> dict:
+    """Building CONTEXT runs a dozen queries; reuse it for a few seconds so a
+    quick back-and-forth doesn't pay that on every message."""
+    from django.core.cache import cache
+
+    key = f"edith_ctx:{user.id}"
+    try:
+        ctx = cache.get(key)
+    except Exception:
+        ctx = None
+    if ctx is None:
+        ctx = build_crm_context(user)
+        try:
+            cache.set(key, ctx, 20)
+        except Exception:
+            pass
+    return ctx
+
+
+def _is_transient_llm_error(exc: Exception) -> bool:
+    import socket
+
+    if isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError)):
+        return True
+    text = str(exc)
+    return any(text.startswith(f"HTTP {code}") for code in ("408", "429", "500", "502", "503", "504"))
+
+
 def _llm_reply(ctx: dict, messages: list[dict]) -> str:
     base = (getattr(settings, "AI_BASE_URL", None) or "https://api.openai.com/v1").rstrip("/")
     model = getattr(settings, "AI_MODEL", None) or "gpt-4o-mini"
@@ -1129,14 +1160,21 @@ def _llm_reply(ctx: dict, messages: list[dict]) -> str:
         )
         temperature = 0.7
 
+    # General chat doesn't need a long memory — fewer tokens in, faster reply.
+    history = messages if crm_mode else messages[-8:]
     payload = {
         "model": model,
         "temperature": temperature,
+        "max_tokens": 1500,
         "messages": [
             {"role": "system", "content": system},
-            *_llm_message_payload(messages),
+            *_llm_message_payload(history),
         ],
     }
+    # Gemini "thinking" models spend seconds reasoning before the first word.
+    fast_reasoning = "generativelanguage.googleapis.com" in base
+    if fast_reasoning:
+        payload["reasoning_effort"] = "low"
     req = urllib.request.Request(
         f"{base}/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -1147,9 +1185,23 @@ def _llm_reply(ctx: dict, messages: list[dict]) -> str:
         },
         method="POST",
     )
+    def _post(body: dict) -> dict:
+        request = urllib.request.Request(
+            req.full_url, data=json.dumps(body).encode("utf-8"), headers=dict(req.header_items()), method="POST"
+        )
+        with urllib.request.urlopen(request, timeout=45) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        try:
+            data = _post(payload)
+        except urllib.error.HTTPError as e:
+            # Some models reject reasoning_effort — retry once without it.
+            if e.code == 400 and fast_reasoning:
+                payload.pop("reasoning_effort", None)
+                data = _post(payload)
+            else:
+                raise
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")[:300]
         raise RuntimeError(f"HTTP {e.code}: {body}") from e
