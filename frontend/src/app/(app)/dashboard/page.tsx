@@ -8,6 +8,7 @@ import { HeroBanner } from "@/components/HeroBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PerformanceChart } from "@/components/PerformanceChart";
 import { Reveal } from "@/components/Reveal";
+import { TimeTracker } from "@/components/TimeTracker";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
@@ -252,6 +253,10 @@ export default function DashboardPage() {
               />
             )}
           </div>
+        </Reveal>
+
+        <Reveal index={1}>
+          <TimeTracker />
         </Reveal>
 
         {isSuperadmin && (summary?.pending_approval_users?.length ?? 0) > 0 && (

@@ -4451,3 +4451,64 @@ html[data-theme="dark"] .edith-client__row { background: rgba(255, 255, 255, 0.0
   .edith-client__row { flex-direction: column; align-items: flex-start; gap: 6px; }
   .edith-client__stat { padding: 8px 10px; }
 }
+
+/* Dashboard time tracker */
+.time-tracker {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 24px;
+  border-radius: 20px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue-800), var(--blue-600));
+  box-shadow: var(--shadow);
+}
+.time-tracker__rings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background: repeating-radial-gradient(circle at 105% 120%, transparent 0 14px, rgba(255, 255, 255, 0.9) 14px 15px);
+}
+.time-tracker__body { position: relative; min-width: 0; }
+.time-tracker__top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.time-tracker__title { font-size: 15px; font-weight: 600; opacity: 0.95; }
+.time-tracker__status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.16);
+}
+.time-tracker__dot { width: 7px; height: 7px; border-radius: 50%; background: #cbd5f5; }
+.time-tracker.is-running .time-tracker__dot { background: #4ade80; animation: tt-pulse 1.4s ease-in-out infinite; }
+@keyframes tt-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+.time-tracker__clock {
+  margin-top: 6px;
+  font-size: clamp(34px, 7vw, 52px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.time-tracker__sub { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+.time-tracker__actions { position: relative; display: flex; gap: 12px; flex-shrink: 0; }
+.time-tracker__btn {
+  width: 52px; height: 52px; border: 0; border-radius: 50%;
+  display: grid; place-items: center; font-size: 24px; cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+}
+.time-tracker__btn:hover:not(:disabled) { transform: translateY(-2px); }
+.time-tracker__btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.time-tracker__btn--play { background: #f4f7ff; color: var(--blue-800); }
+.time-tracker__btn--stop { background: #e5484d; color: #fff; }
+@media (max-width: 480px) {
+  .time-tracker { padding: 16px; gap: 12px; }
+  .time-tracker__btn { width: 44px; height: 44px; font-size: 20px; }
+  .time-tracker__actions { gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .time-tracker.is-running .time-tracker__dot { animation: none; }
+}
