@@ -338,17 +338,27 @@ def _add_hr(ctx: dict, user) -> None:
             for lv in leave_qs[:12]
         ]
 
-        bal_qs = LeaveBalance.objects.filter(year=year).select_related("staff").order_by(
-            "staff__full_name", "staff__email"
+        from hr.services import leave_cycle, recalc_leave_balance
+
+        # Each person's leave year runs from their joining anniversary, so keep
+        # only the row for their current cycle (it began this year or last).
+        bal_qs = (
+            LeaveBalance.objects.filter(year__in=[year, year - 1])
+            .select_related("staff", "staff__profile")
+            .order_by("staff__full_name", "staff__email")
         )
         if not hr_access:
             bal_qs = bal_qs.filter(staff=user)
+        current = [b for b in bal_qs if b.year == leave_cycle(b.staff)[0].year]
         balances = []
-        for b in bal_qs[:25]:
+        for b in current[:25]:
+            cycle_start, cycle_end = leave_cycle(b.staff)
+            b = recalc_leave_balance(b.staff)
             balances.append(
                 {
                     "staff": _person_name(b.staff),
                     "year": b.year,
+                    "cycle": f"{cycle_start.isoformat()} to {cycle_end.isoformat()}",
                     "annual_allowance": b.annual_allowance,
                     "used": b.used,
                     "pending": b.pending,
@@ -356,7 +366,7 @@ def _add_hr(ctx: dict, user) -> None:
                 }
             )
         ctx["leave_balances_year"] = year
-        ctx["leave_balances_count"] = bal_qs.count()
+        ctx["leave_balances_count"] = len(current)
         ctx["leave_balances"] = balances
 
         letter_qs = HrLetter.objects.filter(status=HrLetter.Status.ISSUED).select_related(
@@ -686,10 +696,13 @@ def context_as_text(ctx: dict) -> str:
 
     if "leave_balances" in ctx:
         year = ctx.get("leave_balances_year") or timezone.localdate().year
-        lines.append(f"Leave balances ({year}): {ctx.get('leave_balances_count', 0)}")
+        lines.append(
+            "Leave balances (each leave year runs from the staff member's joining anniversary): "
+            f"{ctx.get('leave_balances_count', 0)}"
+        )
         for b in ctx.get("leave_balances") or []:
             lines.append(
-                f"  - {b.get('staff')} | allowance={b.get('annual_allowance')} "
+                f"  - {b.get('staff')} | leave year {b.get('cycle')} | allowance={b.get('annual_allowance')} "
                 f"used={b.get('used')} pending={b.get('pending')} remaining={b.get('remaining')}"
             )
 

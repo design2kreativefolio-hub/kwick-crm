@@ -564,12 +564,11 @@ def _local_reply(text: str, ctx: dict) -> dict:
             }
         lines = []
         if "leave_balances" in ctx:
-            year = ctx.get("leave_balances_year")
-            lines.append(f"**Leave balances ({year}):**")
+            lines.append("**Leave balances (leave year runs from each joining anniversary):**")
             for b in ctx.get("leave_balances") or []:
                 lines.append(
                     f"• {b.get('staff')} — remaining **{b.get('remaining')}** "
-                    f"(allowance {b.get('annual_allowance')}, used {b.get('used')}, "
+                    f"(leave year {b.get('cycle')}, allowance {b.get('annual_allowance')}, used {b.get('used')}, "
                     f"pending {b.get('pending')})"
                 )
             if not ctx.get("leave_balances"):

@@ -46,7 +46,7 @@ from .serializers import (
     StaffUpdateSerializer,
     TicketSerializer,
 )
-from .services import purge_staff_account
+from .services import purge_staff_account, recalc_leave_balance
 
 User = get_user_model()
 
@@ -124,8 +124,7 @@ class StaffViewSet(viewsets.ViewSet):
             )
         except User.DoesNotExist:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        year = date.today().year
-        balance, _ = LeaveBalance.objects.get_or_create(staff=user, year=year)
+        balance = recalc_leave_balance(user)
         return Response(
             {
                 "staff": StaffListSerializer(user).data,
@@ -558,19 +557,10 @@ class LeaveViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _recalc_balance(staff):
-        """Balance nets approved + pending against the 30-day allowance (spec §5.5).
-        Used may exceed annual_allowance; remaining can be negative."""
-        year = date.today().year
-        balance, _ = LeaveBalance.objects.get_or_create(staff=staff, year=year)
-        paid_types = [Leave.LeaveType.ANNUAL, Leave.LeaveType.OTHER]
-        leaves = Leave.objects.filter(
-            staff=staff, leave_type__in=paid_types, start_date__year=year
-        )
-        used = sum(l.days for l in leaves if l.status == Leave.Status.APPROVED)
-        pending = sum(l.days for l in leaves if l.status == Leave.Status.PENDING)
-        balance.used = used
-        balance.pending = pending
-        balance.save(update_fields=["used", "pending", "updated_at"])
+        """Balance nets approved + pending against the 30-day allowance over the
+        staff member's joining-anniversary leave year (spec §5.5). Used may
+        exceed annual_allowance; remaining can be negative."""
+        recalc_leave_balance(staff)
 
 
 class LeaveBalanceView(APIView):
@@ -579,9 +569,7 @@ class LeaveBalanceView(APIView):
     permission_classes = [IsActive]
 
     def get(self, request):
-        year = date.today().year
-        balance, _ = LeaveBalance.objects.get_or_create(staff=request.user, year=year)
-        return Response(LeaveBalanceSerializer(balance).data)
+        return Response(LeaveBalanceSerializer(recalc_leave_balance(request.user)).data)
 
 
 class TicketViewSet(viewsets.ModelViewSet):

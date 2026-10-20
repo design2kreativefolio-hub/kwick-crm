@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, timedelta
 from urllib.parse import urlparse
 
 from django.core.files.storage import default_storage
@@ -10,6 +11,51 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import ModuleAccess, Role, StaffProfile, UserStatus
+
+
+def _anniversary(joined: date, year: int) -> date:
+    try:
+        return joined.replace(year=year)
+    except ValueError:  # 29 Feb in a non-leap year
+        return date(year, 2, 28)
+
+
+def leave_cycle(staff, on: date | None = None) -> tuple[date, date]:
+    """The staff member's current annual-leave year: from their joining
+    anniversary to the day before the next one (e.g. joined 10 Jun 2024 →
+    10 Jun 2026 – 9 Jun 2027). Falls back to the calendar year when no joining
+    date is recorded. Before the joining date, the first cycle is returned."""
+    on = on or date.today()
+    profile = getattr(staff, "profile", None)
+    joined = getattr(profile, "date_joined", None)
+    if not joined:
+        return date(on.year, 1, 1), date(on.year, 12, 31)
+    if joined > on:
+        start = joined
+    else:
+        start = _anniversary(joined, on.year)
+        if start > on:
+            start = _anniversary(joined, on.year - 1)
+    end = _anniversary(joined, start.year + 1) - timedelta(days=1)
+    return start, end
+
+
+def recalc_leave_balance(staff):
+    """Net approved + pending paid leave starting inside the current leave
+    cycle against the allowance. Used may exceed the allowance (remaining can
+    go negative). The balance row is keyed by the calendar year the cycle began."""
+    from hr.models import Leave, LeaveBalance
+
+    start, end = leave_cycle(staff)
+    balance, _ = LeaveBalance.objects.get_or_create(staff=staff, year=start.year)
+    paid_types = [Leave.LeaveType.ANNUAL, Leave.LeaveType.OTHER]
+    leaves = Leave.objects.filter(
+        staff=staff, leave_type__in=paid_types, start_date__gte=start, start_date__lte=end
+    )
+    balance.used = sum(l.days for l in leaves if l.status == Leave.Status.APPROVED)
+    balance.pending = sum(l.days for l in leaves if l.status == Leave.Status.PENDING)
+    balance.save(update_fields=["used", "pending", "updated_at"])
+    return balance
 
 
 def _delete_storage_url(url: str) -> None:

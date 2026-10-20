@@ -40,7 +40,15 @@ type Staff = {
 
 type StaffDetail = {
   staff: Staff;
-  leave_balance: { year: number; annual_allowance: number; used: number; pending: number; remaining: number };
+  leave_balance: {
+    year: number;
+    annual_allowance: number;
+    used: number;
+    pending: number;
+    remaining: number;
+    cycle_start?: string;
+    cycle_end?: string;
+  };
   leaves: {
     id: number;
     leave_type: string;
@@ -420,7 +428,11 @@ export default function StaffDetailPage() {
         {tab === "leave" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <DonutCard
-              title={`Leave Balance — ${leave_balance.year}`}
+              title={
+                leave_balance.cycle_start && leave_balance.cycle_end
+                  ? `Leave Balance — ${dateLabel(leave_balance.cycle_start)} to ${dateLabel(leave_balance.cycle_end)}`
+                  : `Leave Balance — ${leave_balance.year}`
+              }
               slices={leaveDonutSlices.length ? leaveDonutSlices : [{ label: "No leave yet", value: 1, color: "var(--border)" }]}
             />
 

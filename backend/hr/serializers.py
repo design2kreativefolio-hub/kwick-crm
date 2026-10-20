@@ -258,6 +258,8 @@ class LeaveSerializer(serializers.ModelSerializer):
 class LeaveBalanceSerializer(serializers.ModelSerializer):
     remaining = serializers.IntegerField(read_only=True)
     used_this_month = serializers.SerializerMethodField()
+    cycle_start = serializers.SerializerMethodField()
+    cycle_end = serializers.SerializerMethodField()
 
     class Meta:
         model = LeaveBalance
@@ -270,7 +272,19 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
             "pending",
             "remaining",
             "used_this_month",
+            "cycle_start",
+            "cycle_end",
         ]
+
+    def get_cycle_start(self, obj):
+        from .services import leave_cycle
+
+        return leave_cycle(obj.staff)[0].isoformat()
+
+    def get_cycle_end(self, obj):
+        from .services import leave_cycle
+
+        return leave_cycle(obj.staff)[1].isoformat()
 
     def get_used_this_month(self, obj):
         from datetime import date

@@ -15,7 +15,13 @@ type LeaveBalance = {
   pending: number;
   remaining: number;
   used_this_month: number;
+  cycle_start?: string;
+  cycle_end?: string;
 };
+
+/** "2026-06-10" → "10 Jun 2026" */
+const fmtCycleDate = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 type Leave = {
   id: number;
@@ -121,7 +127,12 @@ export function LeaveRequestsTab() {
     <div className="profile-split-grid">
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div className="card">
-          <span className="card-title">Annual Leave Balance {balance ? `(${balance.year})` : ""}</span>
+          <span className="card-title">Annual Leave Balance</span>
+          {balance?.cycle_start && balance.cycle_end && (
+            <p className="muted" style={{ fontSize: 12, margin: "2px 0 0" }}>
+              Leave year: {fmtCycleDate(balance.cycle_start)} – {fmtCycleDate(balance.cycle_end)}
+            </p>
+          )}
           {balance && (
             <>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
