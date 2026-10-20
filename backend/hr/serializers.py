@@ -121,18 +121,28 @@ class StaffUpdateSerializer(serializers.Serializer):
 
     full_name = serializers.CharField(required=False)
     email = serializers.EmailField(required=False)
-    phone = serializers.CharField(required=False, allow_blank=True)
-    job_title = serializers.CharField(required=False, allow_blank=True)
-    department = serializers.CharField(required=False, allow_blank=True)
+    # max_length mirrors StaffProfile so an over-long value is a readable 400,
+    # not a database error (500) that leaves the whole save silently failing.
+    phone = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    job_title = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    department = serializers.CharField(required=False, allow_blank=True, max_length=120)
     date_joined = serializers.DateField(required=False, allow_null=True)
     visa_renewal_date = serializers.DateField(required=False, allow_null=True)
     insurance_renewal_date = serializers.DateField(required=False, allow_null=True)
     iloe_renewal_date = serializers.DateField(required=False, allow_null=True)
-    nationality = serializers.CharField(required=False, allow_blank=True)
-    emergency_contact_uae = serializers.CharField(required=False, allow_blank=True)
-    emergency_contact_relation = serializers.CharField(required=False, allow_blank=True)
+    nationality = serializers.CharField(required=False, allow_blank=True, max_length=100)
+    emergency_contact_uae = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    emergency_contact_relation = serializers.CharField(required=False, allow_blank=True, max_length=100)
     home_country_address = serializers.CharField(required=False, allow_blank=True)
-    home_country_number = serializers.CharField(required=False, allow_blank=True)
+    home_country_number = serializers.CharField(required=False, allow_blank=True, max_length=40)
+
+    def to_internal_value(self, data):
+        # A cleared date picker arrives as "" — treat it as "no date".
+        data = data.copy() if hasattr(data, "copy") else dict(data)
+        for f in ("date_joined", "visa_renewal_date", "insurance_renewal_date", "iloe_renewal_date"):
+            if data.get(f) == "":
+                data[f] = None
+        return super().to_internal_value(data)
 
     def validate_email(self, value):
         user = self.context["user"]

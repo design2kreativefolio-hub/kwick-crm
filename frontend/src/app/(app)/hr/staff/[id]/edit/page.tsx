@@ -122,7 +122,9 @@ export default function StaffEditPage() {
         }
         return;
       }
-      setError(err instanceof ApiError ? formatApiError(err.data) : err.message);
+      const message = err instanceof ApiError ? formatApiError(err.data) : err.message;
+      setError(message);
+      showToast(message || "Couldn't save staff details.", "error");
     } finally {
       setSaving(false);
     }
@@ -130,7 +132,11 @@ export default function StaffEditPage() {
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
-    submitDetails(form);
+    // Empty date pickers hold "" — the API's date fields only accept a date or null.
+    const dateKeys = ["date_joined", "visa_renewal_date", "insurance_renewal_date", "iloe_renewal_date"] as const;
+    const payload: Record<string, unknown> = { ...form };
+    for (const k of dateKeys) payload[k] = form[k] || null;
+    submitDetails(payload);
   };
 
   const resetPassword = async () => {

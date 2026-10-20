@@ -26,6 +26,10 @@ def enforce_trusted_origin(request):
     origin = _origin_of(request.META.get("HTTP_ORIGIN", "")) or _origin_of(request.META.get("HTTP_REFERER", ""))
     allowed = {o.lower().rstrip("/") for o in getattr(settings, "CORS_ALLOWED_ORIGINS", [])}
     allowed |= {o.lower().rstrip("/") for o in getattr(settings, "CSRF_TRUSTED_ORIGINS", [])}
+    # The configured frontend URL is always one of our own origins.
+    frontend = _origin_of(getattr(settings, "FRONTEND_URL", ""))
+    if frontend:
+        allowed.add(frontend)
     if not origin or origin not in allowed:
         raise PermissionDenied("Cross-site request blocked.")
 
