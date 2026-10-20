@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListCreateAPIView
@@ -506,14 +506,33 @@ class LeaveViewSet(viewsets.ModelViewSet):
         if "admin_comment" in request.data:
             comment = str(request.data.get("admin_comment") or "").strip()[:1000]
 
+        # HR/admin can correct the leave dates (e.g. the employee picked the
+        # wrong range); the balance is recalculated below.
+        start_date, end_date = leave.start_date, leave.end_date
+        if "start_date" in request.data or "end_date" in request.data:
+            date_field = serializers.DateField()
+            try:
+                start_date = date_field.run_validation(request.data.get("start_date", start_date))
+                end_date = date_field.run_validation(request.data.get("end_date", end_date))
+            except ValidationError as exc:
+                return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+            if end_date < start_date:
+                return Response(
+                    {"detail": "End date can't be before the start date."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         status_changed = new_status != leave.status
         comment_changed = comment != leave.admin_comment
-        if not status_changed and not comment_changed:
+        dates_changed = (start_date, end_date) != (leave.start_date, leave.end_date)
+        if not status_changed and not comment_changed and not dates_changed:
             return Response(LeaveSerializer(leave).data)
 
         leave.status = new_status
         leave.admin_comment = comment
-        leave.save(update_fields=["status", "admin_comment", "updated_at"])
+        leave.start_date = start_date
+        leave.end_date = end_date
+        leave.save(update_fields=["status", "admin_comment", "start_date", "end_date", "updated_at"])
         self._recalc_balance(leave.staff)
 
         ref = f"leave:{leave.id}"
@@ -535,16 +554,21 @@ class LeaveViewSet(viewsets.ModelViewSet):
         )
         if leave.staff_id != request.user.id:
             label = {"approved": "approved", "rejected": "rejected", "pending": "set back to pending"}[leave.status]
-            title = (
-                f"Your {leave.leave_type} leave was {label}"
-                if status_changed
-                else f"HR commented on your {leave.leave_type} leave"
-            )
+            if status_changed:
+                title = f"Your {leave.leave_type} leave was {label}"
+            elif dates_changed:
+                title = f"Your {leave.leave_type} leave dates were updated"
+            else:
+                title = f"HR commented on your {leave.leave_type} leave"
             notify_user(
                 user=leave.staff,
                 source="leave_request",
                 title=title,
-                body=leave.admin_comment[:200],
+                body=(
+                    f"Now {leave.start_date:%b %d} – {leave.end_date:%b %d, %Y}. {leave.admin_comment}"
+                    if dates_changed
+                    else leave.admin_comment
+                )[:200],
                 object_ref=f"leave:{leave.id}:update:{int(leave.updated_at.timestamp())}",
             )
         return Response(LeaveSerializer(leave).data)

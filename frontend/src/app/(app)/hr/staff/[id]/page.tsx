@@ -11,7 +11,7 @@ import { DonutCard, DonutSlice } from "@/components/DonutCard";
 import { Modal } from "@/components/Modal";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, formatApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { Loader } from "@/components/Loader";
@@ -190,22 +190,35 @@ export default function StaffDetailPage() {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const [leaveEdit, setLeaveEdit] = useState<{ id: number; status: string; comment: string } | null>(null);
+  const [leaveEdit, setLeaveEdit] = useState<{ id: number; status: string; comment: string; start_date: string; end_date: string } | null>(null);
   const [savingLeaveEdit, setSavingLeaveEdit] = useState(false);
 
   const saveLeaveEdit = async () => {
     if (!leaveEdit) return;
+    if (!leaveEdit.start_date || !leaveEdit.end_date) {
+      showToast("Pick start and end dates.", "error");
+      return;
+    }
+    if (leaveEdit.end_date < leaveEdit.start_date) {
+      showToast("End date can't be before the start date.", "error");
+      return;
+    }
     setSavingLeaveEdit(true);
     try {
       await api(`/api/hr/leaves/${leaveEdit.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: leaveEdit.status, admin_comment: leaveEdit.comment }),
+        body: JSON.stringify({
+          status: leaveEdit.status,
+          admin_comment: leaveEdit.comment,
+          start_date: leaveEdit.start_date,
+          end_date: leaveEdit.end_date,
+        }),
       });
       showToast("Leave request updated.");
       setLeaveEdit(null);
       load();
     } catch (err: any) {
-      showToast(err instanceof ApiError ? "Couldn't update the leave request." : err.message, "error");
+      showToast(err instanceof ApiError ? formatApiError(err.data) || "Couldn't update the leave request." : err.message, "error");
     } finally {
       setSavingLeaveEdit(false);
     }
@@ -491,8 +504,16 @@ export default function StaffDetailPage() {
                       {l.status !== "cancelled" && (
                         <button
                           className="btn btn-ghost btn-sm"
-                          title="Change decision or add a comment"
-                          onClick={() => setLeaveEdit({ id: l.id, status: l.status, comment: l.admin_comment || "" })}
+                          title="Change dates, decision or add a comment"
+                          onClick={() =>
+                            setLeaveEdit({
+                              id: l.id,
+                              status: l.status,
+                              comment: l.admin_comment || "",
+                              start_date: l.start_date,
+                              end_date: l.end_date,
+                            })
+                          }
                         >
                           <i className="bi bi-pencil-fill" /> Edit
                         </button>
@@ -506,10 +527,29 @@ export default function StaffDetailPage() {
             <Modal open={!!leaveEdit} onClose={() => setLeaveEdit(null)} maxWidth={460}>
               <span className="card-title" style={{ margin: 0 }}>Edit leave request</span>
               <p className="muted" style={{ fontSize: 12.5, margin: "6px 0 12px" }}>
-                Changing the decision updates the employee&apos;s leave balance and notifies them. The comment is
-                visible to the employee.
+                Changing the dates or decision updates the employee&apos;s leave balance and notifies them. The
+                comment is visible to the employee.
               </p>
-              <label className="field-label" style={{ marginTop: 0 }}>Decision</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Start date</label>
+                  <DatePicker
+                    value={leaveEdit?.start_date ?? ""}
+                    onChange={(v) => setLeaveEdit((e) => (e ? { ...e, start_date: v } : e))}
+                    ariaLabel="Leave start date"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>End date</label>
+                  <DatePicker
+                    value={leaveEdit?.end_date ?? ""}
+                    onChange={(v) => setLeaveEdit((e) => (e ? { ...e, end_date: v } : e))}
+                    min={leaveEdit?.start_date || undefined}
+                    ariaLabel="Leave end date"
+                  />
+                </div>
+              </div>
+              <label className="field-label">Decision</label>
               <Select
                 value={leaveEdit?.status ?? "pending"}
                 onChange={(v) => setLeaveEdit((e) => (e ? { ...e, status: v } : e))}
