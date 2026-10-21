@@ -28,6 +28,14 @@ export function EditProfileTab() {
   const { showToast } = useToast();
   const isSuperadmin = user?.role === "superadmin";
 
+  // The signed-in user is loaded once when the app opens, so HR edits made
+  // since (joining/visa/insurance/ILOE dates, job title…) would stay stale
+  // here until a full reload. Refetch whenever the profile is opened.
+  useEffect(() => {
+    void refreshUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [form, setForm] = useState({ full_name: "", email: "", phone: "" });
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
