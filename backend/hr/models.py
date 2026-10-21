@@ -142,7 +142,9 @@ class LeaveBalance(TimeStampedModel):
 
     @property
     def remaining(self) -> int:
-        return self.annual_allowance - self.used - self.pending
+        # Only approved leave is deducted; pending requests are shown
+        # separately and don't reduce the balance until they're approved.
+        return self.annual_allowance - self.used
 
     def __str__(self):
         return f"Balance {self.staff_id} {self.year}: {self.remaining} left"

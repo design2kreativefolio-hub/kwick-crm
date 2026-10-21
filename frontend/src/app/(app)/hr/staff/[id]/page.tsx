@@ -111,13 +111,12 @@ function buildLeaveDonutSlices(leaveBalance: {
   pending: number;
   remaining: number;
 }): DonutSlice[] {
-  const { annual_allowance, used, pending, remaining } = leaveBalance;
+  const { annual_allowance, used, remaining } = leaveBalance;
   const taken = Math.min(used, annual_allowance);
   const overAllowance = Math.max(used - annual_allowance, 0);
   const left = Math.max(remaining, 0);
   return [
     { label: "Taken", value: taken, color: "var(--chart-1)" },
-    { label: "Pending", value: pending, color: "var(--chart-2)" },
     { label: "Remaining", value: left, color: "var(--chart-4)" },
     { label: "Over allowance", value: overAllowance, color: "var(--danger)" },
   ].filter((s) => s.value > 0);

@@ -118,9 +118,9 @@ export function LeaveRequestsTab() {
 
   // Superadmin gets everyone's requests; show whose each one is.
   const showOwner = leaves.some((l) => l.staff !== user?.id);
-  const overAllowance = balance ? balance.used + balance.pending > balance.annual_allowance : false;
+  const overAllowance = balance ? balance.used > balance.annual_allowance : false;
   const pct = balance
-    ? Math.min(100, Math.round(((balance.used + balance.pending) / Math.max(1, balance.annual_allowance)) * 100))
+    ? Math.min(100, Math.round((balance.used / Math.max(1, balance.annual_allowance)) * 100))
     : 0;
 
   return (
@@ -165,8 +165,8 @@ export function LeaveRequestsTab() {
               </div>
               {overAllowance && (
                 <p style={{ color: "var(--danger)", fontSize: 12.5, margin: "8px 0 0" }}>
-                  Over annual allowance by {balance.used + balance.pending - balance.annual_allowance} day
-                  {balance.used + balance.pending - balance.annual_allowance === 1 ? "" : "s"}. You can still request leave.
+                  Over annual allowance by {balance.used - balance.annual_allowance} day
+                  {balance.used - balance.annual_allowance === 1 ? "" : "s"}. You can still request leave.
                 </p>
               )}
               <div style={{ ...monthStat, marginBottom: 0 }}>

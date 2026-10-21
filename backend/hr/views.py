@@ -579,11 +579,29 @@ class LeaveViewSet(viewsets.ModelViewSet):
             return Response({"detail": "HR access required."}, status=status.HTTP_403_FORBIDDEN)
         return self.decision(request, pk=kwargs.get("pk"))
 
+    def update(self, request, *args, **kwargs):
+        # PUT must not be a back door for employees to rewrite their own
+        # (possibly already approved) leave — same HR-only rule as PATCH.
+        return self.partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        # Employees withdraw a pending request via /retract; deleting the
+        # record (and its audit trail) is a superadmin call.
+        if not is_superadmin(request.user):
+            return Response({"detail": "Superadmin access required."}, status=status.HTTP_403_FORBIDDEN)
+        leave = self.get_object()
+        staff = leave.staff
+        stop_recurring_reminder(object_ref=f"leave:{leave.id}")
+        leave.delete()
+        self._recalc_balance(staff)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @staticmethod
     def _recalc_balance(staff):
-        """Balance nets approved + pending against the 30-day allowance over the
-        staff member's joining-anniversary leave year (spec §5.5). Used may
-        exceed annual_allowance; remaining can be negative."""
+        """Balance nets approved leave against the 30-day allowance over the
+        staff member's joining-anniversary leave year (spec §5.5); pending
+        requests are tracked but not deducted. Used may exceed
+        annual_allowance; remaining can be negative."""
         recalc_leave_balance(staff)
 
 

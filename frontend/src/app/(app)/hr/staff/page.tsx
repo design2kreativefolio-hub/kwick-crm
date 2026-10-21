@@ -163,10 +163,6 @@ export default function HrPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>Staffs</h1>
-          <p className="muted" style={{ marginTop: 4 }}>
-            Employees can self-register at /register and wait for your approval, or you can add
-            them directly here — staff you add yourself are active immediately.
-          </p>
         </div>
         <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
           <i className="bi bi-person-plus-fill" /> Add Staff

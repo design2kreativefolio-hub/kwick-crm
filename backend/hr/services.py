@@ -41,8 +41,8 @@ def leave_cycle(staff, on: date | None = None) -> tuple[date, date]:
 
 
 def recalc_leave_balance(staff):
-    """Net approved + pending paid leave starting inside the current leave
-    cycle against the allowance. Used may exceed the allowance (remaining can
+    """Net approved paid leave starting inside the current leave cycle against
+    the allowance (pending is recorded but not deducted). Used may exceed the allowance (remaining can
     go negative). The balance row is keyed by the calendar year the cycle began."""
     from hr.models import Leave, LeaveBalance
 
