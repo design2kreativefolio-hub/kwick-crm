@@ -441,6 +441,7 @@ export default function StaffDetailPage() {
 
         {tab === "leave" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
             <DonutCard
               title={
                 leave_balance.cycle_start && leave_balance.cycle_end
@@ -457,6 +458,7 @@ export default function StaffDetailPage() {
                 return s.length ? s : EMPTY_LEAVE_SLICES;
               })()}
             />
+            </div>
 
             <div className="card">
               <span className="card-title">
