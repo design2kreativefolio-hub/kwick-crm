@@ -260,6 +260,7 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
     used_this_month = serializers.SerializerMethodField()
     cycle_start = serializers.SerializerMethodField()
     cycle_end = serializers.SerializerMethodField()
+    month = serializers.SerializerMethodField()
 
     class Meta:
         model = LeaveBalance
@@ -274,6 +275,7 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
             "used_this_month",
             "cycle_start",
             "cycle_end",
+            "month",
         ]
 
     def get_cycle_start(self, obj):
@@ -287,18 +289,15 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
         return leave_cycle(obj.staff)[1].isoformat()
 
     def get_used_this_month(self, obj):
-        from datetime import date
+        from .services import month_leave_breakdown
 
-        today = date.today()
-        paid_types = [Leave.LeaveType.ANNUAL, Leave.LeaveType.OTHER]
-        qs = Leave.objects.filter(
-            staff=obj.staff,
-            leave_type__in=paid_types,
-            status=Leave.Status.APPROVED,
-            start_date__year=today.year,
-            start_date__month=today.month,
-        )
-        return sum(l.days for l in qs)
+        taken = month_leave_breakdown(obj.staff)["taken"]
+        return sum(taken.get(t, 0) for t in (Leave.LeaveType.ANNUAL, Leave.LeaveType.OTHER))
+
+    def get_month(self, obj):
+        from .services import month_leave_breakdown
+
+        return month_leave_breakdown(obj.staff)
 
 
 class TicketSerializer(serializers.ModelSerializer):

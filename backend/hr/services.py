@@ -58,6 +58,37 @@ def recalc_leave_balance(staff):
     return balance
 
 
+def month_leave_breakdown(staff, on: date | None = None) -> dict:
+    """Leave days falling inside the current calendar month, by type.
+
+    Approved leave is "taken"; pending is reported separately. A leave that
+    straddles months only counts the days inside this month. Every leave type
+    is included (sick/unpaid too) — this is a monthly activity view, not the
+    annual-allowance maths."""
+    import calendar
+
+    from hr.models import Leave
+
+    on = on or date.today()
+    month_start = date(on.year, on.month, 1)
+    month_end = date(on.year, on.month, calendar.monthrange(on.year, on.month)[1])
+    leaves = Leave.objects.filter(
+        staff=staff,
+        status__in=[Leave.Status.APPROVED, Leave.Status.PENDING],
+        start_date__lte=month_end,
+        end_date__gte=month_start,
+    )
+    taken = {t.value: 0 for t in Leave.LeaveType}
+    pending = 0
+    for lv in leaves:
+        days = (min(lv.end_date, month_end) - max(lv.start_date, month_start)).days + 1
+        if lv.status == Leave.Status.APPROVED:
+            taken[lv.leave_type] = taken.get(lv.leave_type, 0) + days
+        else:
+            pending += days
+    return {"label": month_start.strftime("%B %Y"), "taken": taken, "pending": pending}
+
+
 def _delete_storage_url(url: str) -> None:
     if not url:
         return

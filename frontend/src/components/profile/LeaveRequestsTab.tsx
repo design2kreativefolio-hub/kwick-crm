@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 
 import { DatePicker } from "@/components/DatePicker";
+import { DonutCard } from "@/components/DonutCard";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { buildMonthlyLeaveSlices, EMPTY_LEAVE_SLICES, LeaveMonth } from "@/lib/leaveMonth";
 import { useToast } from "@/lib/toast";
 
 type LeaveBalance = {
@@ -17,6 +19,7 @@ type LeaveBalance = {
   used_this_month: number;
   cycle_start?: string;
   cycle_end?: string;
+  month?: LeaveMonth;
 };
 
 /** "2026-06-10" → "10 Jun 2026" */
@@ -179,6 +182,16 @@ export function LeaveRequestsTab() {
             </>
           )}
         </div>
+
+        {balance && (
+          <DonutCard
+            title={`Leave This Month — ${balance.month?.label ?? ""}`}
+            slices={(() => {
+              const slices = buildMonthlyLeaveSlices(balance.month);
+              return slices.length ? slices : EMPTY_LEAVE_SLICES;
+            })()}
+          />
+        )}
 
         <form className="card" onSubmit={submit}>
           <span className="card-title">Request Leave</span>

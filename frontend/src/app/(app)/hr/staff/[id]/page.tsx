@@ -8,6 +8,7 @@ import { BackLink } from "@/components/BackLink";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { DonutCard, DonutSlice } from "@/components/DonutCard";
+import { buildMonthlyLeaveSlices, EMPTY_LEAVE_SLICES, LeaveMonth } from "@/lib/leaveMonth";
 import { Modal } from "@/components/Modal";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
@@ -48,6 +49,7 @@ type StaffDetail = {
     remaining: number;
     cycle_start?: string;
     cycle_end?: string;
+    month?: LeaveMonth;
   };
   leaves: {
     id: number;
@@ -446,6 +448,14 @@ export default function StaffDetailPage() {
                   : `Leave Balance — ${leave_balance.year}`
               }
               slices={leaveDonutSlices.length ? leaveDonutSlices : [{ label: "No leave yet", value: 1, color: "var(--border)" }]}
+            />
+
+            <DonutCard
+              title={`Leave This Month — ${leave_balance.month?.label ?? ""}`}
+              slices={(() => {
+                const s = buildMonthlyLeaveSlices(leave_balance.month);
+                return s.length ? s : EMPTY_LEAVE_SLICES;
+              })()}
             />
 
             <div className="card">
