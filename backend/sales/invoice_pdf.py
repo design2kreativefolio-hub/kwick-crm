@@ -7,7 +7,7 @@ import uuid
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from .invoice_content import line_amount, merged_content, subtotal
+from .invoice_content import line_amount, merged_content, totals
 from .proposal_pdf import ASSETS_DIR
 
 
@@ -35,6 +35,15 @@ def _fmt_money(value) -> str:
         return f"{float(value):.2f}"
     except (TypeError, ValueError):
         return "0.00"
+
+
+def _discount_label(content) -> str:
+    if content.get("discount_type") == "percent":
+        try:
+            return f"Discount ({float(content.get('discount_value') or 0):g}%)"
+        except (TypeError, ValueError):
+            pass
+    return "Discount"
 
 
 def build_context(invoice) -> dict:
@@ -73,7 +82,7 @@ def build_context(invoice) -> dict:
                 "details_lines": details_lines,
             }
         )
-    total = subtotal(content.get("items") or [])
+    t = totals(content)
     payment_details = str(content.get("payment_details") or "").strip()
     payment_plain = re.sub(r"<[^>]*>", "", payment_details).replace("&nbsp;", " ").strip()
     return {
@@ -92,8 +101,14 @@ def build_context(invoice) -> dict:
         "due_display": _format_date(content.get("due_date")) or "—",
         "currency": currency,
         "items": items,
-        "subtotal_display": f"{currency} {_fmt_money(total)}",
-        "total_display": f"{currency} {_fmt_money(total)}",
+        "subtotal_display": f"{currency} {_fmt_money(t['subtotal'])}",
+        "show_discount": t["discount"] > 0,
+        "discount_label": _discount_label(content),
+        "discount_display": f"-{currency} {_fmt_money(t['discount'])}",
+        "show_vat": t["vat_enabled"],
+        "vat_label": f"VAT ({t['vat_percent']:g}%)",
+        "vat_display": f"{currency} {_fmt_money(t['vat'])}",
+        "total_display": f"{currency} {_fmt_money(t['total'])}",
         "received_by": content.get("received_by") or "",
         "passed_by": content.get("passed_by") or "",
         "notes": content.get("notes") or "",

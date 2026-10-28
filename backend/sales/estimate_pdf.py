@@ -5,7 +5,7 @@ import base64
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from .estimate_content import line_amount, merged_content, subtotal
+from .estimate_content import line_amount, merged_content, totals
 from .proposal_pdf import ASSETS_DIR
 
 
@@ -49,7 +49,7 @@ def build_context(estimate) -> dict:
                 "details_lines": details_lines,
             }
         )
-    total = subtotal(content.get("items") or [])
+    t = totals(content)
     currency = content.get("currency") or "AED"
     terms_lines = []
     for ln in str(content.get("terms") or "").splitlines():
@@ -69,12 +69,27 @@ def build_context(estimate) -> dict:
         "expiry_display": _format_date(content.get("expiry_date")),
         "currency": currency,
         "items": items,
-        "subtotal_display": _fmt_money(total),
-        "total_display": f"{currency}{_fmt_money(total)}",
+        "subtotal_display": _fmt_money(t["subtotal"]),
+        "show_discount": t["discount"] > 0,
+        "discount_label": _discount_label(content),
+        "discount_display": f"-{_fmt_money(t['discount'])}",
+        "show_vat": t["vat_enabled"],
+        "vat_label": f"VAT ({t['vat_percent']:g}%)",
+        "vat_display": _fmt_money(t["vat"]),
+        "total_display": f"{currency}{_fmt_money(t['total'])}",
         "notes": content.get("notes") or "",
         "terms_lines": terms_lines,
         "logo_data_uri": _data_uri("logo.png"),
     }
+
+
+def _discount_label(content) -> str:
+    if content.get("discount_type") == "percent":
+        try:
+            return f"Discount ({float(content.get('discount_value') or 0):g}%)"
+        except (TypeError, ValueError):
+            pass
+    return "Discount"
 
 
 def _fmt_money(value) -> str:

@@ -1,5 +1,7 @@
 // Canonical shape of Invoice.content — mirrors backend/sales/invoice_content.py.
 
+import { DocTotalsFields, TOTALS_DEFAULTS } from "./docTotals";
+
 export type InvoiceKind = "standard" | "proforma" | "petty_cash";
 
 export type InvoiceLineItem = {
@@ -23,7 +25,7 @@ export type LegacyInvoicePayment = {
   paid_amount?: string;
 };
 
-export type InvoiceContent = {
+export type InvoiceContent = DocTotalsFields & {
   title: string;
   invoice_kind: InvoiceKind;
   invoice_number: string;
@@ -111,6 +113,7 @@ export function defaultInvoiceContent(kind: InvoiceKind = "standard"): InvoiceCo
     received_by: "",
     passed_by: "",
     notes: DEFAULT_NOTES,
+    ...TOTALS_DEFAULTS,
   };
 }
 

@@ -2,6 +2,8 @@
 
 from decimal import Decimal, InvalidOperation
 
+from .totals import TOTALS_DEFAULTS, compute_totals
+
 
 DEFAULT_NOTES = "Looking forward for your business."
 
@@ -36,6 +38,7 @@ def default_content() -> dict:
         "items": [default_line_item()],
         "notes": DEFAULT_NOTES,
         "terms": DEFAULT_TERMS,
+        **TOTALS_DEFAULTS,
     }
 
 
@@ -52,6 +55,10 @@ def line_amount(item: dict) -> float:
 
 def subtotal(items: list) -> float:
     return round(sum(line_amount(i) for i in items or []), 2)
+
+
+def totals(content: dict) -> dict:
+    return compute_totals(subtotal(content.get("items") or []), content)
 
 
 def merged_content(raw: dict | None) -> dict:

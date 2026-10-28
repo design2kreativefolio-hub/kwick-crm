@@ -1,5 +1,7 @@
 // Canonical shape of Estimate.content — mirrors backend/sales/estimate_content.py.
 
+import { DocTotalsFields, TOTALS_DEFAULTS } from "./docTotals";
+
 export type EstimateLineItem = {
   description: string;
   details: string;
@@ -7,7 +9,7 @@ export type EstimateLineItem = {
   rate: number;
 };
 
-export type EstimateContent = {
+export type EstimateContent = DocTotalsFields & {
   quote_number: string;
   bill_to: string;
   client_id: number | null;
@@ -44,6 +46,7 @@ export function defaultEstimateContent(): EstimateContent {
     items: [defaultLineItem()],
     notes: DEFAULT_NOTES,
     terms: DEFAULT_TERMS,
+    ...TOTALS_DEFAULTS,
   };
 }
 

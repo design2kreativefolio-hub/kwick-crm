@@ -187,6 +187,18 @@
       <td>Sub Total</td>
       <td class="r">{{ subtotal_display }}</td>
     </tr>
+    {% if show_discount %}
+    <tr>
+      <td>{{ discount_label }}</td>
+      <td class="r">{{ discount_display }}</td>
+    </tr>
+    {% endif %}
+    {% if show_vat %}
+    <tr>
+      <td>{{ vat_label }}</td>
+      <td class="r">{{ vat_display }}</td>
+    </tr>
+    {% endif %}
     <tr class="total">
       <td>Total</td>
       <td class="r">{{ total_display }}</td>

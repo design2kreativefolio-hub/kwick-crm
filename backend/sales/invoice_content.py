@@ -2,6 +2,8 @@
 
 from decimal import Decimal, InvalidOperation
 
+from .totals import TOTALS_DEFAULTS, compute_totals
+
 
 DEFAULT_NOTES = "Thanks for your business."
 DEFAULT_ITEMS_HEADING = "Item & Description"
@@ -80,6 +82,7 @@ def default_content(kind: str = "standard") -> dict:
         "received_by": "",
         "passed_by": "",
         "notes": DEFAULT_NOTES,
+        **TOTALS_DEFAULTS,
     }
 
 
@@ -96,6 +99,10 @@ def line_amount(item: dict) -> float:
 
 def subtotal(items: list) -> float:
     return round(sum(line_amount(i) for i in items or []), 2)
+
+
+def totals(content: dict) -> dict:
+    return compute_totals(subtotal(content.get("items") or []), content)
 
 
 def merged_content(raw: dict | None) -> dict:

@@ -8,6 +8,7 @@ import { BackLink } from "@/components/BackLink";
 import { DatePicker } from "@/components/DatePicker";
 import { DocNameField } from "@/components/DocNameField";
 import { Select } from "@/components/Select";
+import { TotalsControls } from "@/components/sales/TotalsControls";
 import { EstimatePreview } from "@/components/estimates/EstimatePreview";
 import {
   EstimateContent,
@@ -307,9 +308,7 @@ export default function EstimateBuilderPage() {
               <button type="button" className="btn btn-ghost btn-sm" onClick={addItem}>
                 <i className="bi bi-plus-lg" /> Add item
               </button>
-              <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                Subtotal: <strong>{content.currency}{total.toFixed(2)}</strong>
-              </p>
+              <TotalsControls fields={content} subtotal={total} currency={content.currency} onChange={patch} />
             </div>
           </div>
 

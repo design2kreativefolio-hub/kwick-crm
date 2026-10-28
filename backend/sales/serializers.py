@@ -312,7 +312,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
     def _apply_content(self, validated_data):
         from decimal import Decimal
 
-        from .invoice_content import merged_content, subtotal
+        from .invoice_content import merged_content, totals
         from .invoice_pdf import ensure_invoice_number
 
         content = merged_content(validated_data.get("content"))
@@ -324,7 +324,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
         if not (content.get("title") or "").strip():
             content["title"] = "Invoice"
         validated_data["content"] = content
-        validated_data["amount"] = Decimal(str(subtotal(content.get("items") or [])))
+        validated_data["amount"] = Decimal(str(totals(content)["total"]))
         due = content.get("due_date") or None
         validated_data["due_date"] = due or None
         client_id = content.get("client_id")

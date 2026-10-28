@@ -1,3 +1,4 @@
+import { computeTotals, discountLabel, vatLabel } from "./docTotals";
 import { InvoiceContent, invoiceDocLabel, invoiceSubtotal, lineAmount } from "./invoiceContent";
 
 function esc(value: string | null | undefined): string {
@@ -49,7 +50,7 @@ function detailsBlock(item: { details: string; show_details?: boolean }): string
 
 export function buildInvoiceHtml(content: InvoiceContent): string {
   const currency = content.currency || "AED";
-  const total = invoiceSubtotal(content.items);
+  const t = computeTotals(invoiceSubtotal(content.items), content);
   const dateDisplay = formatDate(content.date);
   const dueDisplay = formatDate(content.due_date);
   const kind = content.invoice_kind || "standard";
@@ -137,8 +138,10 @@ export function buildInvoiceHtml(content: InvoiceContent): string {
     </tbody>
   </table>
   <table class="totals">
-    <tr><td>Sub Total</td><td class="r">${esc(currency)} ${money(total)}</td></tr>
-    <tr class="total"><td>Total</td><td class="r">${esc(currency)} ${money(total)}</td></tr>
+    <tr><td>Sub Total</td><td class="r">${esc(currency)} ${money(t.subtotal)}</td></tr>
+    ${t.discount > 0 ? `<tr><td>${esc(discountLabel(content))}</td><td class="r">-${esc(currency)} ${money(t.discount)}</td></tr>` : ""}
+    ${content.vat_enabled ? `<tr><td>${esc(vatLabel(content))}</td><td class="r">${esc(currency)} ${money(t.vat)}</td></tr>` : ""}
+    <tr class="total"><td>Total</td><td class="r">${esc(currency)} ${money(t.total)}</td></tr>
   </table>
   <table class="bottom-grid">
     <tr>

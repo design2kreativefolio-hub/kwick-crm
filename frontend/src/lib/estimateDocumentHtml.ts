@@ -1,5 +1,6 @@
 // Builds HTML matching backend/sales/templates/sales/estimate_pdf.html for the live preview.
 
+import { computeTotals, discountLabel, vatLabel } from "./docTotals";
 import {
   EstimateContent,
   estimateSubtotal,
@@ -51,7 +52,7 @@ function termsList(terms: string): string {
 
 export function buildEstimateHtml(content: EstimateContent): string {
   const currency = content.currency || "AED";
-  const total = estimateSubtotal(content.items);
+  const t = computeTotals(estimateSubtotal(content.items), content);
   const dateDisplay = formatDate(content.date) || formatDate(new Date().toISOString().slice(0, 10));
   const expiryDisplay = formatDate(content.expiry_date);
 
@@ -119,8 +120,10 @@ export function buildEstimateHtml(content: EstimateContent): string {
     </tbody>
   </table>
   <table class="totals">
-    <tr><td>Sub Total</td><td class="r">${money(total)}</td></tr>
-    <tr class="total"><td>Total</td><td class="r">${esc(currency)}${money(total)}</td></tr>
+    <tr><td>Sub Total</td><td class="r">${money(t.subtotal)}</td></tr>
+    ${t.discount > 0 ? `<tr><td>${esc(discountLabel(content))}</td><td class="r">-${money(t.discount)}</td></tr>` : ""}
+    ${content.vat_enabled ? `<tr><td>${esc(vatLabel(content))}</td><td class="r">${money(t.vat)}</td></tr>` : ""}
+    <tr class="total"><td>Total</td><td class="r">${esc(currency)}${money(t.total)}</td></tr>
   </table>
   ${
     content.notes
