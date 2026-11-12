@@ -105,7 +105,6 @@ export function LeaveRequestsTab() {
       await api("/api/hr/leaves", { method: "POST", body });
       setForm({ leave_type: "annual", start_date: "", end_date: "", reason: "" });
       setFile(null);
-      if (fileRef.current) fileRef.current.value = "";
       showToast("Leave request submitted.");
       load();
     } catch (err: any) {
@@ -248,13 +247,35 @@ export function LeaveRequestsTab() {
           <input
             ref={fileRef}
             type="file"
+            hidden
             accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            style={{ fontSize: 13 }}
+            onChange={(e) => {
+              setFile(e.target.files?.[0] ?? null);
+              e.target.value = "";
+            }}
           />
-          <p className="muted" style={{ fontSize: 11.5, margin: "4px 0 0" }}>
-            e.g. a medical certificate. PDF, image or Word, up to 20 MB.
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
+              <i className="bi bi-paperclip" /> {file ? "Change file" : "Choose file"}
+            </button>
+            {file ? (
+              <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, minWidth: 0 }}>
+                <i className="bi bi-file-earmark" style={{ color: "var(--gold)" }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{file.name}</span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: "2px 8px", color: "var(--danger)" }}
+                  onClick={() => setFile(null)}
+                  aria-label="Remove file"
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+              </span>
+            ) : (
+              <span className="muted" style={{ fontSize: 12.5 }}>e.g. medical certificate · PDF, image or Word</span>
+            )}
+          </div>
           {error && <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>}
           <button className="btn" style={{ marginTop: 14 }} disabled={busy}>
             {busy ? "Submitting…" : "Submit request"}
