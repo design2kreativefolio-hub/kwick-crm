@@ -250,9 +250,17 @@ class LeaveSerializer(serializers.ModelSerializer):
             "status",
             "reason",
             "admin_comment",
+            "attachment_url",
+            "attachment_name",
             "created_at",
         ]
-        read_only_fields = ["staff", "status", "admin_comment", "created_at"]
+        read_only_fields = ["staff", "status", "admin_comment", "attachment_url", "attachment_name", "created_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("attachment_url"):
+            data["attachment_url"] = sign_media_url(data["attachment_url"])
+        return data
 
 
 class LeaveBalanceSerializer(serializers.ModelSerializer):

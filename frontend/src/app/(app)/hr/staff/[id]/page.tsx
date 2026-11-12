@@ -60,6 +60,8 @@ type StaffDetail = {
     status: string;
     reason: string;
     admin_comment?: string;
+    attachment_url?: string;
+    attachment_name?: string;
     created_at: string;
   }[];
   tickets: {
@@ -484,6 +486,13 @@ export default function StaffDetailPage() {
                         {l.reason && (
                           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                             {l.reason}
+                          </div>
+                        )}
+                        {l.attachment_url && (
+                          <div style={{ fontSize: 12, marginTop: 4 }}>
+                            <a href={l.attachment_url} target="_blank" rel="noopener noreferrer">
+                              <i className="bi bi-paperclip" /> {l.attachment_name || "Attachment"}
+                            </a>
                           </div>
                         )}
                         {l.admin_comment && (

@@ -114,6 +114,9 @@ class Leave(TimeStampedModel):
     reason = models.TextField(blank=True)
     # Note from HR / the admin about the decision — visible to the employee.
     admin_comment = models.TextField(blank=True, default="")
+    # Optional supporting document (e.g. medical certificate) — unsigned URL.
+    attachment_url = models.URLField(max_length=500, blank=True, default="")
+    attachment_name = models.CharField(max_length=255, blank=True, default="")
 
     @property
     def days(self) -> int:

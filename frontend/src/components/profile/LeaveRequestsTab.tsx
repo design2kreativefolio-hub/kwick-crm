@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { DatePicker } from "@/components/DatePicker";
 import { DonutCard } from "@/components/DonutCard";
@@ -37,6 +37,8 @@ type Leave = {
   status: string;
   reason: string;
   admin_comment?: string;
+  attachment_url?: string;
+  attachment_name?: string;
   created_at: string;
 };
 
@@ -75,6 +77,8 @@ export function LeaveRequestsTab() {
   const [form, setForm] = useState({ leave_type: "annual", start_date: "", end_date: "", reason: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [retractingId, setRetractingId] = useState<number | null>(null);
 
   const load = () => {
@@ -95,8 +99,13 @@ export function LeaveRequestsTab() {
     }
     setBusy(true);
     try {
-      await api("/api/hr/leaves", { method: "POST", body: JSON.stringify(form) });
+      const body = new FormData();
+      Object.entries(form).forEach(([k, v]) => body.append(k, v));
+      if (file) body.append("attachment", file);
+      await api("/api/hr/leaves", { method: "POST", body });
       setForm({ leave_type: "annual", start_date: "", end_date: "", reason: "" });
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = "";
       showToast("Leave request submitted.");
       load();
     } catch (err: any) {
@@ -235,6 +244,17 @@ export function LeaveRequestsTab() {
             onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
             style={{ resize: "vertical", fontFamily: "inherit" }}
           />
+          <label className="field-label">Attachment (optional)</label>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            style={{ fontSize: 13 }}
+          />
+          <p className="muted" style={{ fontSize: 11.5, margin: "4px 0 0" }}>
+            e.g. a medical certificate. PDF, image or Word, up to 20 MB.
+          </p>
           {error && <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>}
           <button className="btn" style={{ marginTop: 14 }} disabled={busy}>
             {busy ? "Submitting…" : "Submit request"}
@@ -273,6 +293,13 @@ export function LeaveRequestsTab() {
                     <td>{l.days}</td>
                     <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {l.reason || "—"}
+                      {l.attachment_url && (
+                        <div style={{ fontSize: 12, whiteSpace: "normal" }}>
+                          <a href={l.attachment_url} target="_blank" rel="noopener noreferrer">
+                            <i className="bi bi-paperclip" /> {l.attachment_name || "Attachment"}
+                          </a>
+                        </div>
+                      )}
                       {l.admin_comment && (
                         <div style={{ fontSize: 12, color: "var(--navy)", whiteSpace: "normal" }}>
                           <i className="bi bi-chat-left-text" /> HR: {l.admin_comment}

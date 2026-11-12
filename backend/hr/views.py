@@ -442,6 +442,7 @@ class LeaveViewSet(viewsets.ModelViewSet):
             if raw_status not in {Leave.Status.APPROVED, Leave.Status.PENDING}:
                 raw_status = Leave.Status.APPROVED
             leave = serializer.save(staff=staff, status=raw_status)
+            self._save_attachment(leave)
             self._recalc_balance(staff)
             log_activity(
                 actor=user,
@@ -459,6 +460,7 @@ class LeaveViewSet(viewsets.ModelViewSet):
 
         # Employee self-request — always pending for own account.
         leave = serializer.save(staff=user, status=Leave.Status.PENDING)
+        self._save_attachment(leave)
         self._recalc_balance(user)
         start_recurring_reminder(
             source="leave_request",
@@ -467,6 +469,19 @@ class LeaveViewSet(viewsets.ModelViewSet):
             object_ref=f"leave:{leave.id}",
             users=users_with_module_access(Module.HR),
         )
+
+    def _save_attachment(self, leave):
+        """Optional supporting file sent as multipart field `attachment`."""
+        upload = self.request.FILES.get("attachment")
+        if not upload:
+            return
+        ext = validated_extension(upload, allowed=HR_FILE_EXTENSIONS, max_bytes=MAX_FILE_BYTES)
+        key = f"leave-attachments/{leave.staff_id}/{leave.pk}-{uuid.uuid4().hex[:8]}.{ext}"
+        saved_path = default_storage.save(key, upload)
+        name = original_upload_name(upload)
+        leave.attachment_url = persist_storage_url(self.request, saved_path, filename=name)
+        leave.attachment_name = (name or "")[:255]
+        leave.save(update_fields=["attachment_url", "attachment_name", "updated_at"])
 
     @action(detail=True, methods=["post"])
     def retract(self, request, pk=None):
