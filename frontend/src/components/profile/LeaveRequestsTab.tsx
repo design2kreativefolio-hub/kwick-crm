@@ -55,11 +55,6 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: "badge-muted",
 };
 
-const todayIso = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
-
 function submittedLabel(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: "short",
@@ -221,7 +216,6 @@ export function LeaveRequestsTab() {
               <DatePicker
                 value={form.start_date}
                 onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
-                min={todayIso()}
                 ariaLabel="Start date"
               />
             </div>
@@ -230,7 +224,7 @@ export function LeaveRequestsTab() {
               <DatePicker
                 value={form.end_date}
                 onChange={(v) => setForm((f) => ({ ...f, end_date: v }))}
-                min={form.start_date || todayIso()}
+                min={form.start_date || undefined}
                 ariaLabel="End date"
               />
             </div>
