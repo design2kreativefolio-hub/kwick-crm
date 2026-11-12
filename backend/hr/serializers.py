@@ -252,9 +252,12 @@ class LeaveSerializer(serializers.ModelSerializer):
             "admin_comment",
             "attachment_url",
             "attachment_name",
+            "split",
             "created_at",
         ]
-        read_only_fields = ["staff", "status", "admin_comment", "attachment_url", "attachment_name", "created_at"]
+        read_only_fields = [
+            "staff", "status", "admin_comment", "attachment_url", "attachment_name", "split", "created_at",
+        ]
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

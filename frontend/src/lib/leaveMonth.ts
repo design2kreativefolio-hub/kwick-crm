@@ -27,3 +27,16 @@ export function buildMonthlyLeaveSlices(month: LeaveMonth | null | undefined): D
 }
 
 export const EMPTY_LEAVE_SLICES: DonutSlice[] = [{ label: "No leave this month", value: 1, color: "var(--border)" }];
+
+export type LeaveSplitPart = { type: string; days: number };
+
+const TYPE_LABEL: Record<string, string> = { annual: "Annual", sick: "Sick", unpaid: "Unpaid", other: "Other" };
+export const leaveTypeLabel = (t: string) => TYPE_LABEL[t] ?? t;
+
+/** "2 days Sick + 1 day Annual" — empty string when the request isn't split. */
+export function describeLeaveSplit(split?: LeaveSplitPart[] | null): string {
+  if (!split || split.length === 0) return "";
+  return split
+    .map((p) => `${p.days} day${p.days === 1 ? "" : "s"} ${leaveTypeLabel(p.type)}`)
+    .join(" + ");
+}

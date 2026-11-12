@@ -48,12 +48,16 @@ def recalc_leave_balance(staff):
 
     start, end = leave_cycle(staff)
     balance, _ = LeaveBalance.objects.get_or_create(staff=staff, year=start.year)
-    paid_types = [Leave.LeaveType.ANNUAL, Leave.LeaveType.OTHER]
-    leaves = Leave.objects.filter(
-        staff=staff, leave_type__in=paid_types, start_date__gte=start, start_date__lte=end
-    )
-    balance.used = sum(l.days for l in leaves if l.status == Leave.Status.APPROVED)
-    balance.pending = sum(l.days for l in leaves if l.status == Leave.Status.PENDING)
+    paid_types = {Leave.LeaveType.ANNUAL.value, Leave.LeaveType.OTHER.value}
+    # Not filtered by leave_type: a sick request may be split so part of it
+    # comes out of annual leave (and vice versa).
+    leaves = Leave.objects.filter(staff=staff, start_date__gte=start, start_date__lte=end)
+
+    def paid_days(lv):
+        return sum(d for t, d in lv.type_days().items() if t in paid_types)
+
+    balance.used = sum(paid_days(l) for l in leaves if l.status == Leave.Status.APPROVED)
+    balance.pending = sum(paid_days(l) for l in leaves if l.status == Leave.Status.PENDING)
     balance.save(update_fields=["used", "pending", "updated_at"])
     return balance
 
@@ -81,11 +85,15 @@ def month_leave_breakdown(staff, on: date | None = None) -> dict:
     taken = {t.value: 0 for t in Leave.LeaveType}
     pending = 0
     for lv in leaves:
-        days = (min(lv.end_date, month_end) - max(lv.start_date, month_start)).days + 1
-        if lv.status == Leave.Status.APPROVED:
-            taken[lv.leave_type] = taken.get(lv.leave_type, 0) + days
-        else:
-            pending += days
+        for kind, seg_start, seg_end in lv.segments():
+            lo, hi = max(seg_start, month_start), min(seg_end, month_end)
+            if hi < lo:
+                continue
+            days = (hi - lo).days + 1
+            if lv.status == Leave.Status.APPROVED:
+                taken[kind] = taken.get(kind, 0) + days
+            else:
+                pending += days
     return {"label": month_start.strftime("%B %Y"), "taken": taken, "pending": pending}
 
 

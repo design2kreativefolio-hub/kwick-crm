@@ -118,9 +118,40 @@ class Leave(TimeStampedModel):
     attachment_url = models.URLField(max_length=500, blank=True, default="")
     attachment_name = models.CharField(max_length=255, blank=True, default="")
 
+    # HR can split one request across leave types, e.g. 3 sick days requested
+    # -> [{"type": "sick", "days": 2}, {"type": "annual", "days": 1}]. Applied
+    # in order from start_date. Empty = the whole request is `leave_type`.
+    split = models.JSONField(default=list, blank=True)
+
     @property
     def days(self) -> int:
         return (self.end_date - self.start_date).days + 1
+
+    def segments(self):
+        """[(type, first_day, last_day)] covering the request in order. Falls
+        back to a single `leave_type` segment if the split no longer adds up
+        (e.g. the dates were changed)."""
+        from datetime import timedelta
+
+        parts = [
+            (p.get("type"), int(p.get("days") or 0))
+            for p in (self.split or [])
+            if isinstance(p, dict)
+        ]
+        if not parts or sum(d for _, d in parts) != self.days or any(d <= 0 for _, d in parts):
+            return [(self.leave_type, self.start_date, self.end_date)]
+        out, cursor = [], self.start_date
+        for kind, days in parts:
+            last = cursor + timedelta(days=days - 1)
+            out.append((kind, cursor, last))
+            cursor = last + timedelta(days=1)
+        return out
+
+    def type_days(self) -> dict:
+        totals: dict = {}
+        for kind, a, b in self.segments():
+            totals[kind] = totals.get(kind, 0) + (b - a).days + 1
+        return totals
 
     def __str__(self):
         return f"{self.leave_type} {self.start_date}→{self.end_date} ({self.status})"

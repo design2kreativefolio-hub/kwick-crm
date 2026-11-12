@@ -415,6 +415,13 @@ def _scope_requests(view, qs, id_field: str, owner_field: str):
     return qs.filter(**{owner_field: user})
 
 
+def _split_sentence(leave) -> str:
+    parts = ", ".join(
+        f"{d} day{'s' if d != 1 else ''} {t}" for t, d in leave.type_days().items()
+    )
+    return f"Counted as {parts}. "
+
+
 class LeaveViewSet(viewsets.ModelViewSet):
     serializer_class = LeaveSerializer
     permission_classes = [IsActive]
@@ -537,17 +544,46 @@ class LeaveViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+        # Optional split across leave types (e.g. 2 sick + 1 annual).
+        split = list(leave.split or [])
+        total_days = (end_date - start_date).days + 1
+        if "split" in request.data:
+            raw = request.data.get("split") or []
+            valid_types = {t.value for t in Leave.LeaveType}
+            clean = []
+            try:
+                for part in raw:
+                    kind, days = part.get("type"), int(part.get("days"))
+                    if kind not in valid_types or days <= 0:
+                        raise ValueError
+                    clean.append({"type": kind, "days": days})
+            except (AttributeError, TypeError, ValueError):
+                return Response({"detail": "Invalid leave split."}, status=status.HTTP_400_BAD_REQUEST)
+            if clean and sum(p["days"] for p in clean) != total_days:
+                plural = "s" if total_days != 1 else ""
+                return Response(
+                    {"detail": f"The split must add up to {total_days} day{plural}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(clean) == 1 and clean[0]["type"] == leave.leave_type:
+                clean = []
+            split = clean
+        elif (start_date, end_date) != (leave.start_date, leave.end_date):
+            split = []  # the old split no longer matches the new length
+
         status_changed = new_status != leave.status
         comment_changed = comment != leave.admin_comment
         dates_changed = (start_date, end_date) != (leave.start_date, leave.end_date)
-        if not status_changed and not comment_changed and not dates_changed:
+        split_changed = split != list(leave.split or [])
+        if not status_changed and not comment_changed and not dates_changed and not split_changed:
             return Response(LeaveSerializer(leave).data)
 
         leave.status = new_status
         leave.admin_comment = comment
         leave.start_date = start_date
         leave.end_date = end_date
-        leave.save(update_fields=["status", "admin_comment", "start_date", "end_date", "updated_at"])
+        leave.split = split
+        leave.save(update_fields=["status", "admin_comment", "start_date", "end_date", "split", "updated_at"])
         self._recalc_balance(leave.staff)
 
         ref = f"leave:{leave.id}"
@@ -573,6 +609,8 @@ class LeaveViewSet(viewsets.ModelViewSet):
                 title = f"Your {leave.leave_type} leave was {label}"
             elif dates_changed:
                 title = f"Your {leave.leave_type} leave dates were updated"
+            elif split_changed:
+                title = f"Your {leave.leave_type} leave was re-categorised"
             else:
                 title = f"HR commented on your {leave.leave_type} leave"
             notify_user(
@@ -580,9 +618,9 @@ class LeaveViewSet(viewsets.ModelViewSet):
                 source="leave_request",
                 title=title,
                 body=(
-                    f"Now {leave.start_date:%b %d} – {leave.end_date:%b %d, %Y}. {leave.admin_comment}"
-                    if dates_changed
-                    else leave.admin_comment
+                    (f"Now {leave.start_date:%b %d} – {leave.end_date:%b %d, %Y}. " if dates_changed else "")
+                    + (_split_sentence(leave) if leave.split else "")
+                    + leave.admin_comment
                 )[:200],
                 object_ref=f"leave:{leave.id}:update:{int(leave.updated_at.timestamp())}",
             )

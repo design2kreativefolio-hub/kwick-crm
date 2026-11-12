@@ -7,7 +7,13 @@ import { DonutCard } from "@/components/DonutCard";
 import { Select } from "@/components/Select";
 import { api, ApiError, unwrapList } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { buildMonthlyLeaveSlices, EMPTY_LEAVE_SLICES, LeaveMonth } from "@/lib/leaveMonth";
+import {
+  buildMonthlyLeaveSlices,
+  describeLeaveSplit,
+  EMPTY_LEAVE_SLICES,
+  LeaveMonth,
+  LeaveSplitPart,
+} from "@/lib/leaveMonth";
 import { useToast } from "@/lib/toast";
 
 type LeaveBalance = {
@@ -39,6 +45,7 @@ type Leave = {
   admin_comment?: string;
   attachment_url?: string;
   attachment_name?: string;
+  split?: LeaveSplitPart[];
   created_at: string;
 };
 
@@ -299,7 +306,20 @@ export function LeaveRequestsTab() {
                 {leaves.map((l) => (
                   <tr key={l.id}>
                     {showOwner && <td>{l.staff_name}</td>}
-                    <td>{LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type}</td>
+                    <td>
+                      {l.split && l.split.length > 0 && l.status !== "pending" ? (
+                        <>
+                          <div title={`You requested ${LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type} leave`}>
+                            {describeLeaveSplit(l.split)}
+                          </div>
+                          <div className="muted" style={{ fontSize: 11.5 }}>
+                            Requested as {LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type}
+                          </div>
+                        </>
+                      ) : (
+                        LEAVE_TYPE_LABEL[l.leave_type] ?? l.leave_type
+                      )}
+                    </td>
                     <td>
                       {new Date(l.start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                       {" – "}

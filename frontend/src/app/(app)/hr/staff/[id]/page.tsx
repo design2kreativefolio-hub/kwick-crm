@@ -8,7 +8,7 @@ import { BackLink } from "@/components/BackLink";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
 import { DonutCard, DonutSlice } from "@/components/DonutCard";
-import { buildMonthlyLeaveSlices, EMPTY_LEAVE_SLICES, LeaveMonth } from "@/lib/leaveMonth";
+import { buildMonthlyLeaveSlices, describeLeaveSplit, EMPTY_LEAVE_SLICES, LeaveMonth, LeaveSplitPart } from "@/lib/leaveMonth";
 import { Modal } from "@/components/Modal";
 import { Reveal } from "@/components/Reveal";
 import { Select } from "@/components/Select";
@@ -62,6 +62,7 @@ type StaffDetail = {
     admin_comment?: string;
     attachment_url?: string;
     attachment_name?: string;
+    split?: LeaveSplitPart[];
     created_at: string;
   }[];
   tickets: {
@@ -193,7 +194,15 @@ export default function StaffDetailPage() {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const [leaveEdit, setLeaveEdit] = useState<{ id: number; status: string; comment: string; start_date: string; end_date: string } | null>(null);
+  const [leaveEdit, setLeaveEdit] = useState<{
+    id: number;
+    leave_type: string;
+    status: string;
+    comment: string;
+    start_date: string;
+    end_date: string;
+    split: LeaveSplitPart[];
+  } | null>(null);
   const [savingLeaveEdit, setSavingLeaveEdit] = useState(false);
 
   const saveLeaveEdit = async () => {
@@ -206,6 +215,14 @@ export default function StaffDetailPage() {
       showToast("End date can't be before the start date.", "error");
       return;
     }
+    const total = daysBetween(leaveEdit.start_date, leaveEdit.end_date);
+    const splitSum = leaveEdit.split.reduce((n, p) => n + (Number(p.days) || 0), 0);
+    if (splitSum !== total) {
+      showToast(`The day breakdown must add up to ${total} day${total === 1 ? "" : "s"}.`, "error");
+      return;
+    }
+    const parts = leaveEdit.split.filter((p) => Number(p.days) > 0);
+    const plain = parts.length === 1 && parts[0].type === leaveEdit.leave_type;
     setSavingLeaveEdit(true);
     try {
       await api(`/api/hr/leaves/${leaveEdit.id}`, {
@@ -215,6 +232,7 @@ export default function StaffDetailPage() {
           admin_comment: leaveEdit.comment,
           start_date: leaveEdit.start_date,
           end_date: leaveEdit.end_date,
+          split: plain ? [] : parts.map((p) => ({ type: p.type, days: Number(p.days) })),
         }),
       });
       showToast("Leave request updated.");
@@ -226,6 +244,28 @@ export default function StaffDetailPage() {
       setSavingLeaveEdit(false);
     }
   };
+
+  const daysBetween = (a: string, b: string) =>
+    Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86400000) + 1;
+
+  /** Dates changed → the old split no longer fits; start over with one row. */
+  const resplit = <T extends { start_date: string; end_date: string; leave_type: string; split: LeaveSplitPart[] }>(e: T): T => {
+    if (!e.start_date || !e.end_date || e.end_date < e.start_date) return e;
+    const total = daysBetween(e.start_date, e.end_date);
+    const sum = e.split.reduce((n, p) => n + (Number(p.days) || 0), 0);
+    return sum === total ? e : { ...e, split: [{ type: e.split[0]?.type ?? e.leave_type, days: total }] };
+  };
+
+  const openLeaveEdit = (l: StaffDetail["leaves"][number], status?: string) =>
+    setLeaveEdit({
+      id: l.id,
+      leave_type: l.leave_type,
+      status: status ?? l.status,
+      comment: l.admin_comment || "",
+      start_date: l.start_date,
+      end_date: l.end_date,
+      split: l.split && l.split.length ? l.split : [{ type: l.leave_type, days: l.days }],
+    });
 
   const decideLeave = async (leaveId: number, decision: "approved" | "rejected") => {
     setBusyKey(`leave-${leaveId}`);
@@ -476,6 +516,11 @@ export default function StaffDetailPage() {
                         <div style={{ fontSize: 13.5, fontWeight: 600, textTransform: "capitalize" }}>
                           {l.leave_type} · {l.days}d
                         </div>
+                        {l.split && l.split.length > 0 && (
+                          <div style={{ fontSize: 12, marginTop: 2, color: "var(--navy)", fontWeight: 600 }}>
+                            <i className="bi bi-diagram-2" /> Counted as {describeLeaveSplit(l.split)}
+                          </div>
+                        )}
                         <div className="muted" style={{ fontSize: 11.5 }}>
                           {new Date(l.start_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                           {" – "}
@@ -506,7 +551,7 @@ export default function StaffDetailPage() {
                           <button
                             className="btn btn-sm"
                             disabled={busyKey === `leave-${l.id}`}
-                            onClick={() => decideLeave(l.id, "approved")}
+                            onClick={() => openLeaveEdit(l, "approved")}
                           >
                             Approve
                           </button>
@@ -525,15 +570,7 @@ export default function StaffDetailPage() {
                         <button
                           className="btn btn-ghost btn-sm"
                           title="Change dates, decision or add a comment"
-                          onClick={() =>
-                            setLeaveEdit({
-                              id: l.id,
-                              status: l.status,
-                              comment: l.admin_comment || "",
-                              start_date: l.start_date,
-                              end_date: l.end_date,
-                            })
-                          }
+                          onClick={() => openLeaveEdit(l)}
                         >
                           <i className="bi bi-pencil-fill" /> Edit
                         </button>
@@ -555,7 +592,7 @@ export default function StaffDetailPage() {
                   <label className="field-label" style={{ marginTop: 0 }}>Start date</label>
                   <DatePicker
                     value={leaveEdit?.start_date ?? ""}
-                    onChange={(v) => setLeaveEdit((e) => (e ? { ...e, start_date: v } : e))}
+                    onChange={(v) => setLeaveEdit((e) => (e ? resplit({ ...e, start_date: v }) : e))}
                     ariaLabel="Leave start date"
                   />
                 </div>
@@ -563,12 +600,90 @@ export default function StaffDetailPage() {
                   <label className="field-label" style={{ marginTop: 0 }}>End date</label>
                   <DatePicker
                     value={leaveEdit?.end_date ?? ""}
-                    onChange={(v) => setLeaveEdit((e) => (e ? { ...e, end_date: v } : e))}
+                    onChange={(v) => setLeaveEdit((e) => (e ? resplit({ ...e, end_date: v }) : e))}
                     min={leaveEdit?.start_date || undefined}
                     ariaLabel="Leave end date"
                   />
                 </div>
               </div>
+              {leaveEdit && leaveEdit.start_date && leaveEdit.end_date && (() => {
+                const total = daysBetween(leaveEdit.start_date, leaveEdit.end_date);
+                const sum = leaveEdit.split.reduce((n, p) => n + (Number(p.days) || 0), 0);
+                const left = total - sum;
+                return (
+                  <>
+                    <label className="field-label">
+                      Day breakdown <span className="muted" style={{ fontWeight: 400 }}>· {total} day{total === 1 ? "" : "s"} requested</span>
+                    </label>
+                    <p className="muted" style={{ fontSize: 12, margin: "0 0 8px" }}>
+                      Split the request across leave types — e.g. 2 days Sick and 1 day Annual. Only Annual and Other
+                      days are deducted from the annual balance.
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {leaveEdit.split.map((p, i) => (
+                        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "center" }}>
+                          <Select
+                            value={p.type}
+                            onChange={(v) =>
+                              setLeaveEdit((e) =>
+                                e ? { ...e, split: e.split.map((x, j) => (j === i ? { ...x, type: v } : x)) } : e
+                              )
+                            }
+                            options={[
+                              { value: "annual", label: "Annual" },
+                              { value: "sick", label: "Sick" },
+                              { value: "unpaid", label: "Unpaid" },
+                              { value: "other", label: "Other" },
+                            ]}
+                            ariaLabel="Leave type"
+                          />
+                          <input
+                            className="input"
+                            type="number"
+                            min={1}
+                            max={total}
+                            value={p.days}
+                            aria-label="Days"
+                            onChange={(ev) =>
+                              setLeaveEdit((e) =>
+                                e
+                                  ? { ...e, split: e.split.map((x, j) => (j === i ? { ...x, days: Number(ev.target.value) } : x)) }
+                                  : e
+                              )
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: "var(--danger)", visibility: leaveEdit.split.length > 1 ? "visible" : "hidden" }}
+                            onClick={() => setLeaveEdit((e) => (e ? { ...e, split: e.split.filter((_, j) => j !== i) } : e))}
+                            aria-label="Remove row"
+                          >
+                            <i className="bi bi-x-lg" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={leaveEdit.split.length >= 4 || total < 2}
+                        onClick={() =>
+                          setLeaveEdit((e) =>
+                            e ? { ...e, split: [...e.split, { type: e.leave_type === "annual" ? "sick" : "annual", days: Math.max(left, 1) }] } : e
+                          )
+                        }
+                      >
+                        <i className="bi bi-plus-lg" /> Add split
+                      </button>
+                      <span style={{ fontSize: 12.5, color: left === 0 ? "var(--text-muted)" : "var(--danger)" }}>
+                        {left === 0 ? "Adds up ✓" : left > 0 ? `${left} day${left === 1 ? "" : "s"} unassigned` : `${-left} day${left === -1 ? "" : "s"} too many`}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
               <label className="field-label">Decision</label>
               <Select
                 value={leaveEdit?.status ?? "pending"}
