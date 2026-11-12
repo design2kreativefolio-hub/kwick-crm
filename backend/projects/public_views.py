@@ -27,6 +27,25 @@ from .models import ClientCalendarShare, ContentCalendarComment, ContentCalendar
 INLINE_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | frozenset({"pdf"})
 
 
+def _file_entries(urls) -> list[dict]:
+    out = []
+    for idx, url in enumerate(urls or []):
+        key = media_key_from_url(url)
+        name = download_name_for_key(key, "") if key else "file"
+        ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+        kind = "image" if ext in IMAGE_EXTENSIONS else "video" if ext in VIDEO_EXTENSIONS else "file"
+        out.append({"index": idx, "name": name, "kind": kind})
+    return out
+
+
+def _reference_urls(item: ContentCalendarItem) -> list:
+    """Planning attachments the team added (what we're going to create)."""
+    urls = list(item.attachment_urls or [])
+    if not urls and item.attachment_url:
+        urls = [item.attachment_url]
+    return urls
+
+
 class PublicShareThrottle(AnonRateThrottle):
     scope = "public_share"
 
@@ -84,13 +103,7 @@ class PublicCalendarView(_PublicBase):
         )
         out = []
         for it in items:
-            files = []
-            for idx, url in enumerate(it.client_post_files or []):
-                key = media_key_from_url(url)
-                name = download_name_for_key(key, "") if key else "file"
-                ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
-                kind = "image" if ext in IMAGE_EXTENSIONS else "video" if ext in VIDEO_EXTENSIONS else "file"
-                files.append({"index": idx, "name": name, "kind": kind})
+            files = _file_entries(it.client_post_files)
             out.append(
                 {
                     "id": it.id,
@@ -98,6 +111,7 @@ class PublicCalendarView(_PublicBase):
                     "content_type": it.content_type,
                     "description": it.description,
                     "scheduled_date": it.scheduled_date,
+                    "reference_files": _file_entries(_reference_urls(it)),
                     "post_files": files,
                     "post_caption": it.client_post_caption if files else "",
                     "comment_count": len(it.comments.all()),
@@ -117,15 +131,24 @@ class PublicCalendarView(_PublicBase):
 
 
 class PublicCalendarFileView(_PublicBase):
+    # "post" = final creative (client-share/…); "reference" = planning
+    # attachments the team uploaded to the item (content-calendar/…).
+    source = "post"
+
     def get(self, request, token, item_id, index):
         share = self.get_share(token)
         item = self.get_item(share, item_id)
-        files = list(item.client_post_files or [])
+        if self.source == "reference":
+            files = _reference_urls(item)
+            prefix = f"content-calendar/{share.client_id}/"
+        else:
+            files = list(item.client_post_files or [])
+            prefix = f"client-share/{share.client_id}/"
         if index < 0 or index >= len(files):
             raise Http404()
         key = media_key_from_url(files[index])
-        # Only files uploaded through the client-post flow are ever served here.
-        if not key or not key.startswith(f"client-share/{share.client_id}/"):
+        # Only files from this client's own folder are ever served here.
+        if not key or not key.startswith(prefix):
             raise Http404()
         ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
         if ext in BLOCKED_EXTENSIONS or not default_storage.exists(key):

@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { BackLink } from "@/components/BackLink";
 import { ClientPostModal } from "@/components/calendar/ClientPostModal";
@@ -162,7 +162,7 @@ export default function ClientCalendarPage() {
   const deepLinkedItemRef = useRef<number | null>(null);
 
   const [anchor, setAnchor] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(() => new Date());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -459,13 +459,18 @@ export default function ClientCalendarPage() {
   const jumpToMonth = (year: number, month: number) => {
     setAnchor(new Date(year, month, 1));
     const maxDay = new Date(year, month + 1, 0).getDate();
-    const day = Math.min(selectedDate.getDate(), maxDay);
-    setSelectedDate(new Date(year, month, day));
+    setSelectedDate(selectedDate ? new Date(year, month, Math.min(selectedDate.getDate(), maxDay)) : null);
   };
 
   const today = new Date();
   const editingItem = editingId ? items.find((i) => i.id === editingId) : null;
-  const selectedItems = chipsByDate[toIso(selectedDate)] ?? [];
+  const monthPrefix = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}`;
+  const selectedItems = selectedDate
+    ? (chipsByDate[toIso(selectedDate)] ?? [])
+    : Object.keys(chipsByDate)
+        .filter((k) => k.startsWith(monthPrefix))
+        .sort()
+        .flatMap((k) => chipsByDate[k]);
 
   const detectMeeting = (text: string) => detectMeetingUrl(text);
 
@@ -584,12 +589,12 @@ export default function ClientCalendarPage() {
                 const dayItems = chipsByDate[iso] ?? [];
                 const inMonth = d.getMonth() === anchor.getMonth();
                 const isToday = iso === toIso(today);
-                const isSelected = iso === toIso(selectedDate);
+                const isSelected = !!selectedDate && iso === toIso(selectedDate);
                 return (
                   <div
                     key={iso}
                     className="client-cal-day"
-                    onClick={() => setSelectedDate(d)}
+                    onClick={() => setSelectedDate(isSelected ? null : d)}
                     style={{
                       ...dayCell,
                       opacity: inMonth ? 1 : 0.4,
@@ -684,15 +689,18 @@ export default function ClientCalendarPage() {
         <div className="card" style={sidePanel}>
           <div style={{ marginBottom: 14 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--navy)" }}>
-                {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                {selectedDate
+                  ? selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
+                  : `${anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })} · All planned`}
               </h2>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto", minHeight: 0 }}>
             {selectedItems.length === 0 && (
-              <p className="muted" style={{ fontSize: 13 }}>No content, tasks, or mini-projects on this day.</p>
+              <p className="muted" style={{ fontSize: 13 }}>{selectedDate ? "No content, tasks, or mini-projects on this day." : "Nothing planned this month."}</p>
             )}
             {selectedItems.map((chip) => {
+              const node = (() => {
               if (chip.kind === "project" && chip.project) {
                 const p = chip.project;
                 const color = STATUS_COLOR[p.status] ?? accent;
@@ -936,11 +944,25 @@ export default function ClientCalendarPage() {
                   </div>
                 </div>
               );
+              })();
+              if (selectedDate) return <Fragment key={chip.key}>{node}</Fragment>;
+              return (
+                <div
+                  key={chip.key}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    const [y, m, d] = chip.date.split("-").map(Number);
+                    setSelectedDate(new Date(y, m - 1, d));
+                  }}
+                >
+                  {node}
+                </div>
+              );
             })}
           </div>
 
           <div style={sideFooter}>
-            <button className="btn" style={{ width: "100%", background: accent, borderColor: accent }} onClick={() => openCreate(selectedDate)}>
+            <button className="btn" style={{ width: "100%", background: accent, borderColor: accent }} onClick={() => openCreate(selectedDate ?? new Date(anchor.getFullYear(), anchor.getMonth(), 1))}>
               <i className="bi bi-plus-lg" /> Add Content
             </button>
           </div>

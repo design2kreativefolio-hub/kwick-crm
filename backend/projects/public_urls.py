@@ -6,5 +6,9 @@ from .public_views import PublicCalendarCommentsView, PublicCalendarFileView, Pu
 urlpatterns = [
     path("<str:token>", PublicCalendarView.as_view()),
     path("<str:token>/items/<int:item_id>/files/<int:index>", PublicCalendarFileView.as_view()),
+    path(
+        "<str:token>/items/<int:item_id>/attachments/<int:index>",
+        PublicCalendarFileView.as_view(source="reference"),
+    ),
     path("<str:token>/items/<int:item_id>/comments", PublicCalendarCommentsView.as_view()),
 ]

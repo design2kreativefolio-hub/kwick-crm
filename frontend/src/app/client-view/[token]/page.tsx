@@ -12,6 +12,7 @@ type Item = {
   content_type: string;
   description: string;
   scheduled_date: string;
+  reference_files?: PostFile[];
   post_files: PostFile[];
   post_caption: string;
   comment_count: number;
@@ -328,7 +329,7 @@ function ItemCard({
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const [brokenFiles, setBrokenFiles] = useState<Record<number, boolean>>({});
+  const [brokenFiles, setBrokenFiles] = useState<Record<string, boolean>>({});
   const ready = item.post_files.length > 0;
   const meta = typeMeta(item.content_type);
 
@@ -379,8 +380,50 @@ function ItemCard({
     }
   };
 
-  const fileUrl = (f: PostFile, download = false) =>
-    `${base}/items/${item.id}/files/${f.index}${download ? "?download=1" : ""}`;
+  const refs = item.reference_files ?? [];
+  const fileUrl = (f: PostFile, download = false, ref = false) =>
+    `${base}/items/${item.id}/${ref ? "attachments" : "files"}/${f.index}${download ? "?download=1" : ""}`;
+
+  const renderFiles = (files: PostFile[], ref: boolean) => (
+    <>
+      {files.map((f) => {
+        const k = `${ref ? "r" : "p"}${f.index}`;
+        return brokenFiles[k] ? (
+          <div key={k} style={fileFallback}>This file couldn&apos;t be loaded.</div>
+        ) : f.kind === "image" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={k}
+            src={fileUrl(f, false, ref)}
+            alt={f.name}
+            style={{ width: "100%", borderRadius: 10, background: "#f3f4f6" }}
+            onError={() => setBrokenFiles((b) => ({ ...b, [k]: true }))}
+          />
+        ) : f.kind === "video" ? (
+          <video
+            key={k}
+            src={fileUrl(f, false, ref)}
+            controls
+            preload="metadata"
+            playsInline
+            style={{ width: "100%", borderRadius: 10, background: "#000" }}
+            onError={() => setBrokenFiles((b) => ({ ...b, [k]: true }))}
+          />
+        ) : (
+          <a key={k} href={fileUrl(f, false, ref)} target="_blank" rel="noopener noreferrer" style={{ ...fileFallback, color: accent, textDecoration: "none" }}>
+            <i className="bi bi-file-earmark-text" /> {f.name}
+          </a>
+        );
+      })}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {files.map((f) => (
+          <a key={f.index} href={fileUrl(f, true, ref)} style={{ color: accent, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>
+            <i className="bi bi-download" /> Download{files.length > 1 ? ` ${f.name}` : ""}
+          </a>
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <div style={{ border: `1px solid ${open ? accent : LINE}`, borderRadius: 14, overflow: "hidden", background: "#fff" }}>
@@ -413,43 +456,19 @@ function ItemCard({
             </p>
           )}
 
+          {refs.length > 0 && (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: 0.6 }}>
+                {ready ? "REFERENCE" : "WHAT WE'RE PLANNING"}
+              </div>
+              {renderFiles(refs, true)}
+            </div>
+          )}
+
           {ready && (
             <div style={{ display: "grid", gap: 10 }}>
-              {item.post_files.map((f) =>
-                brokenFiles[f.index] ? (
-                  <div key={f.index} style={fileFallback}>This file couldn&apos;t be loaded.</div>
-                ) : f.kind === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={f.index}
-                    src={fileUrl(f)}
-                    alt={f.name}
-                    style={{ width: "100%", borderRadius: 10, background: "#f3f4f6" }}
-                    onError={() => setBrokenFiles((b) => ({ ...b, [f.index]: true }))}
-                  />
-                ) : f.kind === "video" ? (
-                  <video
-                    key={f.index}
-                    src={fileUrl(f)}
-                    controls
-                    preload="metadata"
-                    playsInline
-                    style={{ width: "100%", borderRadius: 10, background: "#000" }}
-                    onError={() => setBrokenFiles((b) => ({ ...b, [f.index]: true }))}
-                  />
-                ) : (
-                  <a key={f.index} href={fileUrl(f)} target="_blank" rel="noopener noreferrer" style={{ ...fileFallback, color: accent, textDecoration: "none" }}>
-                    <i className="bi bi-file-earmark-text" /> {f.name}
-                  </a>
-                )
-              )}
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {item.post_files.map((f) => (
-                  <a key={f.index} href={fileUrl(f, true)} style={{ color: accent, fontSize: 12.5, fontWeight: 600, textDecoration: "none" }}>
-                    <i className="bi bi-download" /> Download{item.post_files.length > 1 ? ` ${f.name}` : ""}
-                  </a>
-                ))}
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: 0.6 }}>FINAL POST</div>
+              {renderFiles(item.post_files, false)}
               {item.post_caption && (
                 <div style={{ background: "#f9fafb", border: `1px solid ${LINE}`, borderRadius: 10, padding: 12, fontSize: 13.5, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: 0.6, marginBottom: 4 }}>CAPTION</div>
