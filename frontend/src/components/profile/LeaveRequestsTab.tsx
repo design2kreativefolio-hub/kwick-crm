@@ -82,6 +82,7 @@ export function LeaveRequestsTab() {
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [retractingId, setRetractingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = () => {
     api<LeaveBalance>("/api/hr/leaves/balance").then(setBalance).catch(() => {});
@@ -126,6 +127,20 @@ export function LeaveRequestsTab() {
       showToast(err instanceof ApiError ? "Couldn't retract request." : err.message, "error");
     } finally {
       setRetractingId(null);
+    }
+  };
+
+  const remove = async (id: number) => {
+    if (!window.confirm("Delete this cancelled leave request from your history?")) return;
+    setDeletingId(id);
+    try {
+      await api(`/api/hr/leaves/${id}`, { method: "DELETE" });
+      showToast("Leave request deleted.");
+      load();
+    } catch (err: any) {
+      showToast(err instanceof ApiError ? "Couldn't delete request." : err.message, "error");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -355,6 +370,17 @@ export function LeaveRequestsTab() {
                           onClick={() => retract(l.id)}
                         >
                           {retractingId === l.id ? "…" : "Retract"}
+                        </button>
+                      )}
+                      {l.status === "cancelled" && l.staff === user?.id && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: "var(--danger)" }}
+                          disabled={deletingId === l.id}
+                          onClick={() => remove(l.id)}
+                        >
+                          {deletingId === l.id ? "…" : "Delete"}
                         </button>
                       )}
                     </td>

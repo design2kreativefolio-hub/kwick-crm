@@ -638,11 +638,13 @@ class LeaveViewSet(viewsets.ModelViewSet):
         return self.partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        # Employees withdraw a pending request via /retract; deleting the
-        # record (and its audit trail) is a superadmin call.
-        if not is_superadmin(request.user):
-            return Response({"detail": "Superadmin access required."}, status=status.HTTP_403_FORBIDDEN)
+        # Employees withdraw a pending request via /retract and may then clear
+        # their own *cancelled* record from history; deleting anything else
+        # (and its audit trail) is a superadmin call.
         leave = self.get_object()
+        is_owner_clearing = leave.staff_id == request.user.id and leave.status == Leave.Status.CANCELLED
+        if not is_superadmin(request.user) and not is_owner_clearing:
+            return Response({"detail": "Superadmin access required."}, status=status.HTTP_403_FORBIDDEN)
         staff = leave.staff
         stop_recurring_reminder(object_ref=f"leave:{leave.id}")
         leave.delete()
