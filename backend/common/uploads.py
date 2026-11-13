@@ -96,11 +96,15 @@ def _require_image(upload) -> None:
 def _require_pdf_magic(upload) -> None:
     pos = upload.tell() if hasattr(upload, "tell") else 0
     try:
-        head = upload.read(5)
+        if hasattr(upload, "seek"):
+            upload.seek(0)
+        # The PDF spec allows junk (BOM, whitespace) before the header within
+        # the first 1024 bytes; Acrobat and browsers accept it.
+        head = upload.read(1024)
     finally:
         if hasattr(upload, "seek"):
             upload.seek(pos)
-    if head != b"%PDF-":
+    if b"%PDF-" not in head:
         raise UploadRejected("File must be a valid PDF.")
 
 
