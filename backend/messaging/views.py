@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from asgiref.sync import async_to_sync
@@ -19,6 +20,7 @@ from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 MAX_ATTACHMENT_SIZE = 30 * 1024 * 1024  # 30MB
 
@@ -90,27 +92,32 @@ def notify_participants(conversation, exclude_user_id, payload):
     Also fans out a web-push so OS/system notifications still fire when the
     browser tab is closed or backgrounded.
     """
-    from notifications.tasks import send_web_push_payload
+    # Best-effort: the message is already saved and broadcast by the time we
+    # get here, so a notification/Celery failure must never fail the send.
+    try:
+        from notifications.tasks import send_web_push_payload
 
-    layer = get_channel_layer()
-    recipient_ids = list(
-        conversation.participants.exclude(pk=exclude_user_id).values_list("id", flat=True)
-    )
-    if layer is not None:
+        layer = get_channel_layer()
+        recipient_ids = list(
+            conversation.participants.exclude(pk=exclude_user_id).values_list("id", flat=True)
+        )
+        if layer is not None:
+            for uid in recipient_ids:
+                async_to_sync(layer.group_send)(
+                    f"notify_{uid}", {"type": "notify_event", "payload": payload}
+                )
+
+        # Desktop/OS notification via service worker (Celery).
+        push_payload = {
+            **payload,
+            "source": "chat",
+            "title": payload.get("sender_name") or "New message",
+            "body": payload.get("preview") or "New chat message",
+        }
         for uid in recipient_ids:
-            async_to_sync(layer.group_send)(
-                f"notify_{uid}", {"type": "notify_event", "payload": payload}
-            )
-
-    # Desktop/OS notification via service worker (Celery).
-    push_payload = {
-        **payload,
-        "source": "chat",
-        "title": payload.get("sender_name") or "New message",
-        "body": payload.get("preview") or "New chat message",
-    }
-    for uid in recipient_ids:
-        send_web_push_payload.delay(uid, push_payload)
+            send_web_push_payload.delay(uid, push_payload)
+    except Exception:
+        logger.exception("chat notify failed for conversation %s", conversation.pk)
 
 
 class ConversationViewSet(viewsets.ModelViewSet):
