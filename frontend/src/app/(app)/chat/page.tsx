@@ -291,6 +291,14 @@ function ChatPageInner() {
       const socket = new WebSocket(wsUrl(`/ws/messages/${selectedId}/`));
       socket.onmessage = handleMessage;
       socket.onopen = () => {
+        // Reconnected after a drop: pull anything missed while it was down.
+        if (attempt > 0) {
+          api<Message[]>(`/api/messages/conversations/${selectedId}/messages`)
+            .then((d) => {
+              if (!cancelled && Array.isArray(d)) setMessages(d);
+            })
+            .catch(() => {});
+        }
         attempt = 0;
       };
       socket.onclose = () => {
@@ -405,9 +413,24 @@ function ChatPageInner() {
       return;
     }
 
-    if (!body || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ body }));
+    if (!body) return;
+    // Send over REST (reliable, reports failure) — the WebSocket only receives.
+    // A dead-but-"open" socket used to swallow sends silently.
     setDraft("");
+    try {
+      const msg = await api<Message>(`/api/messages/conversations/${selectedId}/send`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+      // The WS echo may arrive first or never; dedupe by id either way.
+      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      setConversations((prev) =>
+        prev.map((c) => (c.id === selectedId ? { ...c, last_message: msg, unread_count: 0 } : c))
+      );
+    } catch (err: any) {
+      setDraft(body);
+      showToast(err instanceof ApiError ? "Couldn't send message." : err.message, "error");
+    }
   };
 
   const pickAttachment = () => fileInputRef.current?.click();

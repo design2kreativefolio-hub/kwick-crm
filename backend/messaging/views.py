@@ -201,6 +201,31 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Response(MessageSerializer(qs, many=True).data)
 
     @action(detail=True, methods=["post"])
+    def send(self, request, pk=None):
+        """POST /api/messages/conversations/{id}/send — text message over REST.
+
+        Reliable fallback for the chat WebSocket: a half-dead socket silently
+        swallows sends, REST always reports success/failure. The message is
+        still broadcast to the live channel group so everyone sees it."""
+        convo = self.get_object()
+        body = str(request.data.get("body") or "").strip()[:4000]
+        if not body:
+            return Response({"detail": "body is required."}, status=400)
+        message = Message.objects.create(conversation=convo, sender=request.user, body=body)
+        payload = _broadcast_message(convo, message)
+        notify_participants(
+            convo,
+            request.user.pk,
+            {
+                "kind": "chat_message",
+                "conversation_id": convo.pk,
+                "sender_name": request.user.full_name or request.user.email,
+                "preview": body[:80],
+            },
+        )
+        return Response(payload, status=201)
+
+    @action(detail=True, methods=["post"])
     def read(self, request, pk=None):
         """POST /api/messages/conversations/{id}/read — mark the thread seen."""
         convo = self.get_object()
