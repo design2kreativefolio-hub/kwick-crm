@@ -269,6 +269,15 @@ export default function PasswordsPage() {
     });
     setFormError(null);
     setShowForm(true);
+    // Prefill the current password (PIN-gated, logged as a reveal) so it can be
+    // viewed with the eye toggle. Never overwrite anything the user already typed.
+    if (entry.has_password) {
+      api<{ password: string }>(`/api/passwords/${entry.id}/reveal`)
+        .then((data) =>
+          setForm((f) => (f.password === "" && f.platform === entry.platform ? { ...f, password: data.password } : f))
+        )
+        .catch(() => {});
+    }
   };
 
   const saveEntry = async (e: React.FormEvent) => {
