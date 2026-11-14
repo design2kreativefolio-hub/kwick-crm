@@ -143,8 +143,17 @@ export default function PasswordsPage() {
     if (!hasAccess || !unlocked) return;
     setLoading(true);
     try {
-      const data = await api<{ results: PasswordEntry[] } | PasswordEntry[]>("/api/passwords");
-      setEntries(unwrapList(data));
+      // The API is paginated; fetch every page so entries beyond the first
+      // page are not silently hidden.
+      const all: PasswordEntry[] = [];
+      for (let page = 1; page <= 50; page++) {
+        const data = await api<
+          { results: PasswordEntry[]; next?: string | null } | PasswordEntry[]
+        >(`/api/passwords?page_size=200&page=${page}`);
+        all.push(...unwrapList(data));
+        if (Array.isArray(data) || !data.next) break;
+      }
+      setEntries(all);
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 403) {
         setUnlocked(false);
