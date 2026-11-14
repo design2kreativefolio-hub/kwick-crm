@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Combobox } from "@/components/Combobox";
 import { DatePicker } from "@/components/DatePicker";
 import { Modal } from "@/components/Modal";
+import { PasswordField } from "@/components/PasswordField";
 import { PinInput } from "@/components/PinInput";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { useAuth, hasModuleAccess } from "@/lib/auth";
@@ -623,9 +624,8 @@ export default function PasswordsPage() {
               </div>
               <div>
                 <label className="field-label" style={{ marginTop: 0 }}>Password</label>
-                <input
-                  className="input"
-                  type="password"
+                <PasswordField
+                  autoComplete="new-password"
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   required={!editingId}
