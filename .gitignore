@@ -43,3 +43,5 @@ Thumbs.db
 
 # ---- Docker / build artifacts ----
 *.pid
+
+.backup-passphrase
