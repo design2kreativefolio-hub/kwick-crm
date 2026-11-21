@@ -88,15 +88,16 @@ const CONTENT_TYPES = [
   { value: "static_post", label: "Static Post" },
   { value: "reel", label: "Reel" },
   { value: "story", label: "Story" },
-  { value: "video", label: "Video" },
   { value: "carousel", label: "Carousel" },
   { value: "print", label: "Print Work" },
-  { value: "design", label: "Graphic Design" },
   { value: "shoot", label: "Photo / Video Shoot" },
   { value: "ad", label: "Ad Campaign" },
   { value: "website", label: "Website" },
   { value: "other", label: "Other Work" },
 ];
+// Types that can no longer be picked, but may still be on older items: they keep their label and can be saved as-is.
+const LEGACY_TYPE_LABELS: Record<string, string> = { video: "Video", design: "Graphic Design" };
+const typeLabel = (v: string) => CONTENT_TYPES.find((c) => c.value === v)?.label || LEGACY_TYPE_LABELS[v] || v;
 // Same workflow as Tasks / Mini-projects (mirrored task stays in sync).
 const STATUSES = TASK_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 const DEFAULT_ACCENT = "#3673FC";
@@ -940,7 +941,7 @@ export default function ClientCalendarPage() {
                       </div>
                       <div className="muted" style={{ fontSize: 11.5, marginTop: 3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span>
-                          {CONTENT_TYPES.find((c) => c.value === it.content_type)?.label || it.content_type}
+                          {typeLabel(it.content_type)}
                         </span>
                         <span className={`badge ${STATUS_BADGE[it.status] ?? "badge-muted"}`}>
                           {statusLabel(it.status)}
@@ -1089,7 +1090,7 @@ export default function ClientCalendarPage() {
                 <Select
                   value={form.content_type}
                   onChange={(v) => setForm((f) => ({ ...f, content_type: v }))}
-                  options={CONTENT_TYPES}
+                  options={LEGACY_TYPE_LABELS[form.content_type] ? [...CONTENT_TYPES, { value: form.content_type, label: LEGACY_TYPE_LABELS[form.content_type] }] : CONTENT_TYPES}
                   ariaLabel="Type of work"
                 />
               </div>

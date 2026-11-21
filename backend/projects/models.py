@@ -170,6 +170,10 @@ class ContentCalendarItem(TimeStampedModel):
         {Status.COMPLETED, Status.QC_COMPLETED, Status.APPROVED}
     )
 
+    # Only these kinds of work are ever shown to the client on their shared calendar link
+    # (everything else, e.g. print jobs, ads or websites, stays internal).
+    CLIENT_VISIBLE_TYPES = ("static_post", "reel", "story", "carousel")
+
     client = models.ForeignKey(
         "sales.Client", on_delete=models.CASCADE, related_name="content_items"
     )

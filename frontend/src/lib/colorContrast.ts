@@ -3,9 +3,10 @@
 const DARK_INK = "#14143d";
 
 function hexToRgb(hex: string): [number, number, number] | null {
-  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})/i.exec((hex || "").trim());
+  // 6 digits first (and anchored): "#c3ff4d" must not be read as "#c3f". An alpha pair, if any, is ignored.
+  const m = /^#?([0-9a-f]{6})(?:[0-9a-f]{2})?$|^#?([0-9a-f]{3})$/i.exec((hex || "").trim());
   if (!m) return null;
-  let h = m[1];
+  let h = m[1] || m[2];
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
   const n = parseInt(h, 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -40,9 +41,10 @@ export function inkOn(bg: string): Ink {
   const rgb = hexToRgb(bg);
   const light: Ink = { fg: "#fff", dark: false, soft: "rgba(255,255,255,0.2)", border: "rgba(255,255,255,0.35)" };
   if (!rgb) return light;
+  // White stays the default (it is what the default blue and most brand colours want); switch to dark
+  // text only when white would be hard to read (limes, yellows, light oranges and pastels).
   const L = luminance(rgb);
-  const ink = luminance(hexToRgb(DARK_INK)!);
-  if (contrast(L, ink) > contrast(L, 1)) {
+  if (contrast(L, 1) < 3) {
     return { fg: DARK_INK, dark: true, soft: "rgba(20,20,61,0.1)", border: "rgba(20,20,61,0.25)" };
   }
   return light;

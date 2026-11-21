@@ -93,7 +93,8 @@ export function ClientShareModal({
       </div>
       <p className="muted" style={{ fontSize: 13, margin: "8px 0 14px" }}>
         Anyone with this link can view {clientName}&apos;s content calendar (dates, what we&apos;re posting, and the
-        approved posts) and leave comments. They can&apos;t see anything else in the CRM.
+        approved posts) and leave comments. Only Static Posts, Reels, Stories and Carousels are shared; other work
+        (print, ads, websites…) stays internal. They can&apos;t see anything else in the CRM.
       </p>
 
       {share?.expired && (

@@ -76,7 +76,9 @@ class _PublicBase(APIView):
         return share
 
     def get_item(self, share: ClientCalendarShare, item_id) -> ContentCalendarItem:
-        item = ContentCalendarItem.objects.filter(pk=item_id, client=share.client).first()
+        item = ContentCalendarItem.objects.filter(
+            pk=item_id, client=share.client, content_type__in=ContentCalendarItem.CLIENT_VISIBLE_TYPES
+        ).first()
         if item is None:
             raise Http404()
         return item
@@ -97,7 +99,7 @@ class PublicCalendarView(_PublicBase):
         share = self.get_share(token)
         client = share.client
         items = (
-            ContentCalendarItem.objects.filter(client=client)
+            ContentCalendarItem.objects.filter(client=client, content_type__in=ContentCalendarItem.CLIENT_VISIBLE_TYPES)
             .prefetch_related("comments")
             .order_by("scheduled_date", "id")
         )
