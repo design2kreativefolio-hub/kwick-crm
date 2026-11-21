@@ -111,7 +111,7 @@ def accept(link: ProposalLink, name: str) -> bool:
 
     name = (name or "").strip()[:150]
     with transaction.atomic():
-        link = ProposalLink.objects.select_for_update().select_related("deal__lead", "deal__owner", "proposal").get(pk=link.pk)
+        link = ProposalLink.objects.select_for_update(of=("self",)).select_related("deal__lead", "deal__owner", "proposal").get(pk=link.pk)
         if link.accepted_at:
             return False
         link.accepted_at = timezone.now()

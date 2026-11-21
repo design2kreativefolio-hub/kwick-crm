@@ -666,7 +666,7 @@ def create_deal_invoice(deal, user):
     to be linked first, and only happens once per deal."""
     from .models import Deal
 
-    deal = Deal.objects.select_for_update().select_related("lead", "client", "estimate").get(pk=deal.pk)
+    deal = Deal.objects.select_for_update(of=("self",)).select_related("lead", "client", "estimate").get(pk=deal.pk)
     if deal.stage != Deal.Stage.WON:
         raise BDError("Only a won deal can be invoiced.")
     if deal.client_id is None:
