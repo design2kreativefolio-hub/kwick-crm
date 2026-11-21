@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 import { Logo } from "@/components/Logo";
 import { UserAvatar } from "@/components/UserAvatar";
-import { useAuth } from "@/lib/auth";
+import { hasSalesDashboard, useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
 import { NavItem, visibleNav } from "@/lib/nav";
 
@@ -23,7 +23,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const groups = visibleNav(role, user?.module_access ?? []);
+  const groups = visibleNav(role, user?.module_access ?? [], { salesDashboard: hasSalesDashboard(user) });
   const { notifUnread, chatUnread } = useLiveUpdates();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -66,7 +66,7 @@ export function Sidebar({
         href={item.href ?? "#"}
         className="sidebar-link"
         style={navLink(active, collapsed)}
-        title={collapsed ? item.label : undefined}
+        title={collapsed ? item.label : item.hint}
         onClick={onNavigate}
       >
         <span style={{ position: "relative" }}>
@@ -92,7 +92,7 @@ export function Sidebar({
           type="button"
           className="sidebar-link"
           style={{ ...navLink(anyChildActive, collapsed), width: "100%", border: "none", background: anyChildActive ? "rgba(255,255,255,0.12)" : "transparent" }}
-          title={collapsed ? item.label : undefined}
+          title={collapsed ? item.label : item.hint}
           onClick={() => {
             if (collapsed) {
               // No room to show children in icon-rail mode — jump to the

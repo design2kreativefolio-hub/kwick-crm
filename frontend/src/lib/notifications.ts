@@ -26,6 +26,7 @@ export const SOURCE_META: Record<
   project: { icon: "bi-kanban-fill", color: "#7C4FE0", bg: "#F0EBFB", label: "Project", href: "/projects" },
   content_calendar: { icon: "bi-check-square-fill", color: "#219150", bg: "var(--success-soft)", label: "Task", href: "/tasks" },
   todo: { icon: "bi-check2-square", color: "#219150", bg: "var(--success-soft)", label: "To-do", href: "/todo" },
+  bd: { icon: "bi-bullseye", color: "var(--gold)", bg: "var(--gold-soft)", label: "Business Dev", href: "/bd" },
 };
 export const DEFAULT_SOURCE_META = { icon: "bi-bell-fill", color: "var(--gold)", bg: "var(--gold-soft)", label: "Update", href: "" };
 
@@ -36,6 +37,9 @@ export function notificationHref(source: string, objectRef?: string | null): str
     const id = ref.split(":")[1];
     if (id && /^\d+$/.test(id)) return `/tasks/${id}`;
   }
+  // Lead-specific alerts open the lead; everything else lands on My Day.
+  const lead = /^bd-lead-late(?:-admin)?:(\d+)$/.exec(ref);
+  if (lead) return `/bd/leads/${lead[1]}`;
   if (ref.startsWith("project:")) {
     const id = ref.split(":")[1];
     if (id && /^\d+$/.test(id)) return `/projects/${id}`;

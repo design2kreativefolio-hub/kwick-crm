@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { ClientPostModal } from "@/components/calendar/ClientPostModal";
 import { ClientShareModal } from "@/components/calendar/ClientShareModal";
+import { ClientCalFilter, EMPTY_CAL_FILTER, type CalFilterValue } from "@/components/calendar/ClientCalFilter";
 import { MediaFileLink } from "@/components/MediaFileLink";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { DatePicker } from "@/components/DatePicker";
@@ -17,6 +18,7 @@ import { MultiSelect } from "@/components/MultiSelect";
 import { Select } from "@/components/Select";
 import { api, ApiError, formatApiError, unwrapList } from "@/lib/api";
 import { assigneeSelectOptions } from "@/lib/assigneeOptions";
+import { inkOn, readableAccent } from "@/lib/colorContrast";
 import { useAuth } from "@/lib/auth";
 import { detectMeetingUrl } from "@/lib/meetingLinks";
 import { STATUS_BADGE, STATUS_COLOR, TASK_STATUS_OPTIONS, isTaskApproved, isProjectTerminal } from "@/lib/statusBadges";
@@ -30,6 +32,10 @@ type ContentItem = {
   id: number;
   client: number;
   content_type: string;
+  print_size?: string;
+  print_quantity?: number | null;
+  print_paper?: string;
+  print_printer?: string;
   title: string;
   description: string;
   scheduled_date: string;
@@ -84,7 +90,12 @@ const CONTENT_TYPES = [
   { value: "story", label: "Story" },
   { value: "video", label: "Video" },
   { value: "carousel", label: "Carousel" },
-  { value: "other", label: "Other" },
+  { value: "print", label: "Print Work" },
+  { value: "design", label: "Graphic Design" },
+  { value: "shoot", label: "Photo / Video Shoot" },
+  { value: "ad", label: "Ad Campaign" },
+  { value: "website", label: "Website" },
+  { value: "other", label: "Other Work" },
 ];
 // Same workflow as Tasks / Mini-projects (mirrored task stays in sync).
 const STATUSES = TASK_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
@@ -122,6 +133,10 @@ const emptyForm = {
   deadline_time: "",
   status: "assigned",
   assignees: [] as number[],
+  print_size: "",
+  print_quantity: "",
+  print_paper: "",
+  print_printer: "",
 };
 
 function taskStatusLabel(s: string) {
@@ -176,6 +191,9 @@ export default function ClientCalendarPage() {
   const formBaseline = useRef("");
 
   const accent = client?.accent_color || DEFAULT_ACCENT;
+  const ink = inkOn(accent); // dark text on a light client colour, white on a dark one
+  const accentText = readableAccent(accent); // the colour itself, darkened until it reads on white
+  const [filter, setFilter] = useState<CalFilterValue>(EMPTY_CAL_FILTER);
 
   const loadItems = (silent = false) => {
     if (!silent) setLoading(true);
@@ -222,6 +240,10 @@ export default function ClientCalendarPage() {
       deadline_time: item.deadline_time || "",
       status: item.status,
       assignees: item.assignees,
+      print_size: item.print_size || "",
+      print_quantity: item.print_quantity ? String(item.print_quantity) : "",
+      print_paper: item.print_paper || "",
+      print_printer: item.print_printer || "",
     });
     setAttachments([]);
     formBaseline.current = snapshotContentForm(
@@ -234,6 +256,10 @@ export default function ClientCalendarPage() {
         deadline_time: item.deadline_time || "",
         status: item.status,
         assignees: item.assignees,
+        print_size: item.print_size || "",
+        print_quantity: item.print_quantity ? String(item.print_quantity) : "",
+        print_paper: item.print_paper || "",
+        print_printer: item.print_printer || "",
       },
       []
     );
@@ -268,7 +294,11 @@ export default function ClientCalendarPage() {
 
   const chipsByDate = useMemo(() => {
     const map: Record<string, DayChip[]> = {};
+    const normStatus = (st: string) => (st === "todo" || st === "planned" ? "assigned" : st);
     const push = (chip: DayChip) => {
+      if (!filter.kinds[chip.kind]) return;
+      if (chip.kind === "content" && filter.types.length && !filter.types.includes(chip.content?.content_type ?? "")) return;
+      if (filter.statuses.length && !filter.statuses.includes(normStatus(chip.status))) return;
       if (!map[chip.date]) map[chip.date] = [];
       map[chip.date].push(chip);
     };
@@ -305,7 +335,7 @@ export default function ClientCalendarPage() {
       });
     }
     return map;
-  }, [items, linkedTasks, miniProjects]);
+  }, [items, linkedTasks, miniProjects, filter]);
 
   const counts = useMemo(
     () => ({
@@ -358,6 +388,10 @@ export default function ClientCalendarPage() {
       deadline_time: item.deadline_time || "",
       status: item.status,
       assignees: item.assignees,
+      print_size: item.print_size || "",
+      print_quantity: item.print_quantity ? String(item.print_quantity) : "",
+      print_paper: item.print_paper || "",
+      print_printer: item.print_printer || "",
     };
     setForm(next);
     formBaseline.current = snapshotContentForm(next, []);
@@ -385,6 +419,12 @@ export default function ClientCalendarPage() {
       if (form.deadline_time) body.append("deadline_time", form.deadline_time);
       else body.append("deadline_time", "");
       body.append("status", form.status);
+      // print-job details (blank for other types, which also clears them if the type was changed)
+      const isPrint = form.content_type === "print";
+      body.append("print_size", isPrint ? form.print_size.trim() : "");
+      body.append("print_quantity", isPrint ? String(form.print_quantity).trim() : "");
+      body.append("print_paper", isPrint ? form.print_paper.trim() : "");
+      body.append("print_printer", isPrint ? form.print_printer.trim() : "");
       form.assignees.forEach((a) => body.append("assignees", String(a)));
       attachments.forEach((f) => body.append("attachments", f));
 
@@ -498,9 +538,9 @@ export default function ClientCalendarPage() {
       className="kwick-client-cal"
     >
       <div style={{ flexShrink: 0 }}>
-        <BackLink href="/projects/clients" label="Back to Clients" />
+        <BackLink href="/projects/clients" label="Back to Client Calendars" />
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
-          <span style={{ ...logoCircle, background: `${accent}22`, color: accent }}>
+          <span style={{ ...logoCircle, background: `${accent}22`, color: accentText }}>
             {client?.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={client.logo_url} alt="" style={logoImg} />
@@ -544,7 +584,17 @@ export default function ClientCalendarPage() {
 
       <div className="kwick-cal-layout cal-stack-mobile">
         <div className="card client-cal-board" style={{ padding: 0, overflow: "hidden", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ ...calHeader, background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)` }}>
+          <div
+            className="client-cal-head"
+            style={{
+              ...calHeader,
+              background: `linear-gradient(135deg, ${accent} 0%, ${accent}cc 100%)`,
+              color: ink.fg,
+              ["--on-accent" as string]: ink.fg,
+              ["--on-accent-bg" as string]: ink.soft,
+              ["--on-accent-border" as string]: ink.border,
+            }}
+          >
             <MonthYearSelect
               light
               month={anchor.getMonth()}
@@ -552,14 +602,22 @@ export default function ClientCalendarPage() {
               onMonthChange={(month) => jumpToMonth(anchor.getFullYear(), month)}
               onYearChange={(year) => jumpToMonth(year, anchor.getMonth())}
             />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="icon-btn-anim" style={navBtn} onClick={goPrev} aria-label="Previous month">
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <ClientCalFilter
+                value={filter}
+                onChange={setFilter}
+                typeOptions={CONTENT_TYPES}
+                statusOptions={STATUSES}
+                fg={ink.fg}
+                soft={ink.soft}
+              />
+              <button className="icon-btn-anim" style={{ ...navBtn, background: ink.soft, color: ink.fg }} onClick={goPrev} aria-label="Previous month">
                 <i className="bi bi-chevron-left" />
               </button>
-              <button className="icon-btn-anim" style={navBtn} onClick={goToday} aria-label="This month">
+              <button className="icon-btn-anim" style={{ ...navBtn, background: ink.soft, color: ink.fg }} onClick={goToday} aria-label="This month">
                 <i className="bi bi-calendar-event" />
               </button>
-              <button className="icon-btn-anim" style={navBtn} onClick={goNext} aria-label="Next month">
+              <button className="icon-btn-anim" style={{ ...navBtn, background: ink.soft, color: ink.fg }} onClick={goNext} aria-label="Next month">
                 <i className="bi bi-chevron-right" />
               </button>
             </div>
@@ -607,7 +665,7 @@ export default function ClientCalendarPage() {
                       <button
                         type="button"
                         className="icon-btn-anim client-cal-add"
-                        style={{ ...addDayBtn, background: `${accent}22`, color: accent }}
+                        style={{ ...addDayBtn, background: `${accent}22`, color: accentText }}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedDate(d);
@@ -888,6 +946,19 @@ export default function ClientCalendarPage() {
                           {statusLabel(it.status)}
                         </span>
                       </div>
+                      {it.content_type === "print" && (it.print_size || it.print_quantity || it.print_paper || it.print_printer) && (
+                        <div className="muted" style={{ fontSize: 11.5, marginTop: 3, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <i className="bi bi-printer" />
+                          {[
+                            it.print_size,
+                            it.print_quantity ? `Qty ${it.print_quantity}` : "",
+                            it.print_paper,
+                            it.print_printer ? `Printer: ${it.print_printer}` : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      )}
                       {(it.status === "qc_completed" || it.status === "approved" || it.status === "published" || it.client_post_files?.length > 0 || it.comment_count > 0) && (
                         <button
                           type="button"
@@ -962,7 +1033,7 @@ export default function ClientCalendarPage() {
           </div>
 
           <div style={sideFooter}>
-            <button className="btn" style={{ width: "100%", background: accent, borderColor: accent }} onClick={() => openCreate(selectedDate ?? new Date(anchor.getFullYear(), anchor.getMonth(), 1))}>
+            <button className="btn" style={{ width: "100%", background: accent, borderColor: accent, color: ink.fg }} onClick={() => openCreate(selectedDate ?? new Date(anchor.getFullYear(), anchor.getMonth(), 1))}>
               <i className="bi bi-plus-lg" /> Add Content
             </button>
           </div>
@@ -1014,12 +1085,12 @@ export default function ClientCalendarPage() {
           <div className="kwick-form-wide" style={{ marginTop: 14 }}>
             <div className="kwick-form-wide__row kwick-form-wide__row--2">
               <div>
-                <label className="field-label" style={{ marginTop: 0 }}>Content type</label>
+                <label className="field-label" style={{ marginTop: 0 }}>Type of work</label>
                 <Select
                   value={form.content_type}
                   onChange={(v) => setForm((f) => ({ ...f, content_type: v }))}
                   options={CONTENT_TYPES}
-                  ariaLabel="Content type"
+                  ariaLabel="Type of work"
                 />
               </div>
               <div>
@@ -1055,6 +1126,49 @@ export default function ClientCalendarPage() {
                 </div>
               )}
             </div>
+
+            {form.content_type === "print" && (
+              <div className="kwick-form-wide__row kwick-form-wide__row--2" style={{ rowGap: 10 }}>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Size</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. A4, 85 x 55 mm"
+                    value={form.print_size}
+                    onChange={(e) => setForm((f) => ({ ...f, print_size: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Quantity</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    placeholder="e.g. 500"
+                    value={form.print_quantity}
+                    onChange={(e) => setForm((f) => ({ ...f, print_quantity: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Paper / finish</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. 300gsm matt, gloss lamination"
+                    value={form.print_paper}
+                    onChange={(e) => setForm((f) => ({ ...f, print_paper: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ marginTop: 0 }}>Printer / vendor</label>
+                  <input
+                    className="input"
+                    placeholder="Who is printing it"
+                    value={form.print_printer}
+                    onChange={(e) => setForm((f) => ({ ...f, print_printer: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="field-label" style={{ marginTop: 0 }}>Title</label>

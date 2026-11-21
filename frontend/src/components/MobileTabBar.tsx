@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { hasSalesDashboard, isBde, useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
 
 const TABS = [
@@ -20,15 +21,25 @@ export function MobileTabBar({
   onMore: () => void;
 }) {
   const pathname = usePathname();
+  const { user } = useAuth();
   const live = useLiveUpdates();
+  // Business Development executives live in My Day. On the Sales dashboard Home already is My Day, so
+  // the spare tab becomes Leads; otherwise My Day takes Tasks' slot.
+  const bdTab = hasSalesDashboard(user)
+    ? { href: "/bd/leads", label: "Leads", icon: "bi-person-plus-fill" }
+    : { href: "/bd", label: "My Day", icon: "bi-sun-fill" };
+  const tabs: readonly { href: string; label: string; icon: string }[] = isBde(user)
+    ? TABS.map((t) => (t.href === "/tasks" ? bdTab : t))
+    : TABS;
   const chatCount = "chatUnread" in live ? Number((live as { chatUnread?: number }).chatUnread || 0) : 0;
 
+  // /bd is a prefix of /bd/leads etc., so treat it as active across the whole module.
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <nav className="mobile-tabbar" aria-label="Main">
       <div className="mobile-tabbar__inner">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = !moreOpen && isActive(tab.href);
           return (
             <Link

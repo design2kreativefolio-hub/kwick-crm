@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import { useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
@@ -289,7 +291,7 @@ export default function SalesInvoicesPage() {
             All Invoices
           </span>
           {loading && <Loader />}
-          {!loading && invoices.length === 0 && <p className="muted">No invoices yet.</p>}
+          {!loading && invoices.length === 0 && <EmptyState icon="bi-receipt" title="No invoices yet" hint="Invoices you create appear here with their payment status, so you can see what is still owed." actions={[{ label: "Add Invoice", icon: "bi-plus-lg", onClick: () => setCreateOpen(true) }]} />}
           {!loading && invoices.length > 0 && (
             <div className="table-wrap">
               <table className="kwick-table">

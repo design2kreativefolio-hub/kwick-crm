@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -436,7 +438,7 @@ export default function ProjectsPage() {
           All Mini-Projects
         </span>
         {loading && <Loader />}
-        {!loading && rows.length === 0 && <p className="muted">No projects yet.</p>}
+        {!loading && rows.length === 0 && <EmptyState icon="bi-kanban-fill" title="No mini-projects yet" hint="A mini-project groups the tasks for one piece of work, like a website or a campaign, so everyone sees progress in one place." actions={[{ label: "Add Project", icon: "bi-plus-lg", onClick: openCreate }]} />}
         {!loading && rows.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">

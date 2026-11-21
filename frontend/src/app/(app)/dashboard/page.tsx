@@ -1,5 +1,8 @@
 "use client";
 
+import { NextTaskCard } from "@/components/NextTaskCard";
+import { NextUpCard } from "@/components/NextUpCard";
+
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -9,7 +12,8 @@ import { KpiCard } from "@/components/KpiCard";
 import { PerformanceChart } from "@/components/PerformanceChart";
 import { Reveal } from "@/components/Reveal";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { MyDayView } from "@/components/bd/MyDayView";
+import { hasSalesDashboard, useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { DEFAULT_SOURCE_META, SOURCE_META, timeAgo } from "@/lib/notifications";
 import { STATUS_BADGE, STATUS_COLOR as SHARED_STATUS_COLOR, isTaskApproved } from "@/lib/statusBadges";
@@ -204,6 +208,9 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-grid fit-mobile" style={{ display: "grid", gap: 22, alignItems: "start" }}>
+      {hasSalesDashboard(user) ? (
+        <MyDayView />
+      ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
         <Reveal index={0}>
           <div className="dashboard-hero-row fit-mobile" style={heroRow}>
@@ -252,6 +259,20 @@ export default function DashboardPage() {
               />
             )}
           </div>
+        </Reveal>
+
+        <Reveal index={1}>
+          {isSuperadmin && (summary?.pending_approvals ?? 0) > 0 ? (
+            <NextUpCard
+              eyebrow="Your day"
+              icon="bi-person-plus-fill"
+              title={`${summary?.pending_approvals} ${summary?.pending_approvals === 1 ? "person is" : "people are"} waiting for approval`}
+              subtitle="Approve or reject new accounts so they can start using Kwick."
+              actions={[{ label: "Review", icon: "bi-arrow-right", href: "/hr/staff", primary: true }]}
+            />
+          ) : (
+            <NextTaskCard eyebrow="Your day" onChanged={load} />
+          )}
         </Reveal>
 
         {isSuperadmin && (summary?.pending_approval_users?.length ?? 0) > 0 && (
@@ -385,6 +406,7 @@ export default function DashboardPage() {
           </div>
         </Reveal>
       </div>
+      )}
 
       {/* Reminders card — calendar reminders + to-dos + notifications.
           Tick only dismisses from this card (not mark done / not mark read). */}

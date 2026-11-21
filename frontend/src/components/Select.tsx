@@ -173,7 +173,7 @@ export function Select({
           className="bi bi-chevron-down"
           style={{
             fontSize: 11,
-            color: variant === "light" ? "rgba(255,255,255,0.85)" : "var(--text-muted)",
+            color: variant === "light" ? "currentColor" : "var(--text-muted)",
             transition: "transform 0.15s ease",
             transform: open ? "rotate(180deg)" : "none",
           }}

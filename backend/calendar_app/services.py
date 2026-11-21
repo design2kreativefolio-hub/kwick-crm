@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from calendar_app.models import ManualReminder
-from common.permissions import is_superadmin
+from common.permissions import has_module_access, is_superadmin
 from daily_tracker.models import DailyTrackerEntry
 from projects.models import ContentCalendarItem, Project
 from renewals.models import Renewal
@@ -307,6 +307,39 @@ def build_agenda(*, user, dt_from, dt_to, scope="self"):
                         "recurrence": m.recurrence,
                         "assignees": assignee_list,
                         "time": timezone.localtime(when).strftime("%I:%M %p").lstrip("0"),
+                    },
+                }
+            )
+
+    # --- Business Development follow-ups & meetings ---
+    # A BDE sees their own; the superadmin sees every BDE's. Anyone without
+    # the module never triggers the query.
+    if has_module_access(user, "bd"):
+        from bd.models import FollowUp
+
+        fu_qs = FollowUp.objects.filter(due_at__date__range=(dt_from, dt_to)).select_related(
+            "lead", "owner"
+        )
+        if not is_superadmin(user):
+            fu_qs = fu_qs.filter(owner=user)
+        for fu in fu_qs:
+            local = timezone.localtime(fu.due_at)
+            is_meeting = fu.kind == "meeting"
+            items.append(
+                {
+                    "source": "bd",
+                    "id": fu.id,
+                    "title": f"{'Meeting' if is_meeting else 'Follow up'}: {fu.lead.display_name}",
+                    "date": _iso(fu.due_at),
+                    "done": fu.done_at is not None,
+                    "meta": {
+                        "kind": fu.kind,
+                        "lead": fu.lead_id,
+                        "description": fu.note,
+                        "meeting_url": fu.meeting_url,
+                        "owner": fu.owner_id,
+                        "owner_name": fu.owner.full_name or fu.owner.email,
+                        "time": local.strftime("%I:%M %p").lstrip("0"),
                     },
                 }
             )

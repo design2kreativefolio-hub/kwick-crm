@@ -1,5 +1,8 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+import { NextTaskCard } from "@/components/NextTaskCard";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -163,6 +166,15 @@ export default function TasksPage() {
   };
 
   useEffect(load, [statusFilter, priorityFilter, search, tab, isSuperadmin]);
+
+  // /tasks?new=1 (from the dashboard card) opens the new-task form straight away
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
+      openCreateForm();
+      window.history.replaceState(null, "", "/tasks");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visibleTasks = useMemo(() => {
     const today = todayIso();
@@ -365,6 +377,10 @@ export default function TasksPage() {
       </Reveal>
 
       <Reveal index={1}>
+        <NextTaskCard onChanged={load} onAddTask={openCreateForm} />
+      </Reveal>
+
+      <Reveal index={1}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
             className={tab === "all" ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
@@ -551,13 +567,18 @@ export default function TasksPage() {
 
         {loading && <Loader />}
         {!loading && visibleTasks.length === 0 && (
-          <p className="muted">
-            {dateMode === "pending"
-              ? "No pending tasks."
-              : dateMode === "today"
-                ? "Nothing due today."
-                : "No tasks match these filters."}
-          </p>
+          dateMode === "pending" && !statusFilter && !priorityFilter && !search.trim() ? (
+            <EmptyState
+              icon="bi-check2-square"
+              title={tab === "mine" ? "Nothing assigned to you yet" : "No tasks yet"}
+              hint="Tasks are pieces of work with an owner and a due date. Add one to get started, or wait for a teammate to assign you one."
+              actions={[{ label: "Add Task", icon: "bi-plus-lg", onClick: openCreateForm }]}
+            />
+          ) : (
+            <p className="muted">
+              {dateMode === "today" ? "Nothing due today." : "No tasks match these filters."}
+            </p>
+          )
         )}
         {!loading && visibleTasks.length > 0 && (
           <div className="table-wrap">

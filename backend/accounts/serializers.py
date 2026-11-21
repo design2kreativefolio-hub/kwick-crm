@@ -33,14 +33,21 @@ class StaffProfileSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     profile = StaffProfileSerializer(read_only=True)
     module_access = serializers.SerializerMethodField()
+    bd_dashboard = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "full_name", "role", "status", "profile", "module_access"]
+        fields = ["id", "email", "full_name", "role", "status", "profile", "module_access", "bd_dashboard"]
         read_only_fields = ["id", "role", "status"]
 
     def get_module_access(self, obj):
         return list(obj.module_access.values_list("module", flat=True))
+
+    def get_bd_dashboard(self, obj):
+        """True when the admin chose the lead-focused Sales dashboard for this BDE."""
+        if obj.role == Role.SUPERADMIN:
+            return False
+        return obj.module_access.filter(module="bd", sales_dashboard=True).exists()
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -280,8 +287,14 @@ class ModuleAccessSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ModuleAccess
-        fields = ["id", "user", "user_name", "user_email", "module", "created_at"]
+        fields = ["id", "user", "user_name", "user_email", "module", "sales_dashboard", "created_at"]
         read_only_fields = ["created_at"]
+
+    def update(self, instance, validated_data):
+        # Only the dashboard view can change on an existing grant.
+        validated_data.pop("user", None)
+        validated_data.pop("module", None)
+        return super().update(instance, validated_data)
 
     def validate_user(self, value):
         if value.role == Role.SUPERADMIN:

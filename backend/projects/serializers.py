@@ -297,6 +297,10 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
             "assignees",
             "assignee_names",
             "my_task_id",
+            "print_size",
+            "print_quantity",
+            "print_paper",
+            "print_printer",
             "attachment",
             "attachment_url",
             "attachment_urls",
@@ -320,6 +324,11 @@ class ContentCalendarItemSerializer(serializers.ModelSerializer):
         ]
 
     comment_count = serializers.SerializerMethodField()
+
+    def validate_print_quantity(self, value):
+        if value is not None and value > 10_000_000:
+            raise serializers.ValidationError("That quantity looks too large.")
+        return value
 
     def get_comment_count(self, obj):
         return len(obj.comments.all())

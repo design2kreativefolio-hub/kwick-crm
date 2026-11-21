@@ -6,13 +6,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EdithOrb } from "@/components/EdithOrb";
 import { useMaintenanceGate } from "@/components/MaintenanceBar";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { UserAvatar } from "@/components/UserAvatar";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { hasSalesDashboard, useAuth } from "@/lib/auth";
 import { useLiveUpdates } from "@/lib/liveUpdates";
 import { NavItem, visibleNav } from "@/lib/nav";
 import { useNotificationPermissionState } from "@/lib/pwa";
+import { useTheme } from "@/lib/theme";
 import { useToast } from "@/lib/toast";
 
 type SearchResult = {
@@ -46,8 +46,9 @@ export function Topbar({
   const { user, logout } = useAuth();
   const { status: maintenance, busy: maintenanceBusy, toggle: toggleMaintenance } = useMaintenanceGate();
   const { notifUnread: unread } = useLiveUpdates();
-  const { perm, enable, needsPrompt } = useNotificationPermissionState();
+  const { perm, enable } = useNotificationPermissionState();
   const { showToast } = useToast();
+  const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -100,9 +101,14 @@ export function Topbar({
     // their own and aren't navigable, only their children are.
     const flatten = (items: NavItem[]): NavItem[] =>
       items.flatMap((i) => (i.children ? flatten(i.children) : [i]));
-    const items = flatten(visibleNav(user.role, user.module_access || []).flatMap((g) => g.items));
+    // EDITH and Support aren't in the sidebar (top bar / profile menu), but should stay findable.
+    const extras: NavItem[] = [
+      { label: "EDITH", href: "/ai", icon: "bi-stars", aliases: ["assistant", "ai"] },
+      { label: "Support", href: "/support", icon: "bi-headset", aliases: ["help", "ticket"] },
+    ];
+    const items = [...flatten(visibleNav(user.role, user.module_access || [], { salesDashboard: hasSalesDashboard(user) }).flatMap((g) => g.items)), ...extras];
     return items
-      .filter((i) => i.href && normalize(i.label).includes(q))
+      .filter((i) => i.href && [i.label, ...(i.aliases ?? [])].some((name) => normalize(name).includes(q)))
       .map((i) => ({ type: "page", id: i.href as string, label: i.label, sublabel: "Page", href: i.href as string, icon: i.icon }));
   }, [query, user]);
 
@@ -240,45 +246,9 @@ export function Topbar({
             <EdithOrb size="xs" />
             <span className="edith-topbar-btn__label">EDITH</span>
           </Link>
-          <ThemeToggle />
-          {(needsPrompt || perm === "denied") && (
-            <button
-              type="button"
-              className="icon-btn-anim topbar-alert-btn"
-              style={{
-                ...circleBtn,
-                width: "auto",
-                padding: "0 12px",
-                borderRadius: 999,
-                gap: 6,
-                fontSize: 12,
-                fontWeight: 600,
-                color: perm === "denied" ? "var(--danger)" : "var(--gold)",
-              }}
-              title={
-                perm === "denied"
-                  ? "Notifications blocked in browser settings"
-                  : "Allow desktop notifications for tasks, chat, and reminders"
-              }
-              onClick={async () => {
-                const result = await enable();
-                if (result === "granted") showToast("Desktop notifications enabled.");
-                else if (result === "denied")
-                  showToast("Notifications blocked — allow them in your browser site settings.", "error");
-              }}
-            >
-              <i className={`bi ${perm === "denied" ? "bi-bell-slash-fill" : "bi-bell"}`} style={{ fontSize: 15 }} />
-              <span style={{ whiteSpace: "nowrap" }}>
-                {perm === "denied" ? "Blocked" : "Allow alerts"}
-              </span>
-            </button>
-          )}
-          <Link href="/reminders" className="icon-btn-anim" style={circleBtn} aria-label="Reminders">
+          <Link href="/reminders" className="icon-btn-anim" style={circleBtn} aria-label="Notifications" title="Notifications">
             <i className="bi bi-bell-fill" style={{ fontSize: 17 }} />
             {unread > 0 && <span style={dot}>{unread > 9 ? "9+" : unread}</span>}
-          </Link>
-          <Link href="/support" className="icon-btn-anim topbar-support" style={circleBtn} aria-label="Support">
-            <i className="bi bi-headset" style={{ fontSize: 17 }} />
           </Link>
 
           <div ref={menuRef} style={{ position: "relative", marginLeft: 6 }}>
@@ -304,9 +274,16 @@ export function Topbar({
                 <Link href="/profile" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                   <i className="bi bi-person-fill" /> Profile
                 </Link>
+                <button
+                  style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}
+                  onClick={toggleTheme}
+                >
+                  <i className={`bi ${theme === "dark" ? "bi-sun-fill" : "bi-moon-stars-fill"}`} />
+                  {theme === "dark" ? "Light mode" : "Dark mode"}
+                </button>
                 {perm !== "granted" && perm !== "unsupported" && (
                   <button
-                    style={{ ...dropdownItem, width: "100%", border: "none", background: "none" }}
+                    style={{ ...dropdownItem, width: "100%", border: "none", background: "none", color: perm === "denied" ? "var(--danger)" : "var(--text)" }}
                     onClick={async () => {
                       setMenuOpen(false);
                       const result = await enable();
@@ -314,10 +291,15 @@ export function Topbar({
                       else if (result === "denied")
                         showToast("Notifications blocked — allow them in your browser site settings.", "error");
                     }}
+                    title={perm === "denied" ? "Blocked in browser settings. Allow them there, then reload." : undefined}
                   >
-                    <i className="bi bi-bell-fill" /> Enable notifications
+                    <i className={`bi ${perm === "denied" ? "bi-bell-slash-fill" : "bi-bell-fill"}`} />
+                    {perm === "denied" ? "Alerts blocked" : "Allow alerts"}
                   </button>
                 )}
+                <Link href="/support" style={dropdownItem} onClick={() => setMenuOpen(false)}>
+                  <i className="bi bi-headset" /> Support
+                </Link>
                 {user?.role === "superadmin" && (
                   <Link href="/logs" style={dropdownItem} onClick={() => setMenuOpen(false)}>
                     <i className="bi bi-clock-history" /> Logs

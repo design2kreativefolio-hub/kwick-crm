@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import { useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
@@ -327,7 +329,7 @@ export default function SalesProposalsPage() {
           All Documents
         </span>
         {loading && <Loader />}
-        {!loading && docs.length === 0 && <p className="muted">No proposals or estimates yet.</p>}
+        {!loading && docs.length === 0 && <EmptyState icon="bi-file-earmark-text-fill" title="No proposals yet" hint="Build a proposal or estimate for a client, then send them a link to review and accept it." actions={[{ label: "Create Proposal", icon: "bi-plus-lg", onClick: () => setCreateOpen(true) }]} />}
         {!loading && docs.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">

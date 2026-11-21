@@ -132,7 +132,7 @@ export default function SalesClientDetailPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <BackLink href="/sales/clients" label="Back to Clients" />
+        <BackLink href="/sales/clients" label="Back to Client Accounts" />
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {editing ? (
             <>

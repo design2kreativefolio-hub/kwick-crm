@@ -26,7 +26,8 @@ export type Module =
   | "sales_invoices"
   | "renewals"
   | "reports"
-  | "passwords";
+  | "passwords"
+  | "bd";
 
 const MODULE_CHILDREN: Partial<Record<Module, Module[]>> = {
   hr: ["hr_documents", "hr_staff"],
@@ -51,6 +52,12 @@ export function hasModuleAccess(grants: readonly string[] | undefined, module: M
   return false;
 }
 
+/** A Business Development executive: an employee explicitly granted `bd`.
+ * (The superadmin also has BD access, but isn't a BDE — they see everyone's work.) */
+export function isBde(user: { role: string; module_access?: readonly string[] } | null | undefined): boolean {
+  return !!user && user.role !== "superadmin" && (user.module_access ?? []).includes("bd");
+}
+
 export type User = {
   id: number;
   email: string;
@@ -59,7 +66,14 @@ export type User = {
   status: string;
   profile?: StaffProfile;
   module_access: Module[];
+  /** Admin chose the lead-focused Sales dashboard for this BDE. */
+  bd_dashboard?: boolean;
 };
+
+/** Shows the Sales dashboard: a BDE the admin has switched to it. Everyone else keeps the normal one. */
+export function hasSalesDashboard(user: (Pick<User, "role" | "module_access"> & { bd_dashboard?: boolean }) | null | undefined): boolean {
+  return isBde(user) && !!user?.bd_dashboard;
+}
 
 const AuthContext = createContext<{
   user: User | null;

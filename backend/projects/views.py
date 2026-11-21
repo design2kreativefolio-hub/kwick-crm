@@ -295,7 +295,7 @@ class ContentCalendarItemViewSet(viewsets.ModelViewSet):
     )
     serializer_class = ContentCalendarItemSerializer
     permission_classes = [IsActive]
-    filterset_fields = ["client", "status", "content_type"]
+    filterset_fields = ["client", "status", "content_type", "print_printer"]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def paginate_queryset(self, queryset):

@@ -51,6 +51,40 @@ app.conf.beat_schedule = {
         "task": "notifications.tasks.send_open_item_nudges",
         "schedule": crontab(hour=13, minute=0, day_of_week="1-6"),
     },
+    # Business Development (all times UTC; Dubai = UTC+4).
+    "bd-follow-up-alerts": {
+        "task": "bd.tasks.follow_up_alerts",
+        "schedule": crontab(minute="*/5"),
+    },
+    "bd-my-day-digest": {  # 09:00 Dubai, Mon-Sat
+        "task": "bd.tasks.my_day_digest",
+        "schedule": crontab(hour=5, minute=0, day_of_week="1-6"),
+    },
+    "bd-response-time-alerts": {
+        "task": "bd.tasks.response_time_alerts",
+        "schedule": crontab(minute="*/15"),
+    },
+    "bd-stale-deal-alerts": {  # 08:30 Dubai daily
+        "task": "bd.tasks.stale_deal_alerts",
+        "schedule": crontab(hour=4, minute=30),
+    },
+    "bd-rescore-leads": {  # 07:30 Dubai daily
+        "task": "bd.tasks.rescore_leads",
+        "schedule": crontab(hour=3, minute=30),
+    },
+    # Business Development, Phase 2 — each is a no-op until its settings are filled in.
+    "bd-pull-meta-leads": {
+        "task": "bd.tasks.pull_meta_leads",
+        "schedule": crontab(minute="*/15"),
+    },
+    "bd-poll-sales-inbox": {
+        "task": "bd.tasks.poll_sales_inbox",
+        "schedule": crontab(minute="*/10"),
+    },
+    "bd-weekly-pipeline-email": {  # Monday 08:00 Dubai
+        "task": "bd.tasks.weekly_pipeline_email",
+        "schedule": crontab(hour=4, minute=0, day_of_week="1"),
+    },
     # EDITH chat history — drop threads inactive for 15+ days.
     "purge-old-ai-conversations-daily": {
         "task": "ai.tasks.purge_old_ai_conversations",

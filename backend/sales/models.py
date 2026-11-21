@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 
 from common.models import TimeStampedModel
@@ -111,6 +112,15 @@ class Proposal(TimeStampedModel):
     title = models.CharField(max_length=200, blank=True, default="Untitled Proposal")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     content = models.JSONField(default=dict, blank=True)
+    # Who built it. NULL on every pre-existing row (left untouched). Business
+    # Development executives only ever see rows where owner == themselves.
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
     def __str__(self):
         return f"{self.title} ({self.status})"
@@ -133,6 +143,14 @@ class Estimate(TimeStampedModel):
     title = models.CharField(max_length=200, blank=True, default="Untitled Estimate")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     content = models.JSONField(default=dict, blank=True)
+    # See Proposal.owner.
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
     def __str__(self):
         return f"{self.title} ({self.status})"

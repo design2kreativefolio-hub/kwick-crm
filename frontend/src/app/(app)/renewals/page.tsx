@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import { useEffect, useMemo, useState } from "react";
 
 import { DatePicker } from "@/components/DatePicker";
@@ -536,7 +538,7 @@ export default function RenewalsPage() {
         </div>
 
         {loading && <Loader />}
-        {!loading && renewals.length === 0 && <p className="muted">No renewals found.</p>}
+        {!loading && renewals.length === 0 && <EmptyState icon="bi-arrow-repeat" title="No renewals yet" hint="Track domains, hosting, contracts and visas here, so nothing expires by surprise." actions={[{ label: "Add Renewal", icon: "bi-plus-lg", onClick: openCreateForm }]} />}
         {!loading && renewals.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">

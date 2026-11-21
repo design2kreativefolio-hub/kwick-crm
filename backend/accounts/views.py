@@ -312,7 +312,22 @@ class ModuleAccessViewSet(viewsets.ModelViewSet):
     serializer_class = ModuleAccessSerializer
     permission_classes = [IsSuperadmin]
     filterset_fields = ["module", "user"]
-    http_method_names = ["get", "post", "delete", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_serializer(self, *args, **kwargs):
+        # An edit may only flip the dashboard view - never move a grant to another
+        # user or module.
+        if self.action == "partial_update":
+            kwargs["partial"] = True
+        return super().get_serializer(*args, **kwargs)
+
+    def perform_update(self, serializer):
+        access = serializer.save()
+        log_activity(
+            actor=self.request.user,
+            action=f"set {access.user.full_name or access.user.email}'s dashboard to "
+            f"{'Sales' if access.sales_dashboard else 'Normal'}",
+        )
 
     def perform_create(self, serializer):
         access = serializer.save(granted_by=self.request.user)

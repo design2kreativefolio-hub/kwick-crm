@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
@@ -193,7 +195,8 @@ export default function ProjectClientsPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>Clients</h1>
+          <h1 style={{ margin: 0, fontSize: 22 }}>Client Calendars</h1>
+          <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>Plan and track each client&apos;s content, tasks and mini-projects.</p>
         </div>
         <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
           <i className="bi bi-plus-lg" /> Add Client
@@ -310,7 +313,7 @@ export default function ProjectClientsPage() {
           All Clients
         </span>
         {loading && <Loader />}
-        {!loading && clients.length === 0 && <p className="muted">No clients yet.</p>}
+        {!loading && clients.length === 0 && <EmptyState icon="bi-calendar-range-fill" title="No client calendars yet" hint="Add a client to plan their content, tasks and mini-projects on one calendar and share it with them." actions={[{ label: "Add Client", icon: "bi-plus-lg", onClick: () => setShowForm(true) }]} />}
         {!loading && clients.length > 0 && (
           <div style={cardGrid}>
             {clients.map((c) => {

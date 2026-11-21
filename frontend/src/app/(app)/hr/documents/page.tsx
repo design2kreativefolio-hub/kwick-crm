@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -202,7 +204,7 @@ export default function HrDocumentsPage() {
           All Documents
         </span>
         {loading && <Loader />}
-        {!loading && letters.length === 0 && <p className="muted">No documents yet.</p>}
+        {!loading && letters.length === 0 && <EmptyState icon="bi-folder2-open" title="No documents yet" hint="Letters and certificates for staff are created and kept here." actions={[{ label: "Create document", icon: "bi-plus-lg", onClick: () => setCreateOpen(true) }]} />}
         {!loading && letters.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">

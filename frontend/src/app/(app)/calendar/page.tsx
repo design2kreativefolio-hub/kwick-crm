@@ -1,5 +1,7 @@
 "use client";
 
+import { NextUpStrip } from "@/components/NextUpCard";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -46,6 +48,7 @@ const SOURCE_META: Record<string, { color: string; bg: string; label: string; ic
   manual: { color: "var(--cal-manual)", bg: "var(--cal-manual-bg)", label: "Reminder", icon: "bi-bell-fill" },
   project: { color: "var(--cal-project)", bg: "var(--cal-project-bg)", label: "Project Delivery", icon: "bi-folder-fill" },
   content_calendar: { color: "var(--cal-content)", bg: "var(--cal-content-bg)", label: "Content", icon: "bi-calendar2-heart" },
+  bd: { color: "var(--cal-bd)", bg: "var(--cal-bd-bg)", label: "Business Dev", icon: "bi-bullseye" },
 };
 const DEFAULT_META = { color: "var(--gold)", bg: "var(--gold-soft)", label: "Item", icon: "bi-calendar-event" };
 
@@ -56,6 +59,24 @@ const RECURRENCE_OPTIONS = [
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
 ];
+
+function upNextWhen(it: AgendaItem): string {
+  const day = it.date.slice(0, 10);
+  const today = toIso(new Date());
+  const tomorrow = toIso(new Date(Date.now() + 86400000));
+  const label =
+    day === today
+      ? "Today"
+      : day === tomorrow
+        ? "Tomorrow"
+        : new Date(`${day}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const t = it.meta?.time as string | undefined;
+  if (!t) return label;
+  const [hh, mm] = t.split(":");
+  const d = new Date();
+  d.setHours(Number(hh), Number(mm), 0, 0);
+  return Number.isNaN(d.getTime()) ? label : `${label}, ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+}
 
 function toIso(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -92,6 +113,8 @@ function itemHref(item: AgendaItem): string | null {
       return "/reports";
     case "renewal":
       return "/renewals";
+    case "bd":
+      return item.meta?.lead ? `/bd/leads/${item.meta.lead}` : "/bd";
     case "manual":
       return null;
     default:
@@ -162,6 +185,24 @@ export default function CalendarPage() {
 
   useEffect(() => {
     api<Contact[]>("/api/messages/directory").then(setDirectory).catch(() => {});
+  }, []);
+
+  // The next thing coming up in the next week, shown as a slim strip above the calendar.
+  const [upNext, setUpNext] = useState<AgendaItem | null>(null);
+  useEffect(() => {
+    const from = toIso(new Date());
+    const to = toIso(new Date(Date.now() + 7 * 86400000));
+    api<{ items: AgendaItem[] }>(`/api/calendar/agenda?from=${from}&to=${to}&scope=self`)
+      .then((d) => {
+        const list = d.items
+          .filter((i) => !i.done && !(i.source === "todo" && (i.meta?.summary || i.id === 0)))
+          .sort((a, b) => {
+            const day = a.date.slice(0, 10).localeCompare(b.date.slice(0, 10));
+            return day || String(a.meta?.time || "99:99").localeCompare(String(b.meta?.time || "99:99"));
+          });
+        setUpNext(list[0] ?? null);
+      })
+      .catch(() => setUpNext(null));
   }, []);
 
   const assigneeOptions = useMemo(
@@ -401,6 +442,15 @@ export default function CalendarPage() {
       className="kwick-personal-cal"
       style={pageRoot}
     >
+      {upNext && (
+        <NextUpStrip
+          title={upNext.title}
+          when={upNextWhen(upNext)}
+          actionLabel="Open"
+          onAction={() => openItem(upNext)}
+          icon={(SOURCE_META[upNext.source] ?? DEFAULT_META).icon}
+        />
+      )}
       <div className="kwick-cal-layout cal-stack-mobile" style={layout}>
         <div className="card" style={calCard}>
           <div style={calHeader}>

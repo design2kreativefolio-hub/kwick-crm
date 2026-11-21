@@ -60,7 +60,7 @@ export default function NewSalesClientPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div>
-        <BackLink href="/sales/clients" label="Back to Clients" />
+        <BackLink href="/sales/clients" label="Back to Client Accounts" />
         <h1 style={{ margin: "8px 0 0", fontSize: 22 }}>Add Client</h1>
       </div>
 

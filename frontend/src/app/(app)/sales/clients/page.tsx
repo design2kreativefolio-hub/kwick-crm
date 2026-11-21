@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import { useEffect, useState } from "react";
 
 import Link from "next/link";
@@ -71,7 +73,8 @@ export default function SalesClientsPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {ConfirmDialog}
       <div>
-        <h1 style={{ margin: 0, fontSize: 22 }}>Clients</h1>
+        <h1 style={{ margin: 0, fontSize: 22 }}>Client Accounts</h1>
+        <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>Client records, contacts, proposals and invoices.</p>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -93,7 +96,7 @@ export default function SalesClientsPage() {
           All Clients
         </span>
         {loading && <Loader />}
-        {!loading && clients.length === 0 && <p className="muted">No clients yet.</p>}
+        {!loading && clients.length === 0 && <EmptyState icon="bi-person-vcard-fill" title="No client accounts yet" hint="A client account keeps contacts, proposals and invoices together. Add your first client to start." actions={[{ label: "Add Client", icon: "bi-plus-lg", href: "/sales/clients/new" }]} />}
         {!loading && clients.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">

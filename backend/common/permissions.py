@@ -31,6 +31,15 @@ def has_module_access(user, module: str) -> bool:
     return user.module_access.filter(module__in=grant_keys_for(module)).exists()
 
 
+def is_bde(user) -> bool:
+    """A Business Development Executive: a non-superadmin explicitly granted the
+    `bd` module. BDEs only ever see records they own (leads, deals, proposals,
+    estimates), and have no invoice access."""
+    if not (user and user.is_authenticated) or is_superadmin(user):
+        return False
+    return user.module_access.filter(module="bd").exists()
+
+
 class IsActive(BasePermission):
     """User must be authenticated and status=active."""
 

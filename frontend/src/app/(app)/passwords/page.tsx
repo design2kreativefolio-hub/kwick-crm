@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -419,7 +421,7 @@ export default function PasswordsPage() {
         </div>
         {vaultGate === "checking" && <p className="muted">Checking vault…</p>}
         {unlocked && loading && <Loader />}
-        {unlocked && !loading && filtered.length === 0 && <p className="muted">No entries yet.</p>}
+        {unlocked && !loading && filtered.length === 0 && <EmptyState icon="bi-key-fill" title="No passwords saved yet" hint="Keep shared logins here, encrypted, so the team never has to ask for them in chat." actions={[{ label: "Add Entry", icon: "bi-plus-lg", onClick: openCreate }]} />}
         {unlocked && !loading && groupedByClient.length > 0 && (
           <div className="password-vault-groups">
             {groupedByClient.map((group) => (

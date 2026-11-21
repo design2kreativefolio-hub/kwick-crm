@@ -24,6 +24,9 @@ class Module(models.TextChoices):
     RENEWALS = "renewals", "Renewals"
     REPORTS = "reports", "Reports"
     PASSWORDS = "passwords", "Passwords"
+    # Business Development (pre-sale pipeline). Deliberately NOT a child of
+    # `sales`: the `sales` parent implies Invoices, which BDEs must never see.
+    BD = "bd", "Business Development"
 
 
 # Parent → child grants. A parent grant satisfies every child check; any child
@@ -173,6 +176,10 @@ class ModuleAccess(TimeStampedModel):
     granted_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="+"
     )
+    # Only meaningful on the `bd` grant: show this person the lead-focused
+    # "Sales dashboard" instead of the normal one. Display only - what a BDE can
+    # see is still decided by the grant itself.
+    sales_dashboard = models.BooleanField(default=False)
 
     class Meta:
         unique_together = ("user", "module")

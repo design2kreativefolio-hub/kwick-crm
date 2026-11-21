@@ -151,7 +151,12 @@ class ContentCalendarItem(TimeStampedModel):
         STORY = "story", "Story"
         VIDEO = "video", "Video"
         CAROUSEL = "carousel", "Carousel"
-        OTHER = "other", "Other"
+        PRINT = "print", "Print Work"
+        DESIGN = "design", "Graphic Design"
+        SHOOT = "shoot", "Photo / Video Shoot"
+        AD = "ad", "Ad Campaign"
+        WEBSITE = "website", "Website"
+        OTHER = "other", "Other Work"
 
     class Status(models.TextChoices):
         # Same values/labels as tasks.Task.Status so mirrored tasks stay in sync.
@@ -195,6 +200,13 @@ class ContentCalendarItem(TimeStampedModel):
     client_post_files = models.JSONField(default=list, blank=True)
     client_post_caption = models.TextField(blank=True, default="")
     client_post_uploaded_at = models.DateTimeField(null=True, blank=True)
+
+    # Print jobs (content_type = "print"): what is being printed, how many, on what, and where.
+    # Internal only: never part of the client-facing share link.
+    print_size = models.CharField(max_length=100, blank=True, default="")
+    print_quantity = models.PositiveIntegerField(null=True, blank=True)
+    print_paper = models.CharField(max_length=150, blank=True, default="")
+    print_printer = models.CharField(max_length=150, blank=True, default="")
 
     class Meta:
         ordering = ["scheduled_date"]

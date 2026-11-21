@@ -15,6 +15,7 @@ type Grant = {
   user_name: string;
   user_email: string;
   module: Module;
+  sales_dashboard?: boolean;
 };
 
 type PageModule = {
@@ -40,7 +41,7 @@ const SECTIONS: SectionGroup[] = [
     parentKey: "hr",
     pages: [
       { key: "hr_documents", label: "Documents", blurb: "Letters & employee files", icon: "bi-folder2-open" },
-      { key: "hr_staff", label: "Staffs", blurb: "Directory, leave & tickets", icon: "bi-people-fill" },
+      { key: "hr_staff", label: "Staff", blurb: "Directory, leave & tickets", icon: "bi-people-fill" },
     ],
   },
   {
@@ -51,6 +52,18 @@ const SECTIONS: SectionGroup[] = [
       { key: "sales_clients", label: "Clients", blurb: "Sales client directory", icon: "bi-person-lines-fill" },
       { key: "sales_proposals", label: "Proposals", blurb: "Proposals & estimates", icon: "bi-file-earmark-text-fill" },
       { key: "sales_invoices", label: "Invoices", blurb: "Invoices & billing", icon: "bi-receipt" },
+    ],
+  },
+  {
+    label: "Business Development",
+    icon: "bi-bullseye",
+    pages: [
+      {
+        key: "bd",
+        label: "Business Development",
+        blurb: "Own leads & pipeline only — pair with Proposals. No invoice access",
+        icon: "bi-bullseye",
+      },
     ],
   },
   {
@@ -137,6 +150,27 @@ export default function RolesPage() {
     });
     setGrants((prev) => [...prev.filter((g) => !(g.user === selected.id && g.module === module)), created]);
     return created;
+  };
+
+  const salesDashboardOn = !!(selected && grants.find((g) => g.user === selected.id && g.module === "bd")?.sales_dashboard);
+
+  const setDashboardView = async (sales: boolean) => {
+    const grant = selected && grants.find((g) => g.user === selected.id && g.module === "bd");
+    if (!grant) return;
+    setBusyModule("bd");
+    try {
+      const updated = await api<Grant>(`/api/auth/module-access/${grant.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sales_dashboard: sales }),
+      });
+      setGrants((prev) => prev.map((g) => (g.id === grant.id ? { ...g, sales_dashboard: updated.sales_dashboard } : g)));
+      showToast(sales ? "Sales dashboard on." : "Normal dashboard on.");
+      refreshUser?.();
+    } catch (err: unknown) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : "Couldn't change the dashboard.", "error");
+    } finally {
+      setBusyModule(null);
+    }
   };
 
   const revokeModule = async (module: Module) => {
@@ -301,6 +335,28 @@ export default function RolesPage() {
                   {selectedGrantCount} page{selectedGrantCount === 1 ? "" : "s"}
                 </span>
               </div>
+
+              {selectedGrantKeys.includes("bd") && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 16px" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Dashboard view</span>
+                  <button
+                    type="button"
+                    className={!salesDashboardOn ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+                    disabled={!!busyModule}
+                    onClick={() => salesDashboardOn && setDashboardView(false)}
+                  >
+                    Normal
+                  </button>
+                  <button
+                    type="button"
+                    className={salesDashboardOn ? "btn btn-accent btn-sm" : "btn btn-ghost btn-sm"}
+                    disabled={!!busyModule}
+                    onClick={() => !salesDashboardOn && setDashboardView(true)}
+                  >
+                    Sales
+                  </button>
+                </div>
+              )}
 
               <div className="roles-section-list">
                 {SECTIONS.map((section) => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/EmptyState";
+
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -162,7 +164,7 @@ export default function HrPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>Staffs</h1>
+          <h1 style={{ margin: 0, fontSize: 22 }}>Staff</h1>
         </div>
         <button className="btn btn-accent" onClick={() => setShowForm((v) => !v)}>
           <i className="bi bi-person-plus-fill" /> Add Staff
@@ -299,7 +301,7 @@ export default function HrPage() {
           All Staff
         </span>
         {loading && <Loader />}
-        {!loading && staff.length === 0 && <p className="muted">No staff yet.</p>}
+        {!loading && staff.length === 0 && <EmptyState icon="bi-person-badge-fill" title="No staff yet" hint="People show up here once they register and you approve their account from the Dashboard." />}
         {!loading && staff.length > 0 && (
           <div className="table-wrap">
             <table className="kwick-table">

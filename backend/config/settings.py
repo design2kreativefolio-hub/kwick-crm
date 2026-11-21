@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     "reports",
     "todos",
     "passwords",
+    "bd",
     # OPTIONAL — AI Assistant (removable). See backend/ai/apps.py to remove.
     "ai",
 ]
@@ -196,6 +197,10 @@ REST_FRAMEWORK = {
         "vault_pin": "8/min",
         "public_share": "300/min",
         "public_comment": "10/min",
+        "bd_capture": "20/min",
+        "bd_proposal": "120/min",
+        "bd_accept": "10/min",
+        "bd_ai": "60/hour",
     },
 }
 
@@ -278,6 +283,25 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "Kwick <admin@kwick.kreativefolio
 # ---------------------------------------------------------------------------
 # Web push (VAPID)
 # ---------------------------------------------------------------------------
+# --- Business Development (Phase 2) — everything optional; features stay off
+# until their settings are filled in. Sending falls back to the EMAIL_* above.
+BD_MAIL_FROM = env("BD_MAIL_FROM", "")  # e.g. "Kreativefolio <sales@kreativefolio.com>"
+BD_SMTP_HOST = env("BD_SMTP_HOST", "")
+BD_SMTP_PORT = int(env("BD_SMTP_PORT", "465"))
+BD_SMTP_USER = env("BD_SMTP_USER", "")
+BD_SMTP_PASSWORD = env("BD_SMTP_PASSWORD", "")
+BD_SMTP_USE_SSL = env_bool("BD_SMTP_USE_SSL", default=True)
+BD_SMTP_USE_TLS = env_bool("BD_SMTP_USE_TLS", default=False)
+BD_IMAP_HOST = env("BD_IMAP_HOST", "")
+BD_IMAP_PORT = int(env("BD_IMAP_PORT", "993"))
+BD_IMAP_USER = env("BD_IMAP_USER", "")
+BD_IMAP_PASSWORD = env("BD_IMAP_PASSWORD", "")
+BD_IMAP_USE_SSL = env_bool("BD_IMAP_USE_SSL", default=True)
+BD_IMAP_FOLDER = env("BD_IMAP_FOLDER", "INBOX")
+META_PAGE_ID = env("META_PAGE_ID", "")
+META_PAGE_ACCESS_TOKEN = env("META_PAGE_ACCESS_TOKEN", "")
+META_GRAPH_VERSION = env("META_GRAPH_VERSION", "v19.0")
+
 VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
 VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "mailto:admin@kwick.kreativefolio.com")
@@ -290,6 +314,9 @@ AI_ENABLED = env_bool("AI_ENABLED", default=True)
 AI_API_KEY = env("AI_API_KEY", "") or ""
 AI_BASE_URL = env("AI_BASE_URL", "https://api.openai.com/v1")
 AI_MODEL = env("AI_MODEL", "gpt-4o-mini")
+# Model the Business Development helpers (summaries, drafts, card scan) try first; AI_MODEL is the
+# fallback. Empty = Gemini Flash-Lite when the base URL is Gemini, otherwise just AI_MODEL.
+AI_BD_MODEL = env("AI_BD_MODEL", "")
 
 # ElevenLabs TTS for EDITH (optional). Empty key → frontend uses browser speech.
 ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY", "") or ""

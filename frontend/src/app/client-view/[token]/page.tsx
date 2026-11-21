@@ -30,7 +30,12 @@ const TYPE_META: Record<string, { label: string; icon: string }> = {
   story: { label: "Story", icon: "bi-circle-square" },
   video: { label: "Video", icon: "bi-play-btn" },
   carousel: { label: "Carousel", icon: "bi-collection" },
-  other: { label: "Other", icon: "bi-stars" },
+  print: { label: "Print Work", icon: "bi-printer" },
+  design: { label: "Graphic Design", icon: "bi-vector-pen" },
+  shoot: { label: "Photo / Video Shoot", icon: "bi-camera" },
+  ad: { label: "Ad Campaign", icon: "bi-megaphone" },
+  website: { label: "Website", icon: "bi-globe2" },
+  other: { label: "Other Work", icon: "bi-stars" },
 };
 const typeMeta = (t: string) => TYPE_META[t] ?? TYPE_META.other;
 

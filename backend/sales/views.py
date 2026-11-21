@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from accounts.models import Module
 from common.media_urls import deliver_storage_url, original_upload_name, persist_storage_url, sign_media_url
-from common.permissions import HasModuleAccess
+from common.permissions import HasModuleAccess, is_bde
 from common.services import log_activity
 from common.uploads import (
     CLIENT_FILE_EXTENSIONS,
@@ -23,6 +23,22 @@ from .invoice_pdf import render_invoice_pdf
 from .proposal_docx import render_proposal_docx
 from .proposal_pdf import render_proposal_pdf
 from .serializers import ClientSerializer, EstimateSerializer, InvoiceSerializer, ProposalSerializer
+
+
+class OwnerScopedMixin:
+    """Business Development executives only see (and can only open) the
+    proposals/estimates they built — anyone else's id 404s. Everyone else
+    (superadmin and employees with plain Sales access) keeps the unchanged,
+    company-wide view. New rows record who created them."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if is_bde(self.request.user):
+            qs = qs.filter(owner=self.request.user)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
 
 
 class ClientViewSet(viewsets.ModelViewSet):
@@ -101,7 +117,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         return Response({"logo_url": sign_media_url(client.logo_url)})
 
 
-class ProposalViewSet(viewsets.ModelViewSet):
+class ProposalViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
     queryset = Proposal.objects.select_related("client").all()
     serializer_class = ProposalSerializer
     permission_classes = [HasModuleAccess]
@@ -127,6 +143,7 @@ class ProposalViewSet(viewsets.ModelViewSet):
             title=new_title,
             status=Proposal.Status.DRAFT,
             content=content,
+            owner=request.user,
         )
         return Response(ProposalSerializer(clone).data, status=status.HTTP_201_CREATED)
 
@@ -164,7 +181,7 @@ class ProposalViewSet(viewsets.ModelViewSet):
         return Response({"file_url": url})
 
 
-class EstimateViewSet(viewsets.ModelViewSet):
+class EstimateViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
     queryset = Estimate.objects.select_related("client").all()
     serializer_class = EstimateSerializer
     permission_classes = [HasModuleAccess]
@@ -194,6 +211,7 @@ class EstimateViewSet(viewsets.ModelViewSet):
             title=title,
             status=Estimate.Status.DRAFT,
             content=content,
+            owner=request.user,
         )
         return Response(EstimateSerializer(clone).data, status=status.HTTP_201_CREATED)
 
