@@ -8,6 +8,7 @@ from .views import (
     FollowUpViewSet,
     LeadViewSet,
     MailStatusView,
+    MetaRefreshView,
     MyDayView,
     PipelineView,
     ReportView,
@@ -24,6 +25,7 @@ urlpatterns = [
     path("my-day", MyDayView.as_view(), name="bd-my-day"),
     path("pipeline", PipelineView.as_view(), name="bd-pipeline"),
     path("mail-status", MailStatusView.as_view(), name="bd-mail-status"),
+    path("meta/refresh", MetaRefreshView.as_view(), name="bd-meta-refresh"),
     path("reports", ReportView.as_view(), name="bd-reports"),
     *router.urls,
 ]

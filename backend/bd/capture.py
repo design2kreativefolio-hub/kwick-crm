@@ -233,9 +233,11 @@ def _graph_get(path: str, params: dict) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def pull_meta_leads() -> int:
+def pull_meta_leads(raise_errors: bool = False) -> int:
     """Import new Lead Ad submissions. Safe to run repeatedly: each Meta lead id
-    is only ever imported once, and a failure just leaves the rest for next run."""
+    is only ever imported once, and a failure just leaves the rest for next run.
+    The scheduled job swallows Meta errors (it retries in 15 minutes); the manual
+    Refresh button passes raise_errors=True so the person is told what went wrong."""
     if not meta_configured():
         return 0
     source, _ = LeadCaptureSource.objects.get_or_create(
@@ -273,4 +275,6 @@ def pull_meta_leads() -> int:
                 created += int(was_new)
     except (urllib.error.URLError, TimeoutError, ValueError, KeyError):
         logger.warning("BD: Meta lead pull failed", exc_info=True)
+        if raise_errors:
+            raise
     return created

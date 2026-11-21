@@ -28,6 +28,20 @@ export default function BDSettingsPage() {
   const [name, setName] = useState("");
   const [owner, setOwner] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshMeta = async () => {
+    setRefreshing(true);
+    try {
+      const r = await api<{ imported: number }>("/api/bd/meta/refresh", { method: "POST" });
+      showToast(r.imported > 0 ? `${r.imported} new lead${r.imported === 1 ? "" : "s"} imported from Meta.` : "Checked Meta - no new leads.");
+      load();
+    } catch (err) {
+      showToast(err instanceof ApiError ? formatApiError(err.data) : "Couldn't refresh Meta.", "error");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const load = useCallback(() => {
     Promise.all([
@@ -108,7 +122,12 @@ export default function BDSettingsPage() {
           </div>
           <div className="bd-status">
             {on(status?.meta)} Meta Lead Ads
-            <small>{status?.meta ? "Checked every 15 minutes" : "Off — needs META_PAGE_ID and META_PAGE_ACCESS_TOKEN"}</small>
+            <small>{status?.meta ? "Checked every 15 minutes, or refresh now" : "Off — needs META_PAGE_ID and META_PAGE_ACCESS_TOKEN"}</small>
+            {status?.meta && (
+              <button type="button" className="bd-pillbtn" style={{ padding: "5px 12px" }} onClick={refreshMeta} disabled={refreshing}>
+                <i className={`bi bi-arrow-repeat${refreshing ? " bd-spin" : ""}`} /> <span>{refreshing ? "Checking…" : "Refresh now"}</span>
+              </button>
+            )}
           </div>
         </div>
         <div className="bd-sub">These are switched on from the server&apos;s environment settings — see docs/BUSINESS_DEVELOPMENT.md.</div>

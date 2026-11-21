@@ -868,6 +868,50 @@ class MailStatusView(_ScopedAPIView):
         return Response(out)
 
 
+class MetaRefreshView(APIView):
+    """POST /api/bd/meta/refresh - superadmin: pull new Meta Lead Ads submissions right now
+    (the same import the 15-minute job does; each Meta lead is still imported only once)."""
+
+    permission_classes = [IsSuperadmin]
+
+    def post(self, request):
+        import urllib.error
+
+        from django.core.cache import cache
+
+        from . import capture
+
+        if not capture.meta_configured():
+            return Response(
+                {"detail": "Meta isn't set up yet. Add META_PAGE_ID and META_PAGE_ACCESS_TOKEN on the server."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        source = LeadCaptureSource.objects.filter(kind=LeadCaptureSource.Kind.META).first()
+        if source is not None and not source.active:
+            return Response({"detail": "Meta lead capture is paused."}, status=status.HTTP_400_BAD_REQUEST)
+        # one refresh at a time, and not more than every few seconds (each one calls Meta)
+        if not cache.add("bd:meta-refresh", 1, 15):
+            return Response({"detail": "Just refreshed. Give it a few seconds."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        try:
+            imported = capture.pull_meta_leads(raise_errors=True)
+        except urllib.error.HTTPError as exc:
+            detail = "Meta rejected the request."
+            try:
+                body = json.loads(exc.read().decode("utf-8", errors="replace"))
+                message = (body.get("error") or {}).get("message")
+                if message:
+                    detail = f"Meta said: {message}"
+            except ValueError:
+                pass
+            return Response({"detail": detail}, status=status.HTTP_502_BAD_GATEWAY)
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError):
+            return Response(
+                {"detail": "Couldn't reach Meta just now. Try again in a minute."}, status=status.HTTP_502_BAD_GATEWAY
+            )
+        log_audit(actor=request.user, action=f"refreshed Meta lead ads ({imported} new)")
+        return Response({"imported": imported, "checked_at": timezone.now()})
+
+
 class ReportView(APIView):
     """GET /api/bd/reports?days=30[&owner=<id>] - superadmin only."""
 
